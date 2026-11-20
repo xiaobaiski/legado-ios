@@ -50,14 +50,14 @@ extension ReaderView {
         .gesture(
             DragGesture(minimumDistance: 24)
                 .onEnded { value in
-                    let dx = value.translation.width
-                    let dy = value.translation.height
-                    guard abs(dx) > abs(dy), abs(dx) > 36 else { return }
+                    let horizontalDelta = value.translation.width
+                    let verticalDelta = value.translation.height
+                    guard abs(horizontalDelta) > abs(verticalDelta), abs(horizontalDelta) > 36 else { return }
                     if viewModel.state.isHUDVisible {
                         viewModel.send(.hideHUD)
                         return
                     }
-                    if dx < 0 {
+                    if horizontalDelta < 0 {
                         viewModel.send(.nextPage)
                     } else {
                         viewModel.send(.prevPage)

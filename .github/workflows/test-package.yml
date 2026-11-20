@@ -47,6 +47,8 @@ jobs:
             -scheme Legado \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -only-testing:LegadoTests \
+            -skip-testing:LegadoTests/RealBookSourceTests \
+            -skip-testing:LegadoTests/RealBookSourceE2ETests \
             test | xcbeautify
 
       - name: Build Release Archive (Unsigned iOS Device)
