@@ -34,17 +34,14 @@ public struct BookDetailView: View {
             .padding(16)
         }
         .background {
-            // 背景渐变与毛玻璃环境光
+            // 背景渐变与毛玻璃环境光（兼容本地 EPUB 封面与网络封面）
             ZStack {
-                if let coverUrl = viewModel.state.book.coverUrl, let url = URL(string: coverUrl) {
-                    AsyncImage(url: url) { phase in
-                        if case let .success(img) = phase {
-                            img.resizable()
-                                .scaledToFill()
-                                .blur(radius: 60)
-                                .opacity(0.18)
-                        }
+                if viewModel.state.book.coverUrl != nil {
+                    BookCoverImage(coverUrl: viewModel.state.book.coverUrl) {
+                        Color.clear
                     }
+                    .blur(radius: 60)
+                    .opacity(0.18)
                 }
             }
             .ignoresSafeArea()
@@ -54,13 +51,13 @@ public struct BookDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 8) {
-                    Button {
-                        viewModel.send(.toggleCacheSheet(true))
-                    } label: {
-                        Image(systemName: "arrow.down.circle")
-                    }
-
                     if !viewModel.state.book.isLocalFile {
+                        Button {
+                            viewModel.send(.toggleCacheSheet(true))
+                        } label: {
+                            Image(systemName: "arrow.down.circle")
+                        }
+
                         Button {
                             isChangeSourcePresented = true
                         } label: {
@@ -172,13 +169,17 @@ public struct BookDetailView: View {
     // MARK: - 头部大卡片
 
     private var headerCard: some View {
-        HStack(alignment: .top, spacing: 16) {
+        let isWide = horizontalSizeClass == .regular
+        let coverW: CGFloat = isWide ? 124 : 100
+        let coverH: CGFloat = isWide ? 172 : 138
+
+        return HStack(alignment: .top, spacing: isWide ? 22 : 16) {
             // 封面图
             BookCoverImage(coverUrl: viewModel.state.book.coverUrl) {
                 placeholderCover
             }
-            .frame(width: 100, height: 138)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .frame(width: coverW, height: coverH)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
 
             VStack(alignment: .leading, spacing: 6) {
@@ -247,8 +248,7 @@ public struct BookDetailView: View {
                 .font(.largeTitle)
                 .foregroundStyle(.secondary)
         }
-        .frame(width: 100, height: 138)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - 操作按钮栏
@@ -273,17 +273,19 @@ public struct BookDetailView: View {
             }
             .buttonStyle(.glassProminent(tint: .accentColor, cornerRadius: 14))
 
-            // 离线缓存按钮
-            Button {
-                viewModel.send(.toggleCacheSheet(true))
-            } label: {
-                Image(systemName: "arrow.down.circle")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 4)
+            // 离线缓存按钮（仅网络书源显示）
+            if !viewModel.state.book.isLocalFile {
+                Button {
+                    viewModel.send(.toggleCacheSheet(true))
+                } label: {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.glass(cornerRadius: 14))
             }
-            .buttonStyle(.glass(cornerRadius: 14))
 
             // 加入书架按钮
             Button {

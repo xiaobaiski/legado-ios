@@ -119,9 +119,9 @@ public struct ReaderHUDView: View {
 
                 bottomControlBar
             }
-            .frame(maxWidth: horizontalSizeClass == .regular ? 560 : .infinity)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
+            .frame(maxWidth: horizontalSizeClass == .regular ? 620 : .infinity)
+            .padding(.horizontal, horizontalSizeClass == .regular ? 24 : 16)
+            .padding(.bottom, horizontalSizeClass == .regular ? 28 : 24)
         }
         .ignoresSafeArea(edges: .top)
     }
@@ -129,35 +129,39 @@ public struct ReaderHUDView: View {
     // MARK: - 顶部导航条
 
     private var topBar: some View {
-        HStack(spacing: 10) {
-            circleIconButton(systemName: "chevron.left", action: onBack)
+        HStack {
+            HStack(spacing: 10) {
+                circleIconButton(systemName: "chevron.left", action: onBack)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(bookTitle)
-                    .font(.headline)
-                    .lineLimit(1)
-                Text(currentChapterTitle)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(bookTitle)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Text(currentChapterTitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                circleIconButton(systemName: "magnifyingglass", action: onOpenSearch)
+
+                if !isLocalFile {
+                    circleIconButton(systemName: "arrow.down.circle", action: onOpenCache)
+                }
+
+                circleIconButton(
+                    systemName: isBookmarked ? "bookmark.fill" : "bookmark",
+                    foreground: isBookmarked ? Color.accentColor : .primary,
+                    action: onToggleBookmark)
+
+                circleIconButton(systemName: "gearshape", action: onOpenMoreSettings)
             }
-
-            Spacer()
-
-            circleIconButton(systemName: "magnifyingglass", action: onOpenSearch)
-
-            if !isLocalFile {
-                circleIconButton(systemName: "arrow.down.circle", action: onOpenCache)
-            }
-
-            circleIconButton(
-                systemName: isBookmarked ? "bookmark.fill" : "bookmark",
-                foreground: isBookmarked ? Color.accentColor : .primary,
-                action: onToggleBookmark)
-
-            circleIconButton(systemName: "gearshape", action: onOpenMoreSettings)
+            .frame(maxWidth: horizontalSizeClass == .regular ? 860 : .infinity)
         }
-        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, horizontalSizeClass == .regular ? 28 : 16)
         .padding(.top, max(safeAreaTop, 14) + 6)
         .padding(.bottom, 12)
         .background(.ultraThinMaterial)

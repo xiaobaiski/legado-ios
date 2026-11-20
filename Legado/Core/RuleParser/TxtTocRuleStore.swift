@@ -6,6 +6,7 @@ public final class TxtTocRuleStore: @unchecked Sendable {
 
     private let storageUrl: URL
     private let lock = NSLock()
+    private var cachedRules: [TxtTocRule]?
 
     public init(storageUrl: URL? = nil) {
         if let storageUrl {
@@ -22,13 +23,21 @@ public final class TxtTocRuleStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        guard FileManager.default.fileExists(atPath: storageUrl.path),
-              let data = try? Data(contentsOf: storageUrl),
-              let rules = try? JSONDecoder().decode([TxtTocRule].self, from: data),
-              !rules.isEmpty else {
-            return TxtTocRule.defaultRules
+        if let cachedRules {
+            return cachedRules
         }
-        return rules.sorted { $0.serialNumber < $1.serialNumber }
+
+        let loaded: [TxtTocRule]
+        if FileManager.default.fileExists(atPath: storageUrl.path),
+           let data = try? Data(contentsOf: storageUrl),
+           let rules = try? JSONDecoder().decode([TxtTocRule].self, from: data),
+           !rules.isEmpty {
+            loaded = rules.sorted { $0.serialNumber < $1.serialNumber }
+        } else {
+            loaded = TxtTocRule.defaultRules
+        }
+        cachedRules = loaded
+        return loaded
     }
 
     public func enabledRules() -> [TxtTocRule] {
@@ -39,11 +48,14 @@ public final class TxtTocRuleStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
+        let sorted = rules.sorted { $0.serialNumber < $1.serialNumber }
+        cachedRules = sorted.isEmpty ? nil : sorted
+
         let parent = storageUrl.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let data = try? encoder.encode(rules) {
+        if let data = try? encoder.encode(sorted) {
             try? data.write(to: storageUrl, options: .atomic)
         }
     }

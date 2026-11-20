@@ -38,7 +38,9 @@ public struct BookshelfView: View {
                         booksListContent
                     }
                 }
-                .padding(.horizontal)
+                .frame(maxWidth: horizontalSizeClass == .regular ? 1180 : .infinity)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, horizontalSizeClass == .regular ? 24 : 16)
                 .padding(.top, 12)
                 .padding(.bottom, viewModel.state.isBatchMode ? 90 : 20)
             }
@@ -207,12 +209,12 @@ public struct BookshelfView: View {
 
     private var booksGridContent: some View {
         let isWide = horizontalSizeClass == .regular
-        let gridSpacing: CGFloat = isWide ? 18 : 14
-        let columns = [GridItem(.adaptive(minimum: isWide ? 136 : 102, maximum: 180), spacing: gridSpacing)]
+        let gridSpacing: CGFloat = isWide ? 20 : 14
+        let columns = [GridItem(.adaptive(minimum: isWide ? 144 : 102, maximum: 186), spacing: gridSpacing)]
 
         return LazyVGrid(
             columns: columns,
-            spacing: isWide ? 20 : 16) {
+            spacing: isWide ? 22 : 16) {
                 ForEach(viewModel.state.filteredBooks) { book in
                     BookshelfBookCardView(
                         book: book,
@@ -229,7 +231,12 @@ public struct BookshelfView: View {
     }
 
     private var booksListContent: some View {
-        LazyVStack(spacing: 12) {
+        let isWide = horizontalSizeClass == .regular
+        let columns = isWide
+            ? [GridItem(.adaptive(minimum: 340, maximum: 560), spacing: 16)]
+            : [GridItem(.flexible())]
+
+        return LazyVGrid(columns: columns, spacing: isWide ? 14 : 12) {
             ForEach(viewModel.state.filteredBooks) { book in
                 BookshelfBookRowView(
                     book: book,

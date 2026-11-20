@@ -49,10 +49,10 @@ public struct BookTocSheet: View {
     }
 
     private var displayedChapters: [Chapter] {
-        var list = chapters
-        if isReverse {
-            list.reverse()
+        if !isReverse && searchText.isEmpty {
+            return chapters
         }
+        var list = isReverse ? Array(chapters.reversed()) : chapters
         if !searchText.isEmpty {
             list = list.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
         }

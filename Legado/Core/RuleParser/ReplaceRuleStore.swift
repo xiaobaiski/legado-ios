@@ -6,6 +6,7 @@ public final class ReplaceRuleStore: @unchecked Sendable {
 
     private let storageUrl: URL
     private let lock = NSLock()
+    private var cachedRules: [ReplaceRule]?
 
     public init(storageUrl: URL? = nil) {
         if let storageUrl {
@@ -22,23 +23,34 @@ public final class ReplaceRuleStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        guard FileManager.default.fileExists(atPath: storageUrl.path),
-              let data = try? Data(contentsOf: storageUrl),
-              let rules = try? JSONDecoder().decode([ReplaceRule].self, from: data) else {
-            return PurifyContentUseCase.defaultRules
+        if let cachedRules {
+            return cachedRules
         }
-        return rules.sorted { $0.order < $1.order }
+
+        let loaded: [ReplaceRule]
+        if FileManager.default.fileExists(atPath: storageUrl.path),
+           let data = try? Data(contentsOf: storageUrl),
+           let rules = try? JSONDecoder().decode([ReplaceRule].self, from: data) {
+            loaded = rules.sorted { $0.order < $1.order }
+        } else {
+            loaded = PurifyContentUseCase.defaultRules
+        }
+        cachedRules = loaded
+        return loaded
     }
 
     public func saveRules(_ rules: [ReplaceRule]) {
         lock.lock()
         defer { lock.unlock() }
 
+        let sorted = rules.sorted { $0.order < $1.order }
+        cachedRules = sorted
+
         let parent = storageUrl.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let data = try? encoder.encode(rules) {
+        if let data = try? encoder.encode(sorted) {
             try? data.write(to: storageUrl, options: .atomic)
         }
     }

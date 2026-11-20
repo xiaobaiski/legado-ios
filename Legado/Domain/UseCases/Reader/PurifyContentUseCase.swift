@@ -1,8 +1,13 @@
 import Foundation
 
 /// 正文净化、重复标题去除、智能分段与替换规则引擎（对标 Legado Android `ContentProcessor` + `ContentHelp`）
-public final class PurifyContentUseCase: Sendable {
+public final class PurifyContentUseCase: @unchecked Sendable {
     public static let shared = PurifyContentUseCase()
+    private let regexCache: NSCache<NSString, NSRegularExpression> = {
+        let cache = NSCache<NSString, NSRegularExpression>()
+        cache.countLimit = 128
+        return cache
+    }()
 
     /// 默认全局广告、防盗水印与排版清理规则（兼容 Legado ReplaceRule）
     public static let defaultRules: [ReplaceRule] = [
@@ -244,13 +249,15 @@ public final class PurifyContentUseCase: Sendable {
 
         for rule in activeRules {
             if rule.isRegex {
-                let options: NSString.CompareOptions = rule.isCaseSensitive
-                    ? [.regularExpression]
-                    : [.regularExpression, .caseInsensitive]
-                result = result.replacingOccurrences(
-                    of: rule.pattern,
-                    with: rule.replacement,
-                    options: options)
+                guard let regex = cachedRegex(pattern: rule.pattern, caseSensitive: rule.isCaseSensitive) else {
+                    continue
+                }
+                let nsRange = NSRange(location: 0, length: (result as NSString).length)
+                result = regex.stringByReplacingMatches(
+                    in: result,
+                    options: [],
+                    range: nsRange,
+                    withTemplate: rule.replacement)
             } else {
                 let options: NSString.CompareOptions = rule.isCaseSensitive ? [] : [.caseInsensitive]
                 result = result.replacingOccurrences(
@@ -260,5 +267,21 @@ public final class PurifyContentUseCase: Sendable {
             }
         }
         return result
+    }
+
+    private func cachedRegex(pattern: String, caseSensitive: Bool) -> NSRegularExpression? {
+        let key = "\(caseSensitive ? "1" : "0"):\(pattern)" as NSString
+        if let cached = regexCache.object(forKey: key) {
+            return cached
+        }
+        var options: NSRegularExpression.Options = [.anchorsMatchLines]
+        if !caseSensitive {
+            options.insert(.caseInsensitive)
+        }
+        guard let compiled = try? NSRegularExpression(pattern: pattern, options: options) else {
+            return nil
+        }
+        regexCache.setObject(compiled, forKey: key)
+        return compiled
     }
 }

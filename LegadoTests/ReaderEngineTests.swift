@@ -232,13 +232,19 @@ struct ReaderEngineTests {
     func iPadLayoutAndLocalFontValidation() {
         let engine = TextLayoutEngine.shared
         let iPhoneBounds = CGRect(x: 0, y: 0, width: 393, height: 852)
+        let iPadPortraitBounds = CGRect(x: 0, y: 0, width: 820, height: 1180)
         let iPadBounds = CGRect(x: 0, y: 0, width: 1024, height: 768)
 
         var config = ReaderConfig.defaultConfig
         config.enableIPadDualPage = true
 
         #expect(!config.isDualPageActive(for: iPhoneBounds))
+        // iPad 竖屏采用居中单页舒适行宽，横屏自动启用双页并排
+        #expect(!config.isDualPageActive(for: iPadPortraitBounds))
         #expect(config.isDualPageActive(for: iPadBounds))
+
+        let portraitSingleRect = engine.contentRenderRect(for: iPadPortraitBounds, config: config)
+        #expect(portraitSingleRect.width <= 680)
 
         // iPad 双页单栏宽度应严格小于半屏
         let dualRect = engine.contentRenderRect(for: iPadBounds, config: config)

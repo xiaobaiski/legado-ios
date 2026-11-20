@@ -13,6 +13,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
     let deleteBookmarkUseCase: DeleteBookmarkUseCase?
     var autoPageTask: Task<Void, Never>?
     private var loadChapterTask: Task<Void, Never>?
+    private var repaginateTask: Task<Void, Never>?
     private let initialOffsetToRestore: Int?
 
     public init(
@@ -213,7 +214,15 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         guard chapterIndex >= 0, chapterIndex < state.chapters.count else { return }
 
         loadChapterTask?.cancel()
+        repaginateTask?.cancel()
         let chapter = state.chapters[chapterIndex]
+        let bookOrigin = state.book.origin
+        let bookName = state.book.name
+        let configSnapshot = state.config
+        let defaultBounds = CGRect(x: 0, y: 0, width: 393, height: 852)
+        let layoutBounds = state.screenBounds.width > 50 ? state.screenBounds : defaultBounds
+        let engine = textLayoutEngine
+
         updateState {
             $0.isLoading = true
             $0.currentChapterIndex = chapterIndex
@@ -223,19 +232,19 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
             do {
                 let content = try await getChapterContentUseCase.execute(
                     chapter: chapter,
-                    origin: state.book.origin)
+                    origin: bookOrigin)
                 guard !Task.isCancelled else { return }
 
-                let defaultBounds = CGRect(x: 0, y: 0, width: 393, height: 852)
-                let layoutBounds = state.screenBounds.width > 50 ? state.screenBounds : defaultBounds
-                let pages = textLayoutEngine.paginate(
-                    chapterTitle: chapter.title,
-                    content: content,
-                    chapterIndex: chapterIndex,
-                    bounds: layoutBounds,
-                    config: state.config,
-                    bookName: state.book.name,
-                    bookOrigin: state.book.origin)
+                let pages = await Task.detached(priority: .userInitiated) {
+                    engine.paginate(
+                        chapterTitle: chapter.title,
+                        content: content,
+                        chapterIndex: chapterIndex,
+                        bounds: layoutBounds,
+                        config: configSnapshot,
+                        bookName: bookName,
+                        bookOrigin: bookOrigin)
+                }.value
                 guard !Task.isCancelled else { return }
 
                 let safePageIndex: Int
@@ -255,10 +264,9 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
 
                 self.saveReadingProgress()
 
-                // 预加载下一章节
                 if chapterIndex + 1 < state.chapters.count {
                     let nextChapter = state.chapters[chapterIndex + 1]
-                    self.getChapterContentUseCase.preload(chapter: nextChapter, origin: state.book.origin)
+                    self.getChapterContentUseCase.preload(chapter: nextChapter, origin: bookOrigin)
                 }
             } catch {
                 guard !Task.isCancelled else { return }
@@ -309,27 +317,43 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
 
     func repaginateCurrentChapter() {
         guard let chapter = state.currentChapter else { return }
+        repaginateTask?.cancel()
         let currentOffset = state.currentPage?.textRange.location ?? 0
-        Task {
-            if let content = try? await getChapterContentUseCase.execute(chapter: chapter, origin: state.book.origin) {
-                let defaultBounds = CGRect(x: 0, y: 0, width: 393, height: 852)
-                let layoutBounds = state.screenBounds.width > 50 ? state.screenBounds : defaultBounds
-                let pages = textLayoutEngine.paginate(
+        let chapterIndex = state.currentChapterIndex
+        let bookOrigin = state.book.origin
+        let bookName = state.book.name
+        let configSnapshot = state.config
+        let defaultBounds = CGRect(x: 0, y: 0, width: 393, height: 852)
+        let layoutBounds = state.screenBounds.width > 50 ? state.screenBounds : defaultBounds
+        let engine = textLayoutEngine
+
+        repaginateTask = Task {
+            guard let content = try? await getChapterContentUseCase.execute(
+                chapter: chapter,
+                origin: bookOrigin),
+                  !Task.isCancelled else {
+                return
+            }
+
+            let pages = await Task.detached(priority: .userInitiated) {
+                engine.paginate(
                     chapterTitle: chapter.title,
                     content: content,
-                    chapterIndex: state.currentChapterIndex,
+                    chapterIndex: chapterIndex,
                     bounds: layoutBounds,
-                    config: state.config,
-                    bookName: state.book.name,
-                    bookOrigin: state.book.origin)
-                let preservedPage = pages.firstIndex { page in
-                    currentOffset >= page.textRange.location &&
-                        currentOffset < (page.textRange.location + max(page.textRange.length, 1))
-                } ?? min(state.currentPageIndex, max(pages.count - 1, 0))
-                self.updateState { state in
-                    state.pages = pages
-                    state.currentPageIndex = preservedPage
-                }
+                    config: configSnapshot,
+                    bookName: bookName,
+                    bookOrigin: bookOrigin)
+            }.value
+            guard !Task.isCancelled else { return }
+
+            let preservedPage = pages.firstIndex { page in
+                currentOffset >= page.textRange.location &&
+                    currentOffset < (page.textRange.location + max(page.textRange.length, 1))
+            } ?? min(state.currentPageIndex, max(pages.count - 1, 0))
+            self.updateState { state in
+                state.pages = pages
+                state.currentPageIndex = preservedPage
             }
         }
     }

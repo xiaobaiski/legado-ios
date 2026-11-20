@@ -177,6 +177,11 @@ public struct ReaderView: View {
         }
         .navigationBarBackButtonHidden(true)
         .statusBarHidden(!viewModel.state.isHUDVisible && !viewModel.state.config.showStatusBar)
+        .focusable()
+        .focusEffectDisabled()
+        .onKeyPress(keys: [.leftArrow, .upArrow, .rightArrow, .downArrow, .space, .escape]) { press in
+            handleHardwareKeyPress(press)
+        }
         .sensoryFeedback(.impact(weight: .light), trigger: hapticTrigger)
         .sheet(isPresented: Binding(
             get: { viewModel.state.isMoreSettingsVisible },
@@ -302,12 +307,6 @@ public struct ReaderView: View {
             switch effect {
             case let .showToast(msg):
                 toastMessage = msg
-                Task {
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    if toastMessage == msg {
-                        toastMessage = nil
-                    }
-                }
 
             case .hapticFeedback:
                 if viewModel.state.config.isHapticEnabled {
@@ -439,10 +438,28 @@ private extension ReaderView {
         }
     }
 
+    func handleHardwareKeyPress(_ press: KeyPress) -> KeyPress.Result {
+        switch press.key {
+        case .leftArrow, .upArrow:
+            viewModel.send(.prevPage)
+            return .handled
+
+        case .rightArrow, .downArrow, .space:
+            viewModel.send(.nextPage)
+            return .handled
+
+        case .escape:
+            viewModel.send(.toggleHUD)
+            return .handled
+
+        default:
+            return .ignored
+        }
+    }
+
     var activeWindowScreen: UIScreen? {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.screen
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        return (scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first)?.screen
     }
 
     func startReaderCacheDownload(option: BatchDownloadOption) {

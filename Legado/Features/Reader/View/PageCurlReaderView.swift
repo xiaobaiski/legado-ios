@@ -142,13 +142,17 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
 
         private func makePageController(for index: Int) -> IndexedPageHostingController {
             let page = parent.pages[index]
+            let spineEdge: ReaderPageView.SpineEdge = parent.isDualPage
+                ? (index % 2 == 0 ? .trailing : .leading)
+                : .none
             let view = ReaderPageView(
                 page: page,
                 totalPages: parent.pages.count,
                 totalChapters: parent.totalChapters,
                 config: parent.config,
                 highlightedSentence: parent.highlightedSentence,
-                maxContentWidth: parent.isDualPage ? nil : parent.maxSingleWidth)
+                maxContentWidth: parent.isDualPage ? nil : parent.maxSingleWidth,
+                spineEdge: spineEdge)
             let controller = IndexedPageHostingController(pageIndex: index, rootView: view)
             controller.view.backgroundColor = UIColor(parent.config.theme.backgroundColor)
             return controller
@@ -168,7 +172,8 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
                 page: dummy,
                 totalPages: parent.pages.count,
                 totalChapters: parent.totalChapters,
-                config: blankConfig)
+                config: blankConfig,
+                spineEdge: parent.isDualPage ? .leading : .none)
             let controller = IndexedPageHostingController(pageIndex: pageIndex, rootView: view)
             controller.view.backgroundColor = UIColor(parent.config.theme.backgroundColor)
             return controller

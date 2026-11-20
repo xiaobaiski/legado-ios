@@ -21,6 +21,7 @@ public struct ReaderTypographyPanel: View {
     let onOpenMoreSettings: () -> Void
     let onToggleAutoPage: () -> Void
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedTab: PanelTab = .layout
 
     public init(
@@ -60,7 +61,7 @@ public struct ReaderTypographyPanel: View {
                     appearanceControlsSection
                 }
             }
-            .frame(maxHeight: 310)
+            .frame(maxHeight: horizontalSizeClass == .regular ? 380 : 310)
         }
         .padding(14)
         .background(.ultraThinMaterial)
