@@ -27,14 +27,23 @@ public struct ReaderView: View {
     }
 
     public var body: some View {
-        GeometryReader { geometry in
+        GeometryReader { safeGeo in
             ZStack {
-                // 背景配色
-                viewModel.state.config.theme.backgroundColor
-                    .ignoresSafeArea()
-
-                // 多模式正文排版呈现 (覆盖 / 滑动 / 连续上下滚动)
-                contentLayer(width: geometry.size.width)
+                // 全屏沉浸式排版画布：与 ReaderPageView 严格共享同一全屏尺寸，彻底消除底部多余空白
+                GeometryReader { fullGeo in
+                    ZStack {
+                        viewModel.state.config.theme.backgroundColor
+                        contentLayer(width: fullGeo.size.width)
+                    }
+                    .frame(width: fullGeo.size.width, height: fullGeo.size.height)
+                    .onAppear {
+                        viewModel.send(.updateScreenBounds(CGRect(origin: .zero, size: fullGeo.size)))
+                    }
+                    .onChange(of: fullGeo.size) { _, newSize in
+                        viewModel.send(.updateScreenBounds(CGRect(origin: .zero, size: newSize)))
+                    }
+                }
+                .ignoresSafeArea()
 
                 // 液态玻璃 HUD 控制面板
                 if viewModel.state.isHUDVisible {
@@ -43,9 +52,10 @@ public struct ReaderView: View {
                         currentChapterTitle: viewModel.state.currentChapter?.title ?? "",
                         currentChapterIndex: viewModel.state.currentChapterIndex,
                         totalChapters: viewModel.state.chapters.count,
+                        chapters: viewModel.state.chapters,
                         config: viewModel.state.config,
                         importedFonts: viewModel.state.importedFonts,
-                        safeAreaTop: geometry.safeAreaInsets.top,
+                        safeAreaTop: safeGeo.safeAreaInsets.top,
                         isConfigOpen: viewModel.state.isConfigSheetVisible,
                         isAutoPaging: viewModel.state.isAutoPaging,
                         isLocalFile: viewModel.state.book.isLocalFile,
@@ -146,7 +156,6 @@ public struct ReaderView: View {
                 }
             }
             .onAppear {
-                viewModel.send(.updateScreenBounds(geometry.frame(in: .local)))
                 applySystemDisplaySettings()
                 updateVolumeButtonBinding()
             }
@@ -157,9 +166,6 @@ public struct ReaderView: View {
                 volumeHandler.stop()
                 restoreSystemDisplaySettings()
                 TTSPlayer.shared.stop()
-            }
-            .onChange(of: geometry.size) { _, newSize in
-                viewModel.send(.updateScreenBounds(CGRect(origin: .zero, size: newSize)))
             }
             .onChange(of: viewModel.state.config) { _, _ in
                 applySystemDisplaySettings()
@@ -195,6 +201,7 @@ public struct ReaderView: View {
                     },
                     onToggleAutoPage: { viewModel.send(.toggleAutoPage) },
                     onSetAutoPageInterval: { viewModel.send(.setAutoPageInterval($0)) },
+                    onRulesChanged: { viewModel.send(.repaginate) },
                     onResetConfig: { viewModel.send(.resetConfig) })
         }
         .sheet(isPresented: $isFontPickerPresented) {

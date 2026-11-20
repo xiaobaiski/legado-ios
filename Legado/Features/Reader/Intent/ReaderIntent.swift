@@ -49,6 +49,8 @@ public enum ReaderIntent: ViewIntent, Equatable, Sendable {
     case deleteImportedFont(ImportedFont)
     /// 刷新本地字体列表
     case refreshImportedFonts
+    /// 手动重新排版当前章节（例如修改替换净化规则后即时生效）
+    case repaginate
     /// 屏幕尺寸尺寸更新重新排版
     case updateScreenBounds(CGRect)
     /// 切换书源并重载新目录与章节

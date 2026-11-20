@@ -117,20 +117,25 @@ extension SettingsView {
 
     var purifySection: some View {
         Section {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("智能去广告与防盗水印净化")
-                        .font(.subheadline.weight(.medium))
-                    Text("自动剔除“本章未完请翻页”、推广外链与乱码广告行")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "checkmark.shield.fill")
-                    .foregroundStyle(.green)
+            Toggle("启用替换净化规则", isOn: readerBinding(\.enableReplaceRule))
+            Toggle("去除正文重复章节标题", isOn: readerBinding(\.removeSameTitle))
+            Toggle("智能重新分段（修复断行）", isOn: readerBinding(\.reSegment))
+
+            NavigationLink {
+                ReplaceRuleManageView()
+            } label: {
+                Label("管理替换净化规则 (兼容 Legado JSON)", systemImage: "wand.and.stars")
+            }
+
+            NavigationLink {
+                TxtTocRuleManageView()
+            } label: {
+                Label("TXT 目录分章规则 (兼容 txtTocRule.json)", systemImage: "list.bullet.indent")
             }
         } header: {
-            Label("正文净化规则", systemImage: "wand.and.stars")
+            Label("章节优化与净化排版规则", systemImage: "wand.and.stars")
+        } footer: {
+            Text("完全兼容 Legado Android 替换净化与 TXT 目录正则规则，支持从文件或剪贴板导入导出。")
         }
     }
 

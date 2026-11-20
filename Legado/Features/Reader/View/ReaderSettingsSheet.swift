@@ -12,6 +12,7 @@ public struct ReaderSettingsSheet: View {
     let onOpenFontImporter: () -> Void
     let onToggleAutoPage: () -> Void
     let onSetAutoPageInterval: (Double) -> Void
+    let onRulesChanged: () -> Void
     let onResetConfig: () -> Void
 
     public init(
@@ -24,6 +25,7 @@ public struct ReaderSettingsSheet: View {
         onOpenFontImporter: @escaping () -> Void = {},
         onToggleAutoPage: @escaping () -> Void,
         onSetAutoPageInterval: @escaping (Double) -> Void,
+        onRulesChanged: @escaping () -> Void = {},
         onResetConfig: @escaping () -> Void) {
         self.config = config
         self.importedFonts = importedFonts
@@ -34,6 +36,7 @@ public struct ReaderSettingsSheet: View {
         self.onOpenFontImporter = onOpenFontImporter
         self.onToggleAutoPage = onToggleAutoPage
         self.onSetAutoPageInterval = onSetAutoPageInterval
+        self.onRulesChanged = onRulesChanged
         self.onResetConfig = onResetConfig
     }
 
@@ -41,6 +44,7 @@ public struct ReaderSettingsSheet: View {
         NavigationStack {
             Form {
                 interactionSection
+                purifyAndChapterSection
                 localFontsSection
                 autoPageSection
                 typographyDetailSection
@@ -94,6 +98,30 @@ private extension ReaderSettingsSheet {
             Label("交互与触感", systemImage: "hand.tap")
         } footer: {
             Text("开启「音量键翻页」后按音量+上一页、音量-下一页（朗读听书时自动恢复音量调节）。")
+        }
+    }
+
+    var purifyAndChapterSection: some View {
+        Section {
+            Toggle("启用替换净化规则", isOn: binding(\.enableReplaceRule))
+            Toggle("去除正文重复章节标题", isOn: binding(\.removeSameTitle))
+            Toggle("智能重新分段（修复断行）", isOn: binding(\.reSegment))
+
+            NavigationLink {
+                ReplaceRuleManageView(onRulesChanged: onRulesChanged)
+            } label: {
+                Label("管理替换净化规则 (Legado JSON)", systemImage: "wand.and.stars")
+            }
+
+            NavigationLink {
+                TxtTocRuleManageView()
+            } label: {
+                Label("TXT 目录分章规则 (txtTocRule)", systemImage: "list.bullet.indent")
+            }
+        } header: {
+            Label("章节优化与净化排版", systemImage: "wand.and.stars")
+        } footer: {
+            Text("兼容 Legado Android 替换净化与 TXT 目录正则规则，修改后自动实时刷新当前章节排版。")
         }
     }
 
@@ -190,7 +218,7 @@ private extension ReaderSettingsSheet {
                     value: Binding(
                         get: { Double(config.topMargin) },
                         set: { val in update { $0.topMargin = CGFloat(val) } }),
-                    in: 32 ... 80,
+                    in: 16 ... 80,
                     step: 2)
             }
 
@@ -206,7 +234,7 @@ private extension ReaderSettingsSheet {
                     value: Binding(
                         get: { Double(config.bottomMargin) },
                         set: { val in update { $0.bottomMargin = CGFloat(val) } }),
-                    in: 24 ... 72,
+                    in: 12 ... 72,
                     step: 2)
             }
         } header: {

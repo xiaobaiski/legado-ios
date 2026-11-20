@@ -36,6 +36,10 @@ public struct ReaderPageView: View {
     }
 
     public var body: some View {
+        let topHeight = TextLayoutEngine.effectiveTopMargin(for: config)
+        let bottomHeight = TextLayoutEngine.effectiveBottomMargin(for: config)
+        let halfCanvasPad = TextLayoutEngine.verticalCanvasPadding / 2
+
         VStack(spacing: 0) {
             // 页顶：章节标题与当前时间
             if config.showHeader {
@@ -53,21 +57,20 @@ public struct ReaderPageView: View {
                 }
                 .frame(maxWidth: maxContentWidth ?? .infinity)
                 .padding(.horizontal, config.horizontalMargin)
-                .padding(.top, 10)
-                .frame(height: config.topMargin, alignment: .bottom)
+                .padding(.bottom, 2)
+                .frame(height: topHeight, alignment: .bottom)
             } else {
-                Spacer().frame(height: config.topMargin)
+                Spacer().frame(height: topHeight)
             }
 
-            // 正文区域：基于 CoreText 精确渲染行距、段距、字距、字体、加粗与两端对齐
+            // 正文区域：基于 CoreText 精确渲染，高度与 TextLayoutEngine.contentRenderRect 像素级一致
             CoreTextPageCanvas(
                 content: page.contentText,
                 config: config,
                 highlightedSentence: highlightedSentence)
                 .frame(maxWidth: maxContentWidth ?? .infinity, maxHeight: .infinity)
                 .padding(.horizontal, config.horizontalMargin)
-                .padding(.top, 8)
-                .padding(.bottom, 8)
+                .padding(.vertical, halfCanvasPad)
 
             // 页脚：页码、全书总进度与电池状态
             if config.showFooter {
@@ -86,10 +89,10 @@ public struct ReaderPageView: View {
                 }
                 .frame(maxWidth: maxContentWidth ?? .infinity)
                 .padding(.horizontal, config.horizontalMargin)
-                .padding(.bottom, 12)
-                .frame(height: config.bottomMargin, alignment: .top)
+                .padding(.top, 2)
+                .frame(height: bottomHeight, alignment: .top)
             } else {
-                Spacer().frame(height: config.bottomMargin)
+                Spacer().frame(height: bottomHeight)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

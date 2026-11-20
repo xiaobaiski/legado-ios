@@ -12,6 +12,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
     let saveBookmarkUseCase: SaveBookmarkUseCase?
     let deleteBookmarkUseCase: DeleteBookmarkUseCase?
     var autoPageTask: Task<Void, Never>?
+    private var loadChapterTask: Task<Void, Never>?
     private let initialOffsetToRestore: Int?
 
     public init(
@@ -96,7 +97,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
 
         case .updateConfig, .resetConfig, .openMoreSettings, .closeMoreSettings,
              .toggleAutoPage, .setAutoPageInterval, .importFonts, .selectCustomFont,
-             .deleteImportedFont, .refreshImportedFonts:
+             .deleteImportedFont, .refreshImportedFonts, .repaginate:
             handleExtendedConfigIntent(intent)
 
         case let .updateScreenBounds(rect):
@@ -211,17 +212,19 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         targetOffset: Int? = nil) {
         guard chapterIndex >= 0, chapterIndex < state.chapters.count else { return }
 
+        loadChapterTask?.cancel()
         let chapter = state.chapters[chapterIndex]
         updateState {
             $0.isLoading = true
             $0.currentChapterIndex = chapterIndex
         }
 
-        Task {
+        loadChapterTask = Task {
             do {
                 let content = try await getChapterContentUseCase.execute(
                     chapter: chapter,
                     origin: state.book.origin)
+                guard !Task.isCancelled else { return }
 
                 let defaultBounds = CGRect(x: 0, y: 0, width: 393, height: 852)
                 let layoutBounds = state.screenBounds.width > 50 ? state.screenBounds : defaultBounds
@@ -230,7 +233,10 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
                     content: content,
                     chapterIndex: chapterIndex,
                     bounds: layoutBounds,
-                    config: state.config)
+                    config: state.config,
+                    bookName: state.book.name,
+                    bookOrigin: state.book.origin)
+                guard !Task.isCancelled else { return }
 
                 let safePageIndex: Int
                 if let offset = targetOffset {
@@ -255,6 +261,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
                     self.getChapterContentUseCase.preload(chapter: nextChapter, origin: state.book.origin)
                 }
             } catch {
+                guard !Task.isCancelled else { return }
                 self.updateState { state in
                     state.isLoading = false
                     state.toastMessage = "加载章节失败: \(error.localizedDescription)"
@@ -300,7 +307,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         }
     }
 
-    private func repaginateCurrentChapter() {
+    func repaginateCurrentChapter() {
         guard let chapter = state.currentChapter else { return }
         let currentOffset = state.currentPage?.textRange.location ?? 0
         Task {
@@ -312,7 +319,9 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
                     content: content,
                     chapterIndex: state.currentChapterIndex,
                     bounds: layoutBounds,
-                    config: state.config)
+                    config: state.config,
+                    bookName: state.book.name,
+                    bookOrigin: state.book.origin)
                 let preservedPage = pages.firstIndex { page in
                     currentOffset >= page.textRange.location &&
                         currentOffset < (page.textRange.location + max(page.textRange.length, 1))

@@ -22,6 +22,7 @@ public final class GetChapterContentUseCase: @unchecked Sendable {
         origin: String,
         forceRefresh: Bool = false) async throws -> String {
         let cacheKey = "\(chapter.bookUrl)_\(chapter.index)" as NSString
+        let isLocalBook = chapter.bookUrl.hasPrefix("local://")
 
         // 1. L1 内存缓存命中
         if !forceRefresh, let cachedMemory = memoryCache.object(forKey: cacheKey) {
@@ -31,9 +32,16 @@ public final class GetChapterContentUseCase: @unchecked Sendable {
         // 2. L2 磁盘持久化命中
         if !forceRefresh, let diskContent = cacheRepository.getCachedChapterContent(
             bookUrl: chapter.bookUrl,
-            index: chapter.index), !diskContent.isEmpty {
-            memoryCache.setObject(diskContent as NSString, forKey: cacheKey)
-            return diskContent
+            index: chapter.index) {
+            if !diskContent.isEmpty || isLocalBook {
+                memoryCache.setObject(diskContent as NSString, forKey: cacheKey)
+                return diskContent
+            }
+        }
+
+        // 本地导入书籍严禁回落至网络抓源，避免空卷章节或快速拖动进度条触发 NSURLError -1008
+        if isLocalBook {
+            return ""
         }
 
         // 3. L3 网络抓取

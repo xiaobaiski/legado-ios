@@ -5,12 +5,37 @@ import UIKit
 /// 基于 CoreText 的高性能非阻塞分页排版引擎
 public final class TextLayoutEngine: Sendable {
     public static let shared = TextLayoutEngine()
+    public static let verticalCanvasPadding: CGFloat = 6
 
     public init() {}
 
-    /// 规范化章节文本（繁简转换 + 按用户配置统一段首缩进与空行）
-    public func normalizeContent(_ content: String, config: ReaderConfig) -> String {
-        let converted = config.chineseConversion.convert(content)
+    /// 计算与 ReaderPageView 严格像素对齐的有效页眉高度
+    public static func effectiveTopMargin(for config: ReaderConfig) -> CGFloat {
+        config.showHeader ? max(config.topMargin, 22) : config.topMargin
+    }
+
+    /// 计算与 ReaderPageView 严格像素对齐的有效页脚高度
+    public static func effectiveBottomMargin(for config: ReaderConfig) -> CGFloat {
+        config.showFooter ? max(config.bottomMargin, 20) : config.bottomMargin
+    }
+
+    /// 规范化章节文本（Legado 去重标题 + 智能重分段 + 替换净化规则 + 繁简转换 + 统一段首缩进）
+    public func normalizeContent(
+        _ content: String,
+        chapterTitle: String? = nil,
+        bookName: String? = nil,
+        bookOrigin: String? = nil,
+        config: ReaderConfig) -> String {
+        let purified = PurifyContentUseCase.shared.processContent(
+            content,
+            bookName: bookName,
+            chapterTitle: chapterTitle,
+            sourceUrl: bookOrigin,
+            enableReplace: config.enableReplaceRule,
+            removeSameTitle: config.removeSameTitle,
+            reSegment: config.reSegment)
+
+        let converted = config.chineseConversion.convert(purified)
         let indentPrefix = String(repeating: "\u{3000}", count: max(0, min(config.paragraphIndent, 4)))
         let trimChars = CharacterSet(charactersIn: " \t\u{3000}\u{00A0}\r")
 
@@ -31,28 +56,41 @@ public final class TextLayoutEngine: Sendable {
         content: String,
         chapterIndex: Int,
         bounds: CGRect,
-        config: ReaderConfig) -> [ReaderPage] {
-        guard !content.isEmpty else {
+        config: ReaderConfig,
+        bookName: String? = nil,
+        bookOrigin: String? = nil) -> [ReaderPage] {
+        let displayTitle = PurifyContentUseCase.shared.purifyTitle(
+            chapterTitle,
+            bookName: bookName,
+            sourceUrl: bookOrigin,
+            enableReplace: config.enableReplaceRule)
+
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return [
                 ReaderPage(
                     pageIndex: 0,
                     chapterIndex: chapterIndex,
-                    chapterTitle: chapterTitle,
+                    chapterTitle: displayTitle,
                     textRange: NSRange(location: 0, length: 0),
-                    contentText: "本章内容为空"),
+                    contentText: displayTitle.isEmpty ? "本章内容为空" : displayTitle),
             ]
         }
 
-        let normalized = normalizeContent(content, config: config)
+        let normalized = normalizeContent(
+            content,
+            chapterTitle: chapterTitle,
+            bookName: bookName,
+            bookOrigin: bookOrigin,
+            config: config)
         let renderRect = contentRenderRect(for: bounds, config: config)
         let attrString = createAttributedString(
-            title: chapterTitle,
+            title: displayTitle,
             content: normalized,
             config: config)
 
         let pages = slicePages(
             attrString: attrString,
-            chapterTitle: chapterTitle,
+            chapterTitle: displayTitle,
             chapterIndex: chapterIndex,
             renderRect: renderRect)
 
@@ -61,7 +99,7 @@ public final class TextLayoutEngine: Sendable {
                 ReaderPage(
                     pageIndex: 0,
                     chapterIndex: chapterIndex,
-                    chapterTitle: chapterTitle,
+                    chapterTitle: displayTitle,
                     textRange: NSRange(location: 0, length: 0),
                     contentText: normalized),
             ]
@@ -104,7 +142,7 @@ public final class TextLayoutEngine: Sendable {
         return pages
     }
 
-    /// 计算除去上下左右安全内边距的实际排版矩阵（支持 iPad 双页分栏与单页居中最佳行宽）
+    /// 计算除去上下左右边距的实际排版矩阵（与 ReaderPageView 严格 0px 误差一致，消除底部多余留白）
     public func contentRenderRect(for bounds: CGRect, config: ReaderConfig) -> CGRect {
         let renderWidth: CGFloat
         if config.isDualPageActive(for: bounds) {
@@ -115,7 +153,9 @@ public final class TextLayoutEngine: Sendable {
             let rawWidth = max(bounds.width - config.horizontalMargin * 2, 100)
             renderWidth = bounds.width >= 760 ? min(rawWidth, 680) : rawWidth
         }
-        let renderHeight = max(bounds.height - config.topMargin - config.bottomMargin - 16, 100)
+        let topReserve = Self.effectiveTopMargin(for: config)
+        let bottomReserve = Self.effectiveBottomMargin(for: config)
+        let renderHeight = max(bounds.height - topReserve - bottomReserve - Self.verticalCanvasPadding, 100)
         return CGRect(x: 0, y: 0, width: renderWidth, height: renderHeight)
     }
 

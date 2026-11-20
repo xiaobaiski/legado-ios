@@ -159,6 +159,9 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
     public var autoPageIntervalSeconds: Double
     public var chineseConversion: ChineseConversionMode
     public var enableIPadDualPage: Bool
+    public var enableReplaceRule: Bool
+    public var removeSameTitle: Bool
+    public var reSegment: Bool
 
     public init(
         fontSize: CGFloat = 19.0,
@@ -175,7 +178,7 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         pageTurnMode: PageTurnMode = .cover,
         horizontalMargin: CGFloat = 18.0,
         topMargin: CGFloat = 50.0,
-        bottomMargin: CGFloat = 42.0,
+        bottomMargin: CGFloat = 34.0,
         isHapticEnabled: Bool = true,
         keepScreenOn: Bool = true,
         followSystemBrightness: Bool = true,
@@ -188,7 +191,10 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         volumeKeyPageTurn: Bool = true,
         autoPageIntervalSeconds: Double = 8.0,
         chineseConversion: ChineseConversionMode = .none,
-        enableIPadDualPage: Bool = true) {
+        enableIPadDualPage: Bool = true,
+        enableReplaceRule: Bool = true,
+        removeSameTitle: Bool = true,
+        reSegment: Bool = false) {
         self.fontSize = fontSize
         self.lineSpacing = lineSpacing
         self.paragraphSpacing = paragraphSpacing
@@ -217,6 +223,9 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         self.autoPageIntervalSeconds = autoPageIntervalSeconds
         self.chineseConversion = chineseConversion
         self.enableIPadDualPage = enableIPadDualPage
+        self.enableReplaceRule = enableReplaceRule
+        self.removeSameTitle = removeSameTitle
+        self.reSegment = reSegment
     }
 
     public init(from decoder: Decoder) throws {
@@ -264,6 +273,12 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
             ?? defaults.chineseConversion
         self.enableIPadDualPage = try container.decodeIfPresent(Bool.self, forKey: .enableIPadDualPage)
             ?? defaults.enableIPadDualPage
+        self.enableReplaceRule = try container.decodeIfPresent(Bool.self, forKey: .enableReplaceRule)
+            ?? defaults.enableReplaceRule
+        self.removeSameTitle = try container.decodeIfPresent(Bool.self, forKey: .removeSameTitle)
+            ?? defaults.removeSameTitle
+        self.reSegment = try container.decodeIfPresent(Bool.self, forKey: .reSegment)
+            ?? defaults.reSegment
     }
 
     public static let defaultConfig = ReaderConfig()
@@ -307,8 +322,13 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
             horizontalMargin != other.horizontalMargin ||
             topMargin != other.topMargin ||
             bottomMargin != other.bottomMargin ||
+            showHeader != other.showHeader ||
+            showFooter != other.showFooter ||
             chineseConversion != other.chineseConversion ||
             enableIPadDualPage != other.enableIPadDualPage ||
+            enableReplaceRule != other.enableReplaceRule ||
+            removeSameTitle != other.removeSameTitle ||
+            reSegment != other.reSegment ||
             (pageTurnMode == .scroll) != (other.pageTurnMode == .scroll)
     }
 }

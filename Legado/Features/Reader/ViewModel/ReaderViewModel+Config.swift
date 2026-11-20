@@ -59,6 +59,9 @@ extension ReaderViewModel {
             let fonts = LocalFontManager.shared.listImportedFonts()
             updateState { $0.importedFonts = fonts }
 
+        case .repaginate:
+            repaginateCurrentChapter()
+
         default:
             break
         }

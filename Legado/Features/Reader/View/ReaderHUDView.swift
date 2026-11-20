@@ -3,11 +3,13 @@ import SwiftUI
 /// 阅读器液态玻璃控制面板 (HUD Overlay)
 public struct ReaderHUDView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var draggingChapterIndex: Double?
 
     let bookTitle: String
     let currentChapterTitle: String
     let currentChapterIndex: Int
     let totalChapters: Int
+    let chapters: [Chapter]
     let config: ReaderConfig
     let importedFonts: [ImportedFont]
     let safeAreaTop: CGFloat
@@ -38,6 +40,7 @@ public struct ReaderHUDView: View {
         currentChapterTitle: String,
         currentChapterIndex: Int,
         totalChapters: Int,
+        chapters: [Chapter] = [],
         config: ReaderConfig,
         importedFonts: [ImportedFont] = [],
         safeAreaTop: CGFloat = 48,
@@ -66,6 +69,7 @@ public struct ReaderHUDView: View {
         self.currentChapterTitle = currentChapterTitle
         self.currentChapterIndex = currentChapterIndex
         self.totalChapters = totalChapters
+        self.chapters = chapters
         self.config = config
         self.importedFonts = importedFonts
         self.safeAreaTop = safeAreaTop
@@ -182,7 +186,31 @@ public struct ReaderHUDView: View {
     // MARK: - 底部主控制栏
 
     private var bottomControlBar: some View {
-        VStack(spacing: 12) {
+        let maxIndex = max(totalChapters - 1, 1)
+        let activeIndex = Int(draggingChapterIndex ?? Double(currentChapterIndex))
+        let clampedIndex = min(max(activeIndex, 0), max(totalChapters - 1, 0))
+        let previewTitle = (clampedIndex < chapters.count ? chapters[clampedIndex].title : currentChapterTitle)
+        let progressPct = totalChapters > 1
+            ? Double(clampedIndex) / Double(totalChapters - 1) * 100.0
+            : 100.0
+
+        return VStack(spacing: 12) {
+            if draggingChapterIndex != nil {
+                HStack(spacing: 8) {
+                    Text(previewTitle)
+                        .font(.caption.weight(.medium))
+                        .lineLimit(1)
+                    Spacer()
+                    Text("\(clampedIndex + 1)/\(max(totalChapters, 1)) · \(String(format: "%.1f%%", progressPct))")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.thinMaterial)
+                .clipShape(Capsule(style: .continuous))
+            }
+
             HStack(spacing: 12) {
                 Button(action: onPreviousChapter) {
                     Image(systemName: "backward.fill")
@@ -192,11 +220,23 @@ public struct ReaderHUDView: View {
 
                 Slider(
                     value: Binding(
-                        get: { Double(currentChapterIndex) },
-                        set: { onSliderChange($0) }),
-                    in: 0 ... Double(max(totalChapters - 1, 1)),
-                    step: 1)
+                        get: { draggingChapterIndex ?? Double(currentChapterIndex) },
+                        set: { newValue in
+                            draggingChapterIndex = newValue
+                        }),
+                    in: 0 ... Double(maxIndex),
+                    step: 1,
+                    onEditingChanged: { isEditing in
+                        if !isEditing, let target = draggingChapterIndex {
+                            let targetInt = min(max(Int(target.rounded()), 0), max(totalChapters - 1, 0))
+                            draggingChapterIndex = nil
+                            if targetInt != currentChapterIndex {
+                                onSliderChange(Double(targetInt))
+                            }
+                        }
+                    })
                     .tint(.accentColor)
+                    .disabled(totalChapters <= 1)
 
                 Button(action: onNextChapter) {
                     Image(systemName: "forward.fill")

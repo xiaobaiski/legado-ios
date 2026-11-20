@@ -145,10 +145,9 @@ public final class ZipArchiveReader: Sendable {
     private static func findEOCDOffset(in data: Data) -> Int? {
         guard data.count >= 22 else { return nil }
         let minOffset = max(0, data.count - 65557)
-        for offset in stride(from: data.count - 22, through: minOffset, by: -1) {
-            if readUInt32(in: data, at: offset) == 0x0605_4B50 {
-                return offset
-            }
+        for offset in stride(from: data.count - 22, through: minOffset, by: -1)
+            where readUInt32(in: data, at: offset) == 0x0605_4B50 {
+            return offset
         }
         return nil
     }
