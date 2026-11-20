@@ -12,6 +12,8 @@ public struct ReaderView: View {
     @State private var isChangeSourcePresented = false
     @State private var isSearchContentPresented = false
     @State private var isCachePresented = false
+    @State private var isTocReversed = false
+    @State private var tocSearchText = ""
 
     public init(viewModel: ReaderViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -157,11 +159,11 @@ public struct ReaderView: View {
                 BookTocSheet(
                     chapters: viewModel.state.chapters,
                     durChapterIndex: viewModel.state.currentChapterIndex,
-                    isReverse: false,
-                    searchText: "",
+                    isReverse: isTocReversed,
+                    searchText: tocSearchText,
                     bookmarks: viewModel.state.bookmarks,
-                    onToggleReverse: {},
-                    onSearchChange: { _ in },
+                    onToggleReverse: { isTocReversed.toggle() },
+                    onSearchChange: { tocSearchText = $0 },
                     onSelectChapter: { chapter in
                         viewModel.send(.closeToc)
                         viewModel.send(.loadChapter(chapter.index))

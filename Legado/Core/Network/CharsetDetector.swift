@@ -45,23 +45,28 @@ public enum CharsetDetector {
             }
         }
 
-        // 3. 默认优先尝试 UTF-8
+        // 3. 检测 BOM (UTF-8 / UTF-16 LE / UTF-16 BE)
+        if let bomDecoded = decodeWithBOM(data: data) {
+            return bomDecoded
+        }
+
+        // 4. 默认优先尝试 UTF-8
         if let utf8String = String(data: data, encoding: .utf8) {
-            return utf8String
+            return utf8String.trimmingLeadingBOM()
         }
 
-        // 4. UTF-8 失败则尝试 GBK
+        // 5. UTF-8 失败则尝试 GBK
         if let gbkString = String(data: data, encoding: gbkEncoding) {
-            return gbkString
+            return gbkString.trimmingLeadingBOM()
         }
 
-        // 5. 尝试 Big5
+        // 6. 尝试 Big5
         if let big5String = String(data: data, encoding: big5Encoding) {
-            return big5String
+            return big5String.trimmingLeadingBOM()
         }
 
-        // 6. 保底 ISO Latin 1 (无损保留单字节)
-        return String(data: data, encoding: .isoLatin1) ?? ""
+        // 7. 保底 ISO Latin 1 (无损保留单字节)
+        return (String(data: data, encoding: .isoLatin1) ?? "").trimmingLeadingBOM()
     }
 
     /// 根据编码名称字符串获取 String.Encoding
@@ -102,5 +107,26 @@ public enum CharsetDetector {
     /// GBK / GB2312 百分号编码
     public static func percentEncodeGBK(_ string: String) -> String {
         percentEncode(string: string, encoding: gbkEncoding)
+    }
+
+    private static func decodeWithBOM(data: Data) -> String? {
+        let header = Array(data.prefix(3))
+        if header.count >= 3, header[0] == 0xEF, header[1] == 0xBB, header[2] == 0xBF {
+            return String(data: data.dropFirst(3), encoding: .utf8)
+        }
+        if header.count >= 2,
+           (header[0] == 0xFF && header[1] == 0xFE) || (header[0] == 0xFE && header[1] == 0xFF) {
+            return String(data: data, encoding: .utf16)?.trimmingLeadingBOM()
+        }
+        return nil
+    }
+}
+
+private extension String {
+    func trimmingLeadingBOM() -> String {
+        if hasPrefix("\u{FEFF}") {
+            return String(dropFirst())
+        }
+        return self
     }
 }

@@ -54,6 +54,8 @@ targets:
           NSAllowsArbitraryLoads: true
         UIBackgroundModes:
           - audio
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
     preBuildScripts:
       - name: SwiftLint
         script: |

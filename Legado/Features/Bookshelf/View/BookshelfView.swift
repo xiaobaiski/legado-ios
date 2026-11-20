@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 书架主视图：遵循 MVI 单向数据流与 iOS 18+ 原生液态玻璃美学
 public struct BookshelfView: View {
@@ -9,6 +10,7 @@ public struct BookshelfView: View {
     @State private var readerDestination: ReaderDestination?
     @State private var hapticTrigger = false
     @State private var isShowingAddGroupAlert = false
+    @State private var isShowingFileImporter = false
     @State private var newGroupName = ""
 
     public init(viewModel: BookshelfViewModel) {
@@ -80,6 +82,11 @@ public struct BookshelfView: View {
                     newGroupName = ""
                 }
             }
+            .fileImporter(
+                isPresented: $isShowingFileImporter,
+                allowedContentTypes: Self.localBookContentTypes,
+                allowsMultipleSelection: true,
+                onCompletion: handleFileImportResult)
         }
     }
 
@@ -106,6 +113,12 @@ public struct BookshelfView: View {
                 }
 
                 Menu {
+                    Button {
+                        presentFileImporter()
+                    } label: {
+                        Label("导入本地 TXT", systemImage: "doc.badge.plus")
+                    }
+
                     Button {
                         viewModel.send(.refreshAllBookUpdates)
                     } label: {
@@ -219,16 +232,54 @@ public struct BookshelfView: View {
     }
 
     private var emptyStateView: some View {
-        ContentUnavailableView(
-            viewModel.state.searchText.isEmpty ? "书架空空如也" : "无搜索结果",
-            systemImage: "books.vertical",
-            description: Text(viewModel.state.searchText.isEmpty ? "前往搜索页面探索并添加喜爱的小说" : "未找到匹配的书籍"))
-            .padding(.top, 40)
+        ContentUnavailableView {
+            Label(
+                viewModel.state.searchText.isEmpty ? "书架空空如也" : "无搜索结果",
+                systemImage: "books.vertical")
+        } description: {
+            Text(viewModel.state.searchText.isEmpty ? "前往搜索页面添加小说，或直接导入本地 TXT 文件" : "未找到匹配的书籍")
+        } actions: {
+            if viewModel.state.searchText.isEmpty {
+                Button {
+                    isShowingFileImporter = true
+                } label: {
+                    Label("导入本地 TXT", systemImage: "doc.badge.plus")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(.top, 40)
+    }
+}
+
+// MARK: - Overlays, Effects & File Import
+
+private extension BookshelfView {
+    /// 允许选择纯文本与通用数据文件，避免 iOS 文件选择器中部分下载的 TXT 文件呈灰色不可选
+    static var localBookContentTypes: [UTType] {
+        [.plainText, .text, .data]
     }
 
-    // MARK: - Overlays & Effects
+    func presentFileImporter() {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            isShowingFileImporter = true
+        }
+    }
 
-    private var batchBarOverlay: some View {
+    func handleFileImportResult(_ result: Result<[URL], Error>) {
+        switch result {
+        case let .success(urls):
+            if !urls.isEmpty {
+                viewModel.send(.importLocalBooks(urls))
+            }
+
+        case let .failure(error):
+            activeToast = "选择文件失败: \(error.localizedDescription)"
+        }
+    }
+
+    var batchBarOverlay: some View {
         BookshelfBatchBar(
             selectedCount: viewModel.state.selectedBookUrls.count,
             isAllSelected: !viewModel.state.filteredBooks.isEmpty &&
@@ -256,7 +307,7 @@ public struct BookshelfView: View {
     }
 
     @ViewBuilder
-    private var toastOverlay: some View {
+    var toastOverlay: some View {
         if let toast = activeToast {
             Text(toast)
                 .font(.footnote.weight(.medium))
@@ -275,14 +326,16 @@ public struct BookshelfView: View {
                 .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
                 .padding(.top, 8)
                 .transition(.move(edge: .top).combined(with: .opacity))
-                .task {
+                .task(id: toast) {
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    activeToast = nil
+                    if activeToast == toast {
+                        activeToast = nil
+                    }
                 }
         }
     }
 
-    private func handleEffect(_ effect: BookshelfEffect) {
+    func handleEffect(_ effect: BookshelfEffect) {
         switch effect {
         case let .navigateToReader(book):
             readerDestination = ReaderDestination(book: book, chapterIndex: book.durChapterIndex)

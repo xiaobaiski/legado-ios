@@ -103,9 +103,14 @@ public final class BookCacheRepositoryImpl: BookCacheRepository, @unchecked Send
     }
 
     public func clearAllCache() throws {
-        if fileManager.fileExists(atPath: baseDirectory.path) {
-            try fileManager.removeItem(at: baseDirectory)
-            try fileManager.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+        guard fileManager.fileExists(atPath: baseDirectory.path) else { return }
+        let localPrefix = Self.deterministicKey(for: "local://")
+        let entries = try fileManager.contentsOfDirectory(at: baseDirectory, includingPropertiesForKeys: nil)
+        for entry in entries {
+            if entry.lastPathComponent.hasPrefix(localPrefix) {
+                continue
+            }
+            try fileManager.removeItem(at: entry)
         }
     }
 

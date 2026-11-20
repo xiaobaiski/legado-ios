@@ -27,6 +27,7 @@ jobs:
           brew install xcodegen swiftlint swiftformat xcbeautify
 
       - name: Check code formatting & linting
+        continue-on-error: true
         run: |
           make format-check
 

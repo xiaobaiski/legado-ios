@@ -86,6 +86,60 @@ struct LocalImportAndHealthCheckTests {
         #expect(cachedCh1?.contains("痛！好痛！头好痛！") == true)
     }
 
+    @Test("Test ImportLocalBookUseCase with UTF-8 BOM, UTF-16 BOM and Unsupported Format")
+    func importLocalBookEncodingsAndValidation() async throws {
+        let provider = ModelContainerProvider(inMemory: true)
+        let bookRepo = BookRepositoryImpl(modelContainer: provider.container)
+        let tempCacheDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TestLocalImportCache_\(UUID().uuidString)", isDirectory: true)
+        let cacheRepo = BookCacheRepositoryImpl(baseDirectory: tempCacheDir)
+        defer { try? FileManager.default.removeItem(at: tempCacheDir) }
+
+        let useCase = ImportLocalBookUseCase(
+            bookRepository: bookRepo,
+            bookCacheRepository: cacheRepo)
+
+        // 1. UTF-8 BOM 文件首行章节识别
+        let bomFile = FileManager.default.temporaryDirectory.appendingPathComponent("utf8_bom_test.txt")
+        let bomData = Data([0xEF, 0xBB, 0xBF]) + Data("第一章 启程\n新的冒险开始了。\n".utf8)
+        try bomData.write(to: bomFile)
+        defer { try? FileManager.default.removeItem(at: bomFile) }
+
+        let bomBook = try await useCase.execute(fileUrl: bomFile)
+        let bomChapters = try await bookRepo.getChapters(for: bomBook.bookUrl)
+        #expect(bomChapters.count == 1)
+        #expect(bomChapters[0].title == "第一章 启程")
+
+        // 2. UTF-16 LE BOM 文件解码
+        let utf16File = FileManager.default.temporaryDirectory.appendingPathComponent("utf16_test.txt")
+        if let utf16Data = "第一章 黎明\n微光穿透云层。".data(using: .utf16) {
+            try utf16Data.write(to: utf16File)
+            defer { try? FileManager.default.removeItem(at: utf16File) }
+            let utf16Book = try await useCase.execute(fileUrl: utf16File)
+            let utf16Chapters = try await bookRepo.getChapters(for: utf16Book.bookUrl)
+            #expect(utf16Chapters.first?.title == "第一章 黎明")
+        }
+
+        // 3. 清空在线缓存时应保留本地书籍章节
+        try cacheRepo.saveChapterContent(bookUrl: "https://online.example/book", index: 0, content: "在线缓存")
+        try cacheRepo.clearAllCache()
+        #expect(cacheRepo.getCachedChapterContent(bookUrl: "https://online.example/book", index: 0) == nil)
+        #expect(cacheRepo.getCachedChapterContent(bookUrl: bomBook.bookUrl, index: 0)?.contains("新的冒险") == true)
+
+        // 4. 非文本格式应抛出清晰错误
+        let invalidFile = FileManager.default.temporaryDirectory.appendingPathComponent("not_a_book.png")
+        try Data([0x89, 0x50, 0x4E, 0x47]).write(to: invalidFile)
+        defer { try? FileManager.default.removeItem(at: invalidFile) }
+
+        var didThrowUnsupported = false
+        do {
+            _ = try await useCase.execute(fileUrl: invalidFile)
+        } catch is LocalBookImportError {
+            didThrowUnsupported = true
+        }
+        #expect(didThrowUnsupported)
+    }
+
     @Test("Test SourceHealthReport Model Properties")
     func sourceHealthReportModel() {
         let report = SourceHealthReport(

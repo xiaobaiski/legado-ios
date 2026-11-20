@@ -258,8 +258,11 @@ public struct BookDetailView: View {
         HStack(spacing: 12) {
             // 开始阅读按钮
             Button {
-                viewModel.send(.selectChapter(
-                    viewModel.state.chapters.first ?? Chapter(url: "", title: "", bookUrl: "", index: 0)))
+                let targetIndex = viewModel.state.book.durChapterIndex
+                let targetChapter = viewModel.state.chapters.first(where: { $0.index == targetIndex })
+                    ?? viewModel.state.chapters.first
+                    ?? Chapter(url: "", title: "", bookUrl: viewModel.state.book.bookUrl, index: targetIndex)
+                viewModel.send(.selectChapter(targetChapter))
             } label: {
                 HStack {
                     Image(systemName: "book.fill")

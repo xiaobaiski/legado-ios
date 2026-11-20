@@ -64,7 +64,10 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
             handleGroupIntent(intent)
 
         case let .importLocalBook(url):
-            handleImportLocalBook(url: url)
+            handleImportLocalBooks(urls: [url])
+
+        case let .importLocalBooks(urls):
+            handleImportLocalBooks(urls: urls)
         }
     }
 
@@ -108,7 +111,7 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
             emitEffect(.hapticFeedback)
 
         case .selectAll:
-            updateState { $0.selectedBookUrls = Set($0.books.map(\.bookUrl)) }
+            updateState { $0.selectedBookUrls = Set($0.filteredBooks.map(\.bookUrl)) }
             emitEffect(.hapticFeedback)
 
         case .deselectAll:
