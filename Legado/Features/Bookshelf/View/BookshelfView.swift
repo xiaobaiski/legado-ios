@@ -63,11 +63,12 @@ public struct BookshelfView: View {
             }
             .fullScreenCover(
                 item: $readerDestination,
-                onDismiss: { viewModel.send(.onAppear) }) { dest in
+                onDismiss: { viewModel.send(.onAppear) },
+                content: { dest in
                     ReaderView(viewModel: environment.makeReaderViewModel(
                         book: dest.book,
                         initialChapterIndex: dest.chapterIndex))
-            }
+                })
             .onReceive(viewModel.effectPublisher) { handleEffect($0) }
             .overlay {
                 if viewModel.state.isImporting {

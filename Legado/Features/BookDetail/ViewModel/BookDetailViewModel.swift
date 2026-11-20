@@ -182,7 +182,7 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
     }
 
     private func clearCache() {
-        guard !state.book.isLocal else {
+        guard !state.book.isLocalFile else {
             emitEffect(.showToast("本地书籍不支持清空正文缓存"))
             return
         }

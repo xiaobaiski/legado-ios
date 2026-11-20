@@ -178,6 +178,11 @@ public struct Book: Identifiable, Hashable, Codable, Sendable {
         origin == "local" || origin.hasPrefix("webdav")
     }
 
+    /// 是否为本机导入的本地文件书籍（正文仅存于本地磁盘，不可通过联网重新下载）
+    public var isLocalFile: Bool {
+        bookUrl.hasPrefix("local://")
+    }
+
     public var isOnLineTxt: Bool {
         !isLocal && type == 0
     }

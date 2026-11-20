@@ -325,11 +325,13 @@ public struct BookSourceEditView: View {
             toastMessage = "已复制到剪贴板"
         }
     }
+}
 
-    // MARK: - 浮动 Toast 气泡
+// MARK: - 浮动 Toast 气泡
 
+private extension BookSourceEditView {
     @ViewBuilder
-    private var toastOverlay: some View {
+    var toastOverlay: some View {
         if let toastMessage {
             Text(toastMessage)
                 .font(.footnote.weight(.medium))

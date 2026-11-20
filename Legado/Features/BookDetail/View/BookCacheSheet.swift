@@ -43,7 +43,7 @@ public struct BookCacheSheet: View {
                     // 状态与空间卡片
                     cacheStatusCard
 
-                    if book.isLocal {
+                    if book.isLocalFile {
                         localBookNoticeCard
                     } else {
                         // 下载进度卡片 (下载中展示)

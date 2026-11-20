@@ -29,20 +29,8 @@ public enum CharsetDetector {
         }
 
         // 2. 尝试从前 1024 字节嗅探 HTML <meta charset="...">
-        let prefixLength = min(data.count, 1024)
-        let prefixData = data.prefix(prefixLength)
-        if let asciiPrefix = String(data: prefixData, encoding: .ascii)?.lowercased() {
-            if asciiPrefix.contains("charset=gbk") || asciiPrefix.contains("charset=\"gbk\"") ||
-                asciiPrefix.contains("charset=gb2312") || asciiPrefix.contains("charset=\"gb2312\"") ||
-                asciiPrefix.contains("charset=gb18030") || asciiPrefix.contains("charset=\"gb18030\"") {
-                if let decoded = String(data: data, encoding: gbkEncoding) {
-                    return decoded
-                }
-            } else if asciiPrefix.contains("charset=big5") || asciiPrefix.contains("charset=\"big5\"") {
-                if let decoded = String(data: data, encoding: big5Encoding) {
-                    return decoded
-                }
-            }
+        if let metaDecoded = decodeFromMetaCharset(data: data) {
+            return metaDecoded
         }
 
         // 3. 检测 BOM (UTF-8 / UTF-16 LE / UTF-16 BE)
@@ -107,6 +95,22 @@ public enum CharsetDetector {
     /// GBK / GB2312 百分号编码
     public static func percentEncodeGBK(_ string: String) -> String {
         percentEncode(string: string, encoding: gbkEncoding)
+    }
+
+    private static func decodeFromMetaCharset(data: Data) -> String? {
+        let prefixData = data.prefix(min(data.count, 1024))
+        guard let asciiPrefix = String(data: prefixData, encoding: .ascii)?.lowercased() else {
+            return nil
+        }
+        let gbkMarkers = ["charset=gbk", "charset=\"gbk\"", "charset=gb2312", "charset=\"gb2312\"",
+                          "charset=gb18030", "charset=\"gb18030\""]
+        if gbkMarkers.contains(where: { asciiPrefix.contains($0) }) {
+            return String(data: data, encoding: gbkEncoding)
+        }
+        if asciiPrefix.contains("charset=big5") || asciiPrefix.contains("charset=\"big5\"") {
+            return String(data: data, encoding: big5Encoding)
+        }
+        return nil
     }
 
     private static func decodeWithBOM(data: Data) -> String? {

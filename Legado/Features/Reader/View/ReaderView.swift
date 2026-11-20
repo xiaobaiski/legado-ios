@@ -78,7 +78,7 @@ public struct ReaderView: View {
                                 author: viewModel.state.book.author)
                         },
                         onOpenChangeSource: {
-                            if viewModel.state.book.isLocal {
+                            if viewModel.state.book.isLocalFile {
                                 toastMessage = "本地书籍无需换源"
                                 return
                             }
@@ -209,7 +209,7 @@ public struct ReaderView: View {
                     cacheDownloadProgress?.status = .idle
                 },
                 onClearCache: {
-                    guard !viewModel.state.book.isLocal else { return }
+                    guard !viewModel.state.book.isLocalFile else { return }
                     try? environment.manageBookCacheUseCase.clearBookCache(bookUrl: viewModel.state.book.bookUrl)
                     cacheInfo = environment.manageBookCacheUseCase.getBookCacheInfo(
                         bookUrl: viewModel.state.book.bookUrl,
@@ -284,7 +284,7 @@ public struct ReaderView: View {
 
 private extension ReaderView {
     func startReaderCacheDownload(option: BatchDownloadOption) {
-        guard !viewModel.state.book.isLocal else { return }
+        guard !viewModel.state.book.isLocalFile else { return }
         cacheDownloadTask?.cancel()
         cacheDownloadProgress = BatchDownloadProgress(
             bookUrl: viewModel.state.book.bookUrl,

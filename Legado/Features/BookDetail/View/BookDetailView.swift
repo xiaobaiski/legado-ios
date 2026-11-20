@@ -57,7 +57,7 @@ public struct BookDetailView: View {
                         Image(systemName: "arrow.down.circle")
                     }
 
-                    if !viewModel.state.book.isLocal {
+                    if !viewModel.state.book.isLocalFile {
                         Button {
                             isChangeSourcePresented = true
                         } label: {
@@ -227,7 +227,7 @@ public struct BookDetailView: View {
                     }
                     .foregroundStyle(.tertiary)
 
-                    if !viewModel.state.book.isLocal {
+                    if !viewModel.state.book.isLocalFile {
                         Button("换源") {
                             isChangeSourcePresented = true
                         }
