@@ -52,24 +52,35 @@ public struct BookshelfView: View {
             }
             .onAppear {
                 viewModel.send(.onAppear)
+                consumeExternalImports()
+            }
+            .onReceive(environment.externalFileImportSubject) { _ in
+                consumeExternalImports()
             }
             .sensoryFeedback(.impact(weight: .light), trigger: hapticTrigger)
             .navigationDestination(item: $selectedBookForDetail) { book in
                 BookDetailView(viewModel: environment.makeBookDetailViewModel(book: book))
             }
-            .fullScreenCover(item: $readerDestination) { dest in
-                ReaderView(viewModel: environment.makeReaderViewModel(
-                    book: dest.book,
-                    initialChapterIndex: dest.chapterIndex))
+            .fullScreenCover(
+                item: $readerDestination,
+                onDismiss: { viewModel.send(.onAppear) }) { dest in
+                    ReaderView(viewModel: environment.makeReaderViewModel(
+                        book: dest.book,
+                        initialChapterIndex: dest.chapterIndex))
             }
             .onReceive(viewModel.effectPublisher) { handleEffect($0) }
-            .overlay(alignment: .bottom) {
-                if viewModel.state.isBatchMode {
-                    batchBarOverlay
+            .overlay {
+                if viewModel.state.isImporting {
+                    loadingOverlay
                 }
             }
-            .overlay(alignment: .top) {
-                toastOverlay
+            .overlay(alignment: .bottom) {
+                VStack(spacing: 12) {
+                    toastOverlay
+                    if viewModel.state.isBatchMode {
+                        batchBarOverlay
+                    }
+                }
             }
             .alert("新建分组", isPresented: $isShowingAddGroupAlert) {
                 TextField("分组名称", text: $newGroupName)
@@ -82,11 +93,21 @@ public struct BookshelfView: View {
                     newGroupName = ""
                 }
             }
-            .fileImporter(
-                isPresented: $isShowingFileImporter,
-                allowedContentTypes: Self.localBookContentTypes,
-                allowsMultipleSelection: true,
-                onCompletion: handleFileImportResult)
+            .sheet(isPresented: $isShowingFileImporter) {
+                DocumentPickerView(
+                    allowedContentTypes: Self.localBookContentTypes,
+                    allowsMultipleSelection: true,
+                    onPick: { urls in
+                        isShowingFileImporter = false
+                        if !urls.isEmpty {
+                            viewModel.send(.importLocalBooks(urls))
+                        }
+                    },
+                    onCancel: {
+                        isShowingFileImporter = false
+                    })
+                    .ignoresSafeArea()
+            }
         }
     }
 
@@ -267,16 +288,29 @@ private extension BookshelfView {
         }
     }
 
-    func handleFileImportResult(_ result: Result<[URL], Error>) {
-        switch result {
-        case let .success(urls):
-            if !urls.isEmpty {
-                viewModel.send(.importLocalBooks(urls))
-            }
-
-        case let .failure(error):
-            activeToast = "选择文件失败: \(error.localizedDescription)"
+    func consumeExternalImports() {
+        let urls = environment.consumePendingImportURLs()
+        if !urls.isEmpty {
+            viewModel.send(.importLocalBooks(urls))
         }
+    }
+
+    var loadingOverlay: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .controlSize(.large)
+            Text("正在处理本地书籍...")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 18)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.25), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
     }
 
     var batchBarOverlay: some View {
@@ -324,8 +358,8 @@ private extension BookshelfView {
                 .overlay(
                     Capsule(style: .continuous).stroke(Color.white.opacity(0.25), lineWidth: 0.5))
                 .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
-                .padding(.top, 8)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .padding(.bottom, viewModel.state.isBatchMode ? 4 : 20)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
                 .task(id: toast) {
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
                     if activeToast == toast {

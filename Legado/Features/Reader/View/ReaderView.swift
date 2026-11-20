@@ -14,6 +14,9 @@ public struct ReaderView: View {
     @State private var isCachePresented = false
     @State private var isTocReversed = false
     @State private var tocSearchText = ""
+    @State private var cacheInfo: BookCacheInfo?
+    @State private var cacheDownloadProgress: BatchDownloadProgress?
+    @State private var cacheDownloadTask: Task<Void, Never>?
 
     public init(viewModel: ReaderViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -49,7 +52,9 @@ public struct ReaderView: View {
                             viewModel.send(.loadChapter(Int(newIndex)))
                         },
                         onOpenToc: { viewModel.send(.openToc) },
-                        onToggleConfig: { viewModel.send(.openConfig) },
+                        onToggleConfig: {
+                            viewModel.send(viewModel.state.isConfigSheetVisible ? .closeConfig : .openConfig)
+                        },
                         onFontSizeChange: { delta in
                             viewModel.send(.changeFontSize(delta: delta))
                         },
@@ -73,6 +78,10 @@ public struct ReaderView: View {
                                 author: viewModel.state.book.author)
                         },
                         onOpenChangeSource: {
+                            if viewModel.state.book.isLocal {
+                                toastMessage = "本地书籍无需换源"
+                                return
+                            }
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                                 viewModel.send(.hideHUD)
                                 isChangeSourcePresented = true
@@ -89,6 +98,9 @@ public struct ReaderView: View {
                             viewModel.send(.toggleBookmark)
                         },
                         onOpenCache: {
+                            cacheInfo = environment.manageBookCacheUseCase.getBookCacheInfo(
+                                bookUrl: viewModel.state.book.bookUrl,
+                                totalChapters: viewModel.state.chapters.count)
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                                 viewModel.send(.hideHUD)
                                 isCachePresented = true
@@ -115,6 +127,8 @@ public struct ReaderView: View {
                 viewModel.send(.updateScreenBounds(geometry.frame(in: .local)))
             }
             .onDisappear {
+                cacheDownloadTask?.cancel()
+                cacheDownloadTask = nil
                 TTSPlayer.shared.stop()
             }
             .onChange(of: geometry.size) { _, newSize in
@@ -182,22 +196,24 @@ public struct ReaderView: View {
             BookCacheSheet(
                 book: viewModel.state.book,
                 chapters: viewModel.state.chapters,
-                cacheInfo: environment.manageBookCacheUseCase.getBookCacheInfo(
+                cacheInfo: cacheInfo ?? environment.manageBookCacheUseCase.getBookCacheInfo(
                     bookUrl: viewModel.state.book.bookUrl,
                     totalChapters: viewModel.state.chapters.count),
-                downloadProgress: nil,
+                downloadProgress: cacheDownloadProgress,
                 onStartDownload: { option in
-                    Task {
-                        try? await environment.batchDownloadChaptersUseCase.execute(
-                            book: viewModel.state.book,
-                            chapters: viewModel.state.chapters,
-                            option: option,
-                            concurrency: 3)
-                    }
+                    startReaderCacheDownload(option: option)
                 },
-                onCancelDownload: {},
+                onCancelDownload: {
+                    cacheDownloadTask?.cancel()
+                    cacheDownloadTask = nil
+                    cacheDownloadProgress?.status = .idle
+                },
                 onClearCache: {
+                    guard !viewModel.state.book.isLocal else { return }
                     try? environment.manageBookCacheUseCase.clearBookCache(bookUrl: viewModel.state.book.bookUrl)
+                    cacheInfo = environment.manageBookCacheUseCase.getBookCacheInfo(
+                        bookUrl: viewModel.state.book.bookUrl,
+                        totalChapters: viewModel.state.chapters.count)
                 },
                 onDismiss: { isCachePresented = false })
         }
@@ -220,8 +236,8 @@ public struct ReaderView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if let toastMessage {
-                Text(toastMessage)
+            if let toast = toastMessage {
+                Text(toast)
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
@@ -234,7 +250,13 @@ public struct ReaderView: View {
                     .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
                     .padding(.bottom, 32)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toastMessage)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: toast)
+                    .task(id: toast) {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        if toastMessage == toast {
+                            toastMessage = nil
+                        }
+                    }
             }
         }
         .onChange(of: ttsPlayer.state) { _, newState in
@@ -256,6 +278,50 @@ public struct ReaderView: View {
         ttsPlayer.onRequestNextChapterAsync = { [weak viewModel] in
             guard let viewModel else { return nil }
             return await viewModel.fetchNextChapterForTTS()
+        }
+    }
+}
+
+private extension ReaderView {
+    func startReaderCacheDownload(option: BatchDownloadOption) {
+        guard !viewModel.state.book.isLocal else { return }
+        cacheDownloadTask?.cancel()
+        cacheDownloadProgress = BatchDownloadProgress(
+            bookUrl: viewModel.state.book.bookUrl,
+            bookName: viewModel.state.book.name,
+            totalChaptersToDownload: 0,
+            completedChaptersCount: 0,
+            status: .downloading)
+
+        let book = viewModel.state.book
+        let chapters = viewModel.state.chapters
+        cacheDownloadTask = Task {
+            do {
+                try await environment.batchDownloadChaptersUseCase.execute(
+                    book: book,
+                    chapters: chapters,
+                    option: option,
+                    concurrency: 3) { progress in
+                        Task { @MainActor in
+                            cacheDownloadProgress = progress
+                        }
+                    }
+                await MainActor.run {
+                    cacheInfo = environment.manageBookCacheUseCase.getBookCacheInfo(
+                        bookUrl: book.bookUrl,
+                        totalChapters: chapters.count)
+                    toastMessage = "离线缓存完成！"
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    cacheDownloadProgress?.status = .paused
+                }
+            } catch {
+                await MainActor.run {
+                    cacheDownloadProgress?.status = .failed(error.localizedDescription)
+                    toastMessage = "缓存失败: \(error.localizedDescription)"
+                }
+            }
         }
     }
 }

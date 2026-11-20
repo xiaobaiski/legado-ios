@@ -9,7 +9,10 @@ extension BookshelfViewModel {
             return
         }
 
-        updateState { $0.isLoading = true }
+        updateState {
+            $0.isLoading = true
+            $0.isImporting = true
+        }
         emitEffect(.hapticFeedback)
 
         Task {
@@ -27,7 +30,10 @@ extension BookshelfViewModel {
                 return (imported, lastError)
             }.value
 
-            updateState { $0.isLoading = false }
+            updateState {
+                $0.isLoading = false
+                $0.isImporting = false
+            }
 
             let importedBooks = result.0
             let lastError = result.1

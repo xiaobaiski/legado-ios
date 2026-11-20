@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 书源管理视图：遵循 MVI 纯渲染与 iOS 原生液态玻璃质感
 public struct SourceManageView: View {
+    @EnvironmentObject private var environment: AppEnvironment
     @StateObject var viewModel: SourceManageViewModel
     @State private var toastMessage: String?
     @State private var hapticTrigger = false
@@ -220,19 +221,27 @@ public struct SourceManageView: View {
         case let .edit(source):
             BookSourceEditView(
                 source: source,
+                saveUseCase: environment.saveBookSourceUseCase,
                 onDismiss: { viewModel.send(.closeEdit) },
                 onOpenDebug: { sourceToDebug in
                     viewModel.send(.closeEdit)
-                    viewModel.send(.openDebug(sourceToDebug))
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 250_000_000)
+                        viewModel.send(.openDebug(sourceToDebug))
+                    }
                 })
 
         case .newSource:
             BookSourceEditView(
                 source: nil,
+                saveUseCase: environment.saveBookSourceUseCase,
                 onDismiss: { viewModel.send(.closeNewSource) },
                 onOpenDebug: { sourceToDebug in
                     viewModel.send(.closeNewSource)
-                    viewModel.send(.openDebug(sourceToDebug))
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 250_000_000)
+                        viewModel.send(.openDebug(sourceToDebug))
+                    }
                 })
 
         case let .debug(source):

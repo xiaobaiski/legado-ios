@@ -43,17 +43,21 @@ public struct BookCacheSheet: View {
                     // 状态与空间卡片
                     cacheStatusCard
 
-                    // 下载进度卡片 (下载中展示)
-                    if let progress = downloadProgress, isDownloading {
-                        downloadProgressCard(progress: progress)
-                    }
+                    if book.isLocal {
+                        localBookNoticeCard
+                    } else {
+                        // 下载进度卡片 (下载中展示)
+                        if let progress = downloadProgress, isDownloading {
+                            downloadProgressCard(progress: progress)
+                        }
 
-                    // 快捷下载选项卡片
-                    downloadOptionsSection
+                        // 快捷下载选项卡片
+                        downloadOptionsSection
 
-                    // 空间清理选项
-                    if let info = cacheInfo, info.cachedCount > 0 {
-                        clearCacheButton(info: info)
+                        // 空间清理选项
+                        if let info = cacheInfo, info.cachedCount > 0 {
+                            clearCacheButton(info: info)
+                        }
                     }
                 }
                 .padding(16)
@@ -218,6 +222,24 @@ public struct BookCacheSheet: View {
         }
         .buttonStyle(.plain)
         .padding(.top, 8)
+    }
+
+    private var localBookNoticeCard: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.title3)
+                .foregroundStyle(.green)
+            Text("本地导入书籍已完整存储在设备上，无需联网缓存；如需释放空间，请在书架将其移出。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.18), lineWidth: 0.5))
     }
 
     private func iconForOption(_ option: BatchDownloadOption) -> String {

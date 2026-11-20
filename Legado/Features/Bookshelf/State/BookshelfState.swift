@@ -17,6 +17,7 @@ public struct BookshelfState: ViewState, Equatable {
     public var isBatchMode: Bool
     public var selectedBookUrls: Set<String>
     public var isRefreshingUpdates: Bool
+    public var isImporting: Bool
     public var updatedBookUrls: Set<String>
     public var searchText: String
 
@@ -30,6 +31,7 @@ public struct BookshelfState: ViewState, Equatable {
         isBatchMode: Bool = false,
         selectedBookUrls: Set<String> = [],
         isRefreshingUpdates: Bool = false,
+        isImporting: Bool = false,
         updatedBookUrls: Set<String> = [],
         searchText: String = "") {
         self.isLoading = isLoading
@@ -41,6 +43,7 @@ public struct BookshelfState: ViewState, Equatable {
         self.isBatchMode = isBatchMode
         self.selectedBookUrls = selectedBookUrls
         self.isRefreshingUpdates = isRefreshingUpdates
+        self.isImporting = isImporting
         self.updatedBookUrls = updatedBookUrls
         self.searchText = searchText
     }

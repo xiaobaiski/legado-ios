@@ -19,9 +19,7 @@ public final class ExploreViewModel: BaseMVIViewModel<ExploreState, ExploreInten
     override public func send(_ intent: ExploreIntent) {
         switch intent {
         case .onAppear:
-            if state.categories.isEmpty {
-                loadCategories()
-            }
+            loadCategories()
 
         case let .selectCategory(category):
             updateState { state in
@@ -55,16 +53,23 @@ public final class ExploreViewModel: BaseMVIViewModel<ExploreState, ExploreInten
         Task {
             do {
                 let categories = try await getExploreCategoriesUseCase.execute()
+                let previousSelection = state.selectedCategory
+                let nextSelection = previousSelection.flatMap { prev in
+                    categories.first(where: { $0.id == prev.id })
+                } ?? categories.first
+
                 self.updateState { state in
                     state.isLoadingCategories = false
                     state.categories = categories
-                    if state.selectedCategory == nil {
-                        state.selectedCategory = categories.first
+                    state.selectedCategory = nextSelection
+                    if nextSelection == nil {
+                        state.books = []
                     }
                 }
 
-                if let first = categories.first {
-                    self.loadBooks(for: first, page: 1, isAppending: false)
+                if let target = nextSelection,
+                   target.id != previousSelection?.id || state.books.isEmpty {
+                    self.loadBooks(for: target, page: 1, isAppending: false)
                 }
             } catch {
                 self.updateState { state in
@@ -94,52 +99,10 @@ public final class ExploreViewModel: BaseMVIViewModel<ExploreState, ExploreInten
             } catch {
                 self.updateState { state in
                     state.isLoadingBooks = false
-                    if state.books.isEmpty {
-                        state.books = ExploreViewModel.mockFallbackBooks(for: category)
-                    }
+                    state.errorMessage = error.localizedDescription
                 }
+                self.emitEffect(.showToast("加载发现书籍失败: \(error.localizedDescription)"))
             }
         }
-    }
-
-    private static func mockFallbackBooks(for category: ExploreCategory) -> [Book] {
-        [
-            Book(
-                bookUrl: "https://biquge.example.com/book/circle_of_inevitability",
-                tocUrl: "https://biquge.example.com/book/circle_of_inevitability/toc",
-                origin: category.sourceUrl,
-                originName: category.sourceName,
-                name: "宿命之环",
-                author: "爱潜水的乌贼",
-                kind: "奇幻 连载中",
-                coverUrl: "https://bookcover.yuewen.com/qdbimg/349573/1036370336/300.webp",
-                intro: "诡秘之主第二部。四旬节的前夜，微风轻拂的夜晚，卢米安站在崖顶，眺望着科尔杜村...",
-                latestChapterTitle: "第150章 最后的落幕",
-                wordCount: "285万字"),
-            Book(
-                bookUrl: "https://biquge.example.com/book/wanxiang",
-                tocUrl: "https://biquge.example.com/book/wanxiang/toc",
-                origin: category.sourceUrl,
-                originName: category.sourceName,
-                name: "万相之王",
-                author: "天蚕土豆",
-                kind: "玄幻 连载中",
-                coverUrl: "https://bookcover.yuewen.com/qdbimg/349573/1027179044/300.webp",
-                intro: "天地间有万相，而我李洛，终将成为这万相之王！",
-                latestChapterTitle: "第一千二百章 封侯巅峰",
-                wordCount: "350万字"),
-            Book(
-                bookUrl: "https://biquge.example.com/book/shenkong",
-                tocUrl: "https://biquge.example.com/book/shenkong/toc",
-                origin: category.sourceUrl,
-                originName: category.sourceName,
-                name: "深空彼岸",
-                author: "辰东",
-                kind: "都市异能 完本",
-                coverUrl: "https://bookcover.yuewen.com/qdbimg/349573/1028786522/300.webp",
-                intro: "浩瀚的星空深处，古老的神话是否真实存在？王煊踏上了探索彼岸的旅途...",
-                latestChapterTitle: "大结局 归于真实",
-                wordCount: "420万字"),
-        ]
     }
 }

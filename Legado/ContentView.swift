@@ -89,6 +89,11 @@ struct ContentView: View {
                 selectedTab = .settings
             }
         }
+        .onOpenURL { url in
+            guard url.isFileURL else { return }
+            selectedTab = .bookshelf
+            environment.enqueueExternalImport(url)
+        }
     }
 
     @State private var demoReaderPresented = false

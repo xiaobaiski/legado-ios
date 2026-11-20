@@ -37,6 +37,9 @@ public struct SettingsView: View {
             }
             .navigationTitle("设置")
             .navigationBarTitleDisplayMode(.large)
+            .onAppear {
+                viewModel.send(.refreshCacheSize)
+            }
             .sensoryFeedback(.impact(weight: .light), trigger: hapticTrigger)
             .onReceive(viewModel.effectPublisher) { effect in
                 switch effect {

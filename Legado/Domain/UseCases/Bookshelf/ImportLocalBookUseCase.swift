@@ -102,26 +102,16 @@ public final class ImportLocalBookUseCase: Sendable {
             if isAccessing {
                 fileUrl.stopAccessingSecurityScopedResource()
             }
-        }
-
-        var coordinatorError: NSError?
-        var readResult: Result<Data, Error>?
-        let coordinator = NSFileCoordinator()
-        coordinator.coordinate(readingItemAt: fileUrl, options: [], error: &coordinatorError) { coordinatedUrl in
-            do {
-                readResult = .success(try Data(contentsOf: coordinatedUrl))
-            } catch {
-                readResult = .failure(error)
+            if fileUrl.path.contains("LegadoImportStaging") {
+                try? FileManager.default.removeItem(at: fileUrl.deletingLastPathComponent())
             }
         }
 
-        if let coordinatorError {
-            throw coordinatorError
-        }
-        guard let readResult else {
+        do {
+            return try Data(contentsOf: fileUrl)
+        } catch {
             throw LocalBookImportError.unreadableFile
         }
-        return try readResult.get()
     }
 
     private func formatWordCount(_ count: Int) -> String {

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftData
 
@@ -24,6 +25,7 @@ public final class AppEnvironment: ObservableObject {
     public let toggleBookSourceEnabledUseCase: ToggleBookSourceEnabledUseCase
     public let deleteBookSourceUseCase: DeleteBookSourceUseCase
     public let importBookSourcesUseCase: ImportBookSourcesUseCase
+    public let saveBookSourceUseCase: SaveBookSourceUseCase
     public let debugBookSourceUseCase: DebugBookSourceUseCase
     public let purifyContentUseCase: PurifyContentUseCase
     public let backupToWebDAVUseCase: BackupToWebDAVUseCase
@@ -43,6 +45,8 @@ public final class AppEnvironment: ObservableObject {
     public let manageBookCacheUseCase: ManageBookCacheUseCase
     public let checkBookSourceHealthUseCase: CheckBookSourceHealthUseCase
     public let importLocalBookUseCase: ImportLocalBookUseCase
+    public let externalFileImportSubject = PassthroughSubject<Void, Never>()
+    private var pendingExternalImportURLs: [URL] = []
 
     public init(inMemory: Bool = false) {
         let provider = ModelContainerProvider(inMemory: inMemory)
@@ -63,7 +67,9 @@ public final class AppEnvironment: ObservableObject {
         self.searchBooksUseCase = SearchBooksUseCase(sourceRepository: sourceRepo)
         self.saveBookToShelfUseCase = SaveBookToShelfUseCase(bookRepository: bookRepo)
         self.getBookshelfUseCase = GetBookshelfUseCase(bookRepository: bookRepo)
-        self.removeBookFromShelfUseCase = RemoveBookFromShelfUseCase(bookRepository: bookRepo)
+        self.removeBookFromShelfUseCase = RemoveBookFromShelfUseCase(
+            bookRepository: bookRepo,
+            bookCacheRepository: cacheRepo)
         self.getBookDetailUseCase = GetBookDetailUseCase(sourceRepository: sourceRepo, bookRepository: bookRepo)
         self.getBookTocUseCase = GetBookTocUseCase(sourceRepository: sourceRepo, bookRepository: bookRepo)
         self.checkBookUpdatesUseCase = CheckBookUpdatesUseCase(bookRepository: bookRepo, sourceRepository: sourceRepo)
@@ -80,6 +86,7 @@ public final class AppEnvironment: ObservableObject {
         self.toggleBookSourceEnabledUseCase = ToggleBookSourceEnabledUseCase(sourceRepository: sourceRepo)
         self.deleteBookSourceUseCase = DeleteBookSourceUseCase(sourceRepository: sourceRepo)
         self.importBookSourcesUseCase = ImportBookSourcesUseCase(sourceRepository: sourceRepo)
+        self.saveBookSourceUseCase = SaveBookSourceUseCase(sourceRepository: sourceRepo)
         self.debugBookSourceUseCase = DebugBookSourceUseCase()
         self.purifyContentUseCase = PurifyContentUseCase()
         self.backupToWebDAVUseCase = BackupToWebDAVUseCase(
@@ -231,5 +238,18 @@ public final class AppEnvironment: ObservableObject {
             chapters: chapters,
             getChapterContentUseCase: getChapterContentUseCase,
             searchUseCase: searchBookContentUseCase)
+    }
+
+    /// 暂存外部“用 Legado 打开”的文件链接并通知书架导入
+    public func enqueueExternalImport(_ url: URL) {
+        pendingExternalImportURLs.append(url)
+        externalFileImportSubject.send(())
+    }
+
+    /// 取出待导入的外部文件链接
+    public func consumePendingImportURLs() -> [URL] {
+        let urls = pendingExternalImportURLs
+        pendingExternalImportURLs.removeAll()
+        return urls
     }
 }

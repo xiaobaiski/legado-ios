@@ -103,6 +103,7 @@ public final class BookSourceEditViewModel:
 
         case .openDebug:
             updateState { $0.isDebuggingPresented = true }
+            emitEffect(.openDebug(state.source))
 
         case .closeDebug:
             updateState { $0.isDebuggingPresented = false }

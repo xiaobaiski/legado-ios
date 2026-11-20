@@ -13,6 +13,11 @@ extension ReaderView {
                 "章节内容加载失败",
                 systemImage: "book.pages",
                 description: Text("轻触屏幕中央呼出控制栏"))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    viewModel.send(.toggleHUD)
+                }
         } else {
             switch viewModel.state.config.pageTurnMode {
             case .cover:

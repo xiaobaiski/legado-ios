@@ -10,7 +10,10 @@ public struct ParseBookSourceUseCase: Sendable {
 
     /// 从 JSON 文本中解析书源（支持单对象或数组）
     public func parse(json: String) throws -> [BookSource] {
-        let trimmed = json.trimmingCharacters(in: .whitespacesAndNewlines)
+        var trimmed = json.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("\u{FEFF}") {
+            trimmed = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         guard let data = trimmed.data(using: .utf8) else {
             throw BookSourceParseError.invalidData
         }

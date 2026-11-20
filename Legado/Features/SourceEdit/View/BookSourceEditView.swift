@@ -14,9 +14,10 @@ public struct BookSourceEditView: View {
 
     public init(
         source: BookSource? = nil,
+        saveUseCase: SaveBookSourceUseCase? = nil,
         onDismiss: (() -> Void)? = nil,
         onOpenDebug: ((BookSource) -> Void)? = nil) {
-        _viewModel = StateObject(wrappedValue: BookSourceEditViewModel(source: source))
+        _viewModel = StateObject(wrappedValue: BookSourceEditViewModel(source: source, saveUseCase: saveUseCase))
         self.onDismissCallback = onDismiss
         self.onOpenDebugCallback = onOpenDebug
     }

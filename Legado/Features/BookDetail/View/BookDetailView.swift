@@ -57,10 +57,12 @@ public struct BookDetailView: View {
                         Image(systemName: "arrow.down.circle")
                     }
 
-                    Button {
-                        isChangeSourcePresented = true
-                    } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
+                    if !viewModel.state.book.isLocal {
+                        Button {
+                            isChangeSourcePresented = true
+                        } label: {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                        }
                     }
 
                     Button {
@@ -225,11 +227,13 @@ public struct BookDetailView: View {
                     }
                     .foregroundStyle(.tertiary)
 
-                    Button("换源") {
-                        isChangeSourcePresented = true
+                    if !viewModel.state.book.isLocal {
+                        Button("换源") {
+                            isChangeSourcePresented = true
+                        }
+                        .font(.caption2.weight(.semibold))
+                        .buttonStyle(.glassCapsule)
                     }
-                    .font(.caption2.weight(.semibold))
-                    .buttonStyle(.glassCapsule)
                 }
             }
         }
