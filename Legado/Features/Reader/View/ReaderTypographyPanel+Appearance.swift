@@ -60,7 +60,7 @@ extension ReaderTypographyPanel {
                 ForEach(ReaderTheme.allCases) { theme in
                     let isSelected = config.theme == theme
                     Button {
-                        update { $0.theme = theme }
+                        update { $0.applyTheme(theme) }
                     } label: {
                         VStack(spacing: 4) {
                             ZStack {
@@ -93,17 +93,17 @@ extension ReaderTypographyPanel {
     private var quickToggleButtons: some View {
         HStack(spacing: 8) {
             quickPillToggle(
+                title: config.theme.isDark ? "日间模式" : "夜间模式",
+                icon: config.theme.isDark ? "sun.max.fill" : "moon.fill",
+                isOn: config.theme.isDark) {
+                    update { $0.toggleNightMode() }
+                }
+
+            quickPillToggle(
                 title: "震动反馈",
                 icon: config.isHapticEnabled ? "iphone.radiowaves.left.and.right" : "iphone.slash",
                 isOn: config.isHapticEnabled) {
                     update { $0.isHapticEnabled.toggle() }
-                }
-
-            quickPillToggle(
-                title: "屏幕常亮",
-                icon: config.keepScreenOn ? "sun.max" : "moon.zzz",
-                isOn: config.keepScreenOn) {
-                    update { $0.keepScreenOn.toggle() }
                 }
 
             quickPillToggle(

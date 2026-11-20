@@ -25,6 +25,7 @@ public struct ReaderHUDView: View {
     let onUpdateConfig: (ReaderConfig) -> Void
     let onSelectCustomFont: (ImportedFont) -> Void
     let onOpenFontImporter: () -> Void
+    let onToggleNightMode: () -> Void
     let onResetConfig: () -> Void
     let onOpenMoreSettings: () -> Void
     let onToggleAutoPage: () -> Void
@@ -56,6 +57,7 @@ public struct ReaderHUDView: View {
         onUpdateConfig: @escaping (ReaderConfig) -> Void = { _ in },
         onSelectCustomFont: @escaping (ImportedFont) -> Void = { _ in },
         onOpenFontImporter: @escaping () -> Void = {},
+        onToggleNightMode: @escaping () -> Void = {},
         onResetConfig: @escaping () -> Void = {},
         onOpenMoreSettings: @escaping () -> Void = {},
         onToggleAutoPage: @escaping () -> Void = {},
@@ -85,6 +87,7 @@ public struct ReaderHUDView: View {
         self.onUpdateConfig = onUpdateConfig
         self.onSelectCustomFont = onSelectCustomFont
         self.onOpenFontImporter = onOpenFontImporter
+        self.onToggleNightMode = onToggleNightMode
         self.onResetConfig = onResetConfig
         self.onOpenMoreSettings = onOpenMoreSettings
         self.onToggleAutoPage = onToggleAutoPage
@@ -124,6 +127,7 @@ public struct ReaderHUDView: View {
             .padding(.bottom, horizontalSizeClass == .regular ? 28 : 24)
         }
         .ignoresSafeArea(edges: .top)
+        .preferredColorScheme(config.theme.isDark ? .dark : .light)
     }
 
     // MARK: - 顶部导航条
@@ -144,6 +148,11 @@ public struct ReaderHUDView: View {
                 }
 
                 Spacer()
+
+                circleIconButton(
+                    systemName: config.theme.isDark ? "sun.max.fill" : "moon.fill",
+                    foreground: config.theme.isDark ? .yellow : .primary,
+                    action: onToggleNightMode)
 
                 circleIconButton(systemName: "magnifyingglass", action: onOpenSearch)
 

@@ -5,10 +5,32 @@ import SwiftUI
 extension SettingsView {
     var readingPreferencesSection: some View {
         Section {
+            Picker("全局外观模式", selection: appearanceBinding) {
+                ForEach(AppAppearanceMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+
+            Toggle("阅读器夜间模式", isOn: Binding(
+                get: { viewModel.state.readerConfig.theme.isDark },
+                set: { wantDark in
+                    if wantDark != viewModel.state.readerConfig.theme.isDark {
+                        var updated = viewModel.state.readerConfig
+                        updated.toggleNightMode()
+                        viewModel.send(.updateReaderConfig(updated))
+                    }
+                }))
+
             Toggle("触感震动反馈", isOn: readerBinding(\.isHapticEnabled))
             Toggle("阅读时屏幕常亮", isOn: readerBinding(\.keepScreenOn))
             Toggle("点击屏幕翻页", isOn: readerBinding(\.tapToTurnPage))
-            Toggle("左手翻页模式", isOn: readerBinding(\.leftHandMode))
+
+            NavigationLink {
+                TapZoneConfigView(tapZoneConfig: readerBinding(\.tapZoneConfig))
+            } label: {
+                Label("点按区域自定义 (九宫格)", systemImage: "square.grid.3x3")
+            }
+
             Toggle("音量键翻页", isOn: readerBinding(\.volumeKeyPageTurn))
             Toggle("iPad 大屏双页分栏", isOn: readerBinding(\.enableIPadDualPage))
 
@@ -27,10 +49,16 @@ extension SettingsView {
                 Label("恢复默认阅读排版", systemImage: "arrow.counterclockwise")
             }
         } header: {
-            Label("阅读与交互偏好", systemImage: "book.pages")
+            Label("阅读与外观偏好", systemImage: "book.pages")
         } footer: {
             Text("字号、字体、行距、段距、字距、边距与主题配色可在阅读器「排版」面板中实时调节并自动保存。")
         }
+    }
+
+    private var appearanceBinding: Binding<AppAppearanceMode> {
+        Binding(
+            get: { AppAppearanceMode(rawValue: appearanceModeRaw) ?? .system },
+            set: { appearanceModeRaw = $0.rawValue })
     }
 
     private func readerBinding<T>(_ keyPath: WritableKeyPath<ReaderConfig, T>) -> Binding<T> {
@@ -46,9 +74,22 @@ extension SettingsView {
     var localFontsSection: some View {
         Section {
             Button {
+                isShowingFontChooser = true
+            } label: {
+                HStack {
+                    Label("选择阅读字体（本机 / 本地字体）", systemImage: "textformat")
+                    Spacer()
+                    Text(viewModel.state.readerConfig.customFontDisplayName ?? "系统默认")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Button {
                 isShowingFontPicker = true
             } label: {
-                Label("导入本地字体 (TTF / OTF / TTC)", systemImage: "textformat.alt")
+                Label("导入本地字体文件 (TTF / OTF / TTC)", systemImage: "doc.badge.plus")
             }
 
             if viewModel.state.importedFonts.isEmpty {

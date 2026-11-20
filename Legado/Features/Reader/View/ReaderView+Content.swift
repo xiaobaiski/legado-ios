@@ -39,7 +39,6 @@ extension ReaderView {
         let config = viewModel.state.config
         let isDual = config.isDualPageActive(for: viewModel.state.screenBounds)
         let maxSingleWidth: CGFloat? = width >= 760 ? 680 : nil
-        let leftIsNext = config.leftHandMode
 
         return PageCurlReaderView(
             pages: viewModel.state.pages,
@@ -59,22 +58,8 @@ extension ReaderView {
             onRequestPrevChapter: {
                 viewModel.send(.prevPage)
             },
-            onTapLeft: {
-                if viewModel.state.isHUDVisible {
-                    viewModel.send(.hideHUD)
-                } else if config.tapToTurnPage {
-                    viewModel.send(leftIsNext ? .nextPage : .prevPage)
-                }
-            },
-            onTapCenter: {
-                viewModel.send(.toggleHUD)
-            },
-            onTapRight: {
-                if viewModel.state.isHUDVisible {
-                    viewModel.send(.hideHUD)
-                } else if config.tapToTurnPage {
-                    viewModel.send(leftIsNext ? .prevPage : .nextPage)
-                }
+            onTapLocation: { xRatio, yRatio in
+                handleTapAt(xRatio: xRatio, yRatio: yRatio)
             })
             .id("curl_\(isDual ? 2 : 1)")
             .ignoresSafeArea()
@@ -270,41 +255,64 @@ extension ReaderView {
     }
 
     func tapGestureOverlay(width: CGFloat) -> some View {
+        GeometryReader { geo in
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(
+                    SpatialTapGesture()
+                        .onEnded { value in
+                            let safeWidth = max(geo.size.width, width, 1)
+                            let safeHeight = max(geo.size.height, 1)
+                            let xRatio = min(max(value.location.x / safeWidth, 0), 1)
+                            let yRatio = min(max(value.location.y / safeHeight, 0), 1)
+                            handleTapAt(xRatio: xRatio, yRatio: yRatio)
+                        })
+        }
+    }
+
+    func handleTapAt(xRatio: CGFloat, yRatio: CGFloat) {
+        if viewModel.state.isHUDVisible {
+            viewModel.send(.hideHUD)
+            return
+        }
+
         let config = viewModel.state.config
-        let leftIsNext = config.leftHandMode
+        var action = config.tapZoneConfig.action(atXRatio: xRatio, yRatio: yRatio)
 
-        return HStack(spacing: 0) {
-            // 左侧 30% 热区
-            Color.clear
-                .contentShape(Rectangle())
-                .frame(width: width * 0.3)
-                .onTapGesture {
-                    if viewModel.state.isHUDVisible {
-                        viewModel.send(.hideHUD)
-                    } else if config.tapToTurnPage {
-                        viewModel.send(leftIsNext ? .nextPage : .prevPage)
-                    }
-                }
+        // 保底安全机制：若用户把九宫格全部设为非菜单动作，点击正中仍可呼出菜单避免卡死
+        if !config.tapZoneConfig.hasMenuZone,
+           xRatio >= 1.0 / 3.0, xRatio <= 2.0 / 3.0,
+           yRatio >= 1.0 / 3.0, yRatio <= 2.0 / 3.0 {
+            action = .toggleHUD
+        }
 
-            // 中间 40% 热区 (呼出/隐藏 HUD)
-            Color.clear
-                .contentShape(Rectangle())
-                .frame(width: width * 0.4)
-                .onTapGesture {
-                    viewModel.send(.toggleHUD)
-                }
+        if !config.tapToTurnPage && action != .toggleHUD {
+            return
+        }
 
-            // 右侧 30% 热区
-            Color.clear
-                .contentShape(Rectangle())
-                .frame(width: width * 0.3)
-                .onTapGesture {
-                    if viewModel.state.isHUDVisible {
-                        viewModel.send(.hideHUD)
-                    } else if config.tapToTurnPage {
-                        viewModel.send(leftIsNext ? .prevPage : .nextPage)
-                    }
-                }
+        switch action {
+        case .nextPage:
+            viewModel.send(.nextPage)
+
+        case .prevPage:
+            viewModel.send(.prevPage)
+
+        case .toggleHUD:
+            viewModel.send(.toggleHUD)
+
+        case .nextChapter:
+            viewModel.send(.loadChapter(viewModel.state.currentChapterIndex + 1))
+
+        case .prevChapter:
+            viewModel.send(.loadChapter(viewModel.state.currentChapterIndex - 1))
+
+        case .toggleNightMode:
+            var updated = config
+            updated.toggleNightMode()
+            viewModel.send(.updateConfig(updated))
+
+        case .none:
+            break
         }
     }
 }

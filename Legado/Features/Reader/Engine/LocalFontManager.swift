@@ -1,6 +1,20 @@
 import CoreText
 import Foundation
+import UIKit
 import UniformTypeIdentifiers
+
+/// 本机已安装系统字体描述模型（运行时从 UIFont.familyNames 真实检测，绝不包含缺失字体）
+public struct SystemFontOption: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let displayName: String
+    public let postScriptName: String
+
+    public init(displayName: String, postScriptName: String) {
+        self.id = postScriptName
+        self.displayName = displayName
+        self.postScriptName = postScriptName
+    }
+}
 
 /// 已导入的本地字体描述模型
 public struct ImportedFont: Identifiable, Equatable, Codable, Sendable {
@@ -108,6 +122,79 @@ public final class LocalFontManager: @unchecked Sendable {
     /// 获取全部已导入字体列表（自动发现通过文件 App 拖入的新字体）
     public func listImportedFonts() -> [ImportedFont] {
         registerAllStoredFonts()
+    }
+
+    /// 实时枚举当前设备真实存在的内置字体（优先排布常用中文/衬线字体，确保所见即所得）
+    public func listAvailableSystemFonts() -> [SystemFontOption] {
+        let preferredFamilies = [
+            "PingFang SC",
+            "Hiragino Sans",
+            "Heiti SC",
+            "Songti SC",
+            "Kaiti SC",
+            "STSong",
+            "STKaiti",
+            "Georgia",
+            "Baskerville",
+            "Palatino",
+            "Charter",
+            "Avenir Next",
+            "Helvetica Neue",
+        ]
+
+        let installedSet = Set(UIFont.familyNames)
+        var orderedFamilies: [String] = []
+        for name in preferredFamilies where installedSet.contains(name) {
+            orderedFamilies.append(name)
+        }
+        let remaining = UIFont.familyNames
+            .filter { !orderedFamilies.contains($0) }
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        orderedFamilies.append(contentsOf: remaining)
+
+        var options: [SystemFontOption] = []
+        var seenPostScript = Set<String>()
+        for family in orderedFamilies {
+            let fontNames = UIFont.fontNames(forFamilyName: family)
+            guard let regularName = pickRegularFontName(from: fontNames),
+                  !seenPostScript.contains(regularName),
+                  UIFont(name: regularName, size: 16) != nil else {
+                continue
+            }
+            seenPostScript.insert(regularName)
+            options.append(SystemFontOption(
+                displayName: localizedFamilyLabel(family),
+                postScriptName: regularName))
+        }
+        return options
+    }
+
+    private func pickRegularFontName(from names: [String]) -> String? {
+        guard !names.isEmpty else { return nil }
+        if let exact = names.first(where: {
+            $0.hasSuffix("-Regular") || $0.hasSuffix("Regular") || $0.hasSuffix("-W3")
+        }) {
+            return exact
+        }
+        if let nonBoldItalic = names.first(where: {
+            let lower = $0.lowercased()
+            return !lower.contains("bold") && !lower.contains("italic") && !lower.contains("oblique")
+                && !lower.contains("light") && !lower.contains("thin") && !lower.contains("ultralight")
+        }) {
+            return nonBoldItalic
+        }
+        return names.first
+    }
+
+    private func localizedFamilyLabel(_ family: String) -> String {
+        switch family {
+        case "PingFang SC": return "苹方简体 (PingFang SC)"
+        case "Hiragino Sans": return "冬青黑体 (Hiragino Sans)"
+        case "Heiti SC": return "华文黑体 (Heiti SC)"
+        case "Songti SC": return "华文宋体 (Songti SC)"
+        case "Kaiti SC": return "华文楷体 (Kaiti SC)"
+        default: return family
+        }
     }
 
     /// 导入并立即注册本地字体文件（TTF / OTF / TTC）

@@ -51,7 +51,6 @@ public struct ReaderSettingsSheet: View {
                 displaySection
                 resetSection
             }
-            .scrollContentBackground(.hidden)
             .navigationTitle("更多阅读设置")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -63,14 +62,24 @@ public struct ReaderSettingsSheet: View {
                 }
             }
         }
+        .preferredColorScheme(config.theme.isDark ? .dark : .light)
         .presentationDetents([.medium, .large])
-        .presentationBackground(.ultraThinMaterial)
     }
 }
 
 private extension ReaderSettingsSheet {
     var interactionSection: some View {
         Section {
+            Toggle(
+                "夜间模式",
+                isOn: Binding(
+                    get: { config.theme.isDark },
+                    set: { wantDark in
+                        if wantDark != config.theme.isDark {
+                            update { $0.toggleNightMode() }
+                        }
+                    }))
+
             Toggle(
                 "触感震动反馈",
                 isOn: binding(\.isHapticEnabled))
@@ -83,9 +92,17 @@ private extension ReaderSettingsSheet {
                 "点击屏幕翻页",
                 isOn: binding(\.tapToTurnPage))
 
-            Toggle(
-                "左手翻页模式",
-                isOn: binding(\.leftHandMode))
+            NavigationLink {
+                TapZoneConfigView(tapZoneConfig: binding(\.tapZoneConfig))
+            } label: {
+                HStack {
+                    Label("点按区域自定义", systemImage: "square.grid.3x3")
+                    Spacer()
+                    Text(tapZoneSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             Toggle(
                 "音量键翻页",
@@ -95,10 +112,17 @@ private extension ReaderSettingsSheet {
                 "iPad 大屏双页分栏",
                 isOn: binding(\.enableIPadDualPage))
         } header: {
-            Label("交互与触感", systemImage: "hand.tap")
+            Label("交互与夜间模式", systemImage: "hand.tap")
         } footer: {
-            Text("开启「音量键翻页」后按音量+上一页、音量-下一页（朗读听书时自动恢复音量调节）。")
+            Text("支持 3×3 九宫格自定义点按区域；开启「音量键翻页」后按音量+上一页、音量-下一页（朗读时自动恢复音量调节）。")
         }
+    }
+
+    var tapZoneSummary: String {
+        if let preset = TapZonePreset.allCases.first(where: { $0.config == config.tapZoneConfig }) {
+            return preset.rawValue
+        }
+        return "自定义"
     }
 
     var purifyAndChapterSection: some View {
@@ -130,7 +154,14 @@ private extension ReaderSettingsSheet {
             Button {
                 onOpenFontImporter()
             } label: {
-                Label("导入本地字体 (TTF / OTF / TTC)", systemImage: "textformat.alt")
+                HStack {
+                    Label("选择或导入字体", systemImage: "textformat.alt")
+                    Spacer()
+                    Text(config.customFontDisplayName ?? "系统默认")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
 
             ForEach(importedFonts) { font in

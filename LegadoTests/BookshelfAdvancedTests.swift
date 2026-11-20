@@ -125,7 +125,9 @@ struct BookshelfAdvancedTests {
 
         // 批量移动分组
         vm.send(.batchMoveSelectedToGroup(groupName: "爱潜水的乌贼专区"))
-        try await Task.sleep(nanoseconds: 100_000_000)
+        for _ in 0 ..< 20 where vm.state.isBatchMode {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
 
         let updatedBook1 = try await bookRepo.getBook(by: book1.bookUrl)
         #expect(updatedBook1?.groupName == "爱潜水的乌贼专区")

@@ -137,7 +137,9 @@ private extension ReaderTypographyPanel {
     }
 
     var fontFamilyRow: some View {
-        HStack(spacing: 8) {
+        let importedPostScriptNames = Set(importedFonts.map(\.postScriptName))
+
+        return HStack(spacing: 8) {
             Text("字体")
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
@@ -145,14 +147,19 @@ private extension ReaderTypographyPanel {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(ReaderFontFamily.allCases) { family in
-                        let isSelected = config.customFontName == nil && config.fontFamily == family
-                        fontChip(title: family.rawValue, isSelected: isSelected) {
-                            update {
-                                $0.customFontName = nil
-                                $0.customFontDisplayName = nil
-                                $0.fontFamily = family
-                            }
+                    fontChip(title: "系统默认", isSelected: config.customFontName == nil) {
+                        update {
+                            $0.customFontName = nil
+                            $0.customFontDisplayName = nil
+                            $0.fontFamily = .system
+                        }
+                    }
+
+                    if let customPS = config.customFontName,
+                       !customPS.isEmpty,
+                       !importedPostScriptNames.contains(customPS) {
+                        fontChip(title: config.customFontDisplayName ?? customPS, isSelected: true) {
+                            onOpenFontImporter()
                         }
                     }
 
@@ -164,7 +171,7 @@ private extension ReaderTypographyPanel {
                     }
 
                     Button(action: onOpenFontImporter) {
-                        Label("导入字体", systemImage: "plus")
+                        Label("选择字体", systemImage: "textformat")
                             .font(.caption.weight(.medium))
                             .foregroundStyle(Color.accentColor)
                             .padding(.horizontal, 10)

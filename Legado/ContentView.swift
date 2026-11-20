@@ -26,9 +26,14 @@ public enum MainTab: String, CaseIterable, Identifiable {
 
 /// App 根视图：采用 iOS 18 原生 TabView 与 Tab 容器架构，专注纯粹本地阅读体验
 struct ContentView: View {
+    @AppStorage(AppAppearanceMode.storageKey) private var appearanceModeRaw = AppAppearanceMode.system.rawValue
     @EnvironmentObject private var environment: AppEnvironment
     @State private var selectedTab: MainTab = .bookshelf
     @State private var demoReaderPresented = false
+
+    private var resolvedColorScheme: ColorScheme? {
+        (AppAppearanceMode(rawValue: appearanceModeRaw) ?? .system).colorScheme
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -41,6 +46,7 @@ struct ContentView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
+        .preferredColorScheme(resolvedColorScheme)
         .fullScreenCover(isPresented: $demoReaderPresented) {
             let sampleBook = Book(
                 bookUrl: "https://biquge.example.com/book/circle_of_inevitability",

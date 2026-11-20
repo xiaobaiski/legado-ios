@@ -3,6 +3,7 @@ import Foundation
 @testable import Legado
 import SwiftUI
 import Testing
+import UIKit
 
 @Suite("Reader Engine Suite")
 struct ReaderEngineTests {
@@ -157,9 +158,11 @@ struct ReaderEngineTests {
         config.letterSpacing = 1.5
         config.paragraphIndent = 0
         config.isBoldFont = true
-        config.fontFamily = .songti
+        config.customFontName = "PingFangSC-Regular"
+        config.customFontDisplayName = "苹方简体"
         config.isHapticEnabled = false
         config.leftHandMode = true
+        config.tapZoneConfig = .rightHanded
         config.chineseConversion = .toTraditional
 
         ReaderConfigStore.save(config, defaults: defaults)
@@ -181,6 +184,46 @@ struct ReaderEngineTests {
 
         let reset = ReaderConfigStore.reset(defaults: defaults)
         #expect(reset == .defaultConfig)
+    }
+
+    @Test("Test Night Mode Memory, 3x3 TapZone Customization and Real System Fonts")
+    func nightModeTapZonesAndRealFonts() throws {
+        // 1. 夜间模式切换自动记忆日间与夜间主题
+        var config = ReaderConfig.defaultConfig
+        config.applyTheme(.eyeCare)
+        #expect(config.theme == .eyeCare)
+        #expect(config.lastLightTheme == .eyeCare)
+
+        config.toggleNightMode()
+        #expect(config.theme.isDark)
+        config.applyTheme(.black)
+        #expect(config.lastDarkTheme == .black)
+
+        config.toggleNightMode()
+        #expect(config.theme == .eyeCare)
+        config.toggleNightMode()
+        #expect(config.theme == .black)
+
+        // 2. 九宫格自定义点按区域坐标解析与预设校验
+        var tapConfig = TapZoneConfig.rightHanded
+        #expect(tapConfig.action(atXRatio: 0.1, yRatio: 0.1) == .prevPage)
+        #expect(tapConfig.action(atXRatio: 0.5, yRatio: 0.5) == .toggleHUD)
+        #expect(tapConfig.action(atXRatio: 0.5, yRatio: 0.9) == .nextPage)
+        #expect(tapConfig.action(atXRatio: 0.9, yRatio: 0.2) == .nextPage)
+
+        tapConfig.setAction(.toggleNightMode, row: 0, col: 2)
+        #expect(tapConfig.action(atXRatio: 0.9, yRatio: 0.1) == .toggleNightMode)
+
+        // 3. 兼容旧版宋体/楷体配置反序列化回退至系统默认，并校验设备真实字体枚举非空
+        let legacyFontJson = Data("\"宋体\"".utf8)
+        let decodedLegacy = try JSONDecoder().decode(ReaderFontFamily.self, from: legacyFontJson)
+        #expect(decodedLegacy == .system)
+
+        let deviceFonts = LocalFontManager.shared.listAvailableSystemFonts()
+        #expect(!deviceFonts.isEmpty)
+        for font in deviceFonts.prefix(10) {
+            #expect(UIFont(name: font.postScriptName, size: 16) != nil)
+        }
     }
 
     @Test("Test TextLayoutEngine Indent, Spacing and Chinese Conversion")

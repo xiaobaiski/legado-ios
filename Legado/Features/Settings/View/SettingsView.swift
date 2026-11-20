@@ -2,11 +2,13 @@ import SwiftUI
 
 /// 系统设置主视图 (遵循 MVI 架构与原生 iOS 18 液态玻璃质感)
 public struct SettingsView: View {
+    @AppStorage(AppAppearanceMode.storageKey) var appearanceModeRaw = AppAppearanceMode.system.rawValue
     @StateObject var viewModel: SettingsViewModel
     @State private var toastMessage: String?
     @State private var hapticTrigger = false
     @State var isShowingClearAlert = false
     @State var isShowingFontPicker = false
+    @State var isShowingFontChooser = false
 
     public init(viewModel: SettingsViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -90,6 +92,34 @@ public struct SettingsView: View {
                 }
             } message: {
                 Text("确定要删除所有书籍已下载的离线章节正文吗？此操作可释放 \(viewModel.state.formattedCacheSize) 存储空间。")
+            }
+            .sheet(isPresented: $isShowingFontChooser) {
+                FontPickerSheet(
+                    selectedPostScriptName: viewModel.state.readerConfig.customFontName,
+                    importedFonts: viewModel.state.importedFonts,
+                    onSelectSystemDefault: {
+                        var updated = viewModel.state.readerConfig
+                        updated.customFontName = nil
+                        updated.customFontDisplayName = nil
+                        updated.fontFamily = .system
+                        viewModel.send(.updateReaderConfig(updated))
+                    },
+                    onSelectFont: { psName, displayName in
+                        var updated = viewModel.state.readerConfig
+                        updated.customFontName = psName
+                        updated.customFontDisplayName = displayName
+                        viewModel.send(.updateReaderConfig(updated))
+                    },
+                    onDeleteImportedFont: { font in
+                        viewModel.send(.deleteLocalFont(font))
+                    },
+                    onOpenFontImporter: {
+                        isShowingFontChooser = false
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 250_000_000)
+                            isShowingFontPicker = true
+                        }
+                    })
             }
             .sheet(isPresented: $isShowingFontPicker) {
                 DocumentPickerView(

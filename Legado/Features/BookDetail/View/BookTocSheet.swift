@@ -91,7 +91,6 @@ public struct BookTocSheet: View {
             }
         }
         .presentationDetents([.fraction(0.45), .medium, .large])
-        .presentationBackground(.ultraThinMaterial)
     }
 
     private var tabSegmentedControl: some View {

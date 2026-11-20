@@ -52,39 +52,43 @@ public enum ReaderTheme: String, CaseIterable, Identifiable, Codable, Sendable {
     }
 }
 
-/// 阅读器字体族
-public enum ReaderFontFamily: String, CaseIterable, Identifiable, Codable, Sendable {
-    case system = "系统默认"
-    case songti = "宋体"
-    case kaiti = "楷体"
-    case heiti = "黑体"
+/// 全局应用外观模式（跟随系统 / 日间模式 / 夜间模式）
+public enum AppAppearanceMode: String, CaseIterable, Identifiable, Codable, Sendable {
+    case system = "跟随系统"
+    case light = "日间模式"
+    case dark = "夜间模式"
+
+    public static let storageKey = "legado_app_appearance_mode"
 
     public var id: String {
         rawValue
     }
 
-    public func uiFont(size: CGFloat, isBold: Bool = false) -> UIFont {
+    public var colorScheme: ColorScheme? {
         switch self {
-        case .system:
-            return UIFont.systemFont(ofSize: size, weight: isBold ? .semibold : .regular)
-
-        case .songti:
-            let name = isBold ? "STSongti-SC-Bold" : "Songti SC"
-            return UIFont(name: name, size: size)
-                ?? UIFont(name: "Songti SC", size: size)
-                ?? UIFont.systemFont(ofSize: size, weight: isBold ? .semibold : .regular)
-
-        case .kaiti:
-            let name = isBold ? "STKaitiSC-Bold" : "Kaiti SC"
-            return UIFont(name: name, size: size)
-                ?? UIFont(name: "Kaiti SC", size: size)
-                ?? UIFont.systemFont(ofSize: size, weight: isBold ? .semibold : .regular)
-
-        case .heiti:
-            let name = isBold ? "PingFangSC-Semibold" : "PingFangSC-Regular"
-            return UIFont(name: name, size: size)
-                ?? UIFont.systemFont(ofSize: size, weight: isBold ? .semibold : .regular)
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
         }
+    }
+}
+
+/// 阅读器内置基础字体族（取消 iOS 未预装的无效宋体/楷体选项，由用户从本机真实字体或本地文件自由选择）
+public enum ReaderFontFamily: String, CaseIterable, Identifiable, Codable, Sendable {
+    case system = "系统默认"
+
+    public var id: String {
+        rawValue
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = (try? container.decode(String.self)) ?? Self.system.rawValue
+        self = ReaderFontFamily(rawValue: raw) ?? .system
+    }
+
+    public func uiFont(size: CGFloat, isBold: Bool = false) -> UIFont {
+        UIFont.systemFont(ofSize: size, weight: isBold ? .semibold : .regular)
     }
 
     public func swiftUIFont(size: CGFloat, isBold: Bool = false) -> Font {
@@ -162,6 +166,9 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
     public var enableReplaceRule: Bool
     public var removeSameTitle: Bool
     public var reSegment: Bool
+    public var lastLightTheme: ReaderTheme
+    public var lastDarkTheme: ReaderTheme
+    public var tapZoneConfig: TapZoneConfig
 
     public init(
         fontSize: CGFloat = 19.0,
@@ -194,7 +201,10 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         enableIPadDualPage: Bool = true,
         enableReplaceRule: Bool = true,
         removeSameTitle: Bool = true,
-        reSegment: Bool = false) {
+        reSegment: Bool = false,
+        lastLightTheme: ReaderTheme = .paper,
+        lastDarkTheme: ReaderTheme = .dark,
+        tapZoneConfig: TapZoneConfig = .standard) {
         self.fontSize = fontSize
         self.lineSpacing = lineSpacing
         self.paragraphSpacing = paragraphSpacing
@@ -226,6 +236,9 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         self.enableReplaceRule = enableReplaceRule
         self.removeSameTitle = removeSameTitle
         self.reSegment = reSegment
+        self.lastLightTheme = lastLightTheme
+        self.lastDarkTheme = lastDarkTheme
+        self.tapZoneConfig = tapZoneConfig
     }
 
     public init(from decoder: Decoder) throws {
@@ -279,9 +292,36 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
             ?? defaults.removeSameTitle
         self.reSegment = try container.decodeIfPresent(Bool.self, forKey: .reSegment)
             ?? defaults.reSegment
+        self.lastLightTheme = try container.decodeIfPresent(ReaderTheme.self, forKey: .lastLightTheme)
+            ?? defaults.lastLightTheme
+        self.lastDarkTheme = try container.decodeIfPresent(ReaderTheme.self, forKey: .lastDarkTheme)
+            ?? defaults.lastDarkTheme
+        let decodedTapZone = try container.decodeIfPresent(TapZoneConfig.self, forKey: .tapZoneConfig)
+        self.tapZoneConfig = decodedTapZone ?? (self.leftHandMode ? .leftHanded : .standard)
     }
 
     public static let defaultConfig = ReaderConfig()
+
+    /// 一键切换阅读器日间 / 夜间模式（自动记忆上一次日间与夜间主题配色）
+    public mutating func toggleNightMode() {
+        if theme.isDark {
+            lastDarkTheme = theme
+            theme = lastLightTheme.isDark ? .paper : lastLightTheme
+        } else {
+            lastLightTheme = theme
+            theme = lastDarkTheme.isDark ? lastDarkTheme : .dark
+        }
+    }
+
+    /// 切换主题并同步更新日间/夜间记忆主题
+    public mutating func applyTheme(_ newTheme: ReaderTheme) {
+        theme = newTheme
+        if newTheme.isDark {
+            lastDarkTheme = newTheme
+        } else {
+            lastLightTheme = newTheme
+        }
+    }
 
     /// 判断给定画布尺寸下是否启用 iPad 横屏大屏双页并排阅读（对标 Apple Books：横屏双页、竖屏居中单页）
     public func isDualPageActive(for bounds: CGRect) -> Bool {

@@ -14,9 +14,7 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
     let onPageChanged: (Int) -> Void
     let onRequestNextChapter: () -> Void
     let onRequestPrevChapter: () -> Void
-    let onTapLeft: () -> Void
-    let onTapCenter: () -> Void
-    let onTapRight: () -> Void
+    let onTapLocation: (CGFloat, CGFloat) -> Void
 
     public func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -110,15 +108,14 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
         }
 
         @objc func handleTap(_ recognizer: UITapGestureRecognizer) {
-            guard recognizer.state == .ended, let view = recognizer.view, view.bounds.width > 0 else { return }
-            let ratio = recognizer.location(in: view).x / view.bounds.width
-            if ratio < 0.3 {
-                parent.onTapLeft()
-            } else if ratio > 0.7 {
-                parent.onTapRight()
-            } else {
-                parent.onTapCenter()
-            }
+            guard recognizer.state == .ended,
+                  let view = recognizer.view,
+                  view.bounds.width > 0,
+                  view.bounds.height > 0 else { return }
+            let location = recognizer.location(in: view)
+            let xRatio = min(max(location.x / view.bounds.width, 0), 1)
+            let yRatio = min(max(location.y / view.bounds.height, 0), 1)
+            parent.onTapLocation(xRatio, yRatio)
         }
 
         func alignedIndex(_ index: Int) -> Int {
