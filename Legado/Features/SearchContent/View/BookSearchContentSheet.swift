@@ -67,7 +67,9 @@ public struct BookSearchContentSheet: View {
                 onSelectMatch(chapterIndex, matchOffset)
 
             case .hapticFeedback:
-                hapticTrigger.toggle()
+                if ReaderConfigStore.isHapticEnabled {
+                    hapticTrigger.toggle()
+                }
             }
         }
     }

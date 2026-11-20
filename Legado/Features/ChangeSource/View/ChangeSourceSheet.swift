@@ -104,7 +104,9 @@ public struct ChangeSourceSheet: View {
                 }
 
             case .hapticFeedback:
-                hapticTrigger.toggle()
+                if ReaderConfigStore.isHapticEnabled {
+                    hapticTrigger.toggle()
+                }
             }
         }
     }

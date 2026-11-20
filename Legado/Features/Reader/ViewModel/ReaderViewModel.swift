@@ -11,6 +11,8 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
     let getBookmarksUseCase: GetBookmarksUseCase?
     let saveBookmarkUseCase: SaveBookmarkUseCase?
     let deleteBookmarkUseCase: DeleteBookmarkUseCase?
+    var autoPageTask: Task<Void, Never>?
+    private let initialOffsetToRestore: Int?
 
     public init(
         book: Book,
@@ -32,9 +34,14 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         self.deleteBookmarkUseCase = deleteBookmarkUseCase
 
         let startChapter = initialChapterIndex ?? book.durChapterIndex
+        let shouldRestoreOffset = (initialChapterIndex == nil || initialChapterIndex == book.durChapterIndex)
+            && book.durChapterPos > 0
+        self.initialOffsetToRestore = shouldRestoreOffset ? book.durChapterPos : nil
+
         super.init(initialState: ReaderState(
             book: book,
             currentChapterIndex: startChapter,
+            config: ReaderConfigStore.load(),
             isHUDVisible: showHUDInitially))
 
         loadTocAndStartReading()
@@ -48,7 +55,10 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
                 self.updateState { state in
                     state.chapters = local
                 }
-                self.send(.loadChapter(state.currentChapterIndex))
+                self.loadChapterContent(
+                    chapterIndex: state.currentChapterIndex,
+                    targetPageIndex: 0,
+                    targetOffset: initialOffsetToRestore)
                 return
             }
 
@@ -65,7 +75,10 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
             self.updateState { state in
                 state.chapters = toc
             }
-            self.send(.loadChapter(state.currentChapterIndex))
+            self.loadChapterContent(
+                chapterIndex: state.currentChapterIndex,
+                targetPageIndex: 0,
+                targetOffset: initialOffsetToRestore)
         }
     }
 
@@ -79,6 +92,10 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
 
         case .openConfig, .closeConfig, .changeFontSize, .selectTheme, .selectPageTurnMode:
             handleConfigIntent(intent)
+
+        case .updateConfig, .resetConfig, .openMoreSettings, .closeMoreSettings,
+             .toggleAutoPage, .setAutoPageInterval:
+            handleExtendedConfigIntent(intent)
 
         case let .updateScreenBounds(rect):
             if state.screenBounds != rect, rect.width > 50 {
@@ -96,7 +113,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
             }
             loadChapterContent(chapterIndex: matchedChapterIndex, targetPageIndex: 0)
             emitEffect(.showToast("已成功换源至 [\(updatedBook.originName)]"))
-            emitEffect(.hapticFeedback)
+            emitHapticIfEnabled()
 
         case .toggleBookmark, .addBookmark, .deleteBookmark, .loadBookmarks:
             handleBookmarkIntent(intent)
@@ -121,7 +138,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
             if index >= 0, index < state.pages.count {
                 updateState { $0.currentPageIndex = index }
                 saveReadingProgress()
-                emitEffect(.hapticFeedback)
+                emitHapticIfEnabled()
             }
 
         default:
@@ -133,7 +150,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         switch intent {
         case .toggleHUD:
             updateState { $0.isHUDVisible.toggle() }
-            emitEffect(.hapticFeedback)
+            emitHapticIfEnabled()
 
         case .hideHUD:
             updateState {
@@ -146,7 +163,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
                 $0.isHUDVisible = false
                 $0.isTocSheetVisible = true
             }
-            emitEffect(.hapticFeedback)
+            emitHapticIfEnabled()
 
         case .closeToc:
             updateState { $0.isTocSheetVisible = false }
@@ -160,13 +177,13 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         switch intent {
         case .openConfig:
             updateState { $0.isConfigSheetVisible = true }
-            emitEffect(.hapticFeedback)
+            emitHapticIfEnabled()
 
         case .closeConfig:
             updateState { $0.isConfigSheetVisible = false }
 
         case let .changeFontSize(delta):
-            let newSize = min(max(state.config.fontSize + delta, 12), 34)
+            let newSize = min(max(state.config.fontSize + delta, 12), 36)
             var newConfig = state.config
             newConfig.fontSize = newSize
             applyNewConfig(newConfig)
@@ -249,11 +266,11 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         if state.currentPageIndex + 1 < state.pages.count {
             updateState { $0.currentPageIndex += 1 }
             saveReadingProgress()
-            emitEffect(.hapticFeedback)
+            emitHapticIfEnabled()
         } else if state.currentChapterIndex + 1 < state.chapters.count {
             // 翻入下一章第一页
             loadChapterContent(chapterIndex: state.currentChapterIndex + 1, targetPageIndex: 0)
-            emitEffect(.hapticFeedback)
+            emitHapticIfEnabled()
         } else {
             emitEffect(.showToast("已经是最后一页了"))
         }
@@ -263,11 +280,11 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         if state.currentPageIndex > 0 {
             updateState { $0.currentPageIndex -= 1 }
             saveReadingProgress()
-            emitEffect(.hapticFeedback)
+            emitHapticIfEnabled()
         } else if state.currentChapterIndex > 0 {
             // 翻入上一章最后一页
             loadChapterContent(chapterIndex: state.currentChapterIndex - 1, targetPageIndex: Int.max)
-            emitEffect(.hapticFeedback)
+            emitHapticIfEnabled()
         } else {
             emitEffect(.showToast("已经是第一页了"))
         }
@@ -275,32 +292,52 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
 
     private func repaginateCurrentChapter() {
         guard let chapter = state.currentChapter else { return }
+        let currentOffset = state.currentPage?.textRange.location ?? 0
         Task {
             if let content = try? await getChapterContentUseCase.execute(chapter: chapter, origin: state.book.origin) {
+                let defaultBounds = CGRect(x: 0, y: 0, width: 393, height: 852)
+                let layoutBounds = state.screenBounds.width > 50 ? state.screenBounds : defaultBounds
                 let pages = textLayoutEngine.paginate(
                     chapterTitle: chapter.title,
                     content: content,
                     chapterIndex: state.currentChapterIndex,
-                    bounds: state.screenBounds,
+                    bounds: layoutBounds,
                     config: state.config)
+                let preservedPage = pages.firstIndex { page in
+                    currentOffset >= page.textRange.location &&
+                        currentOffset < (page.textRange.location + max(page.textRange.length, 1))
+                } ?? min(state.currentPageIndex, max(pages.count - 1, 0))
                 self.updateState { state in
                     state.pages = pages
-                    state.currentPageIndex = min(state.currentPageIndex, max(pages.count - 1, 0))
+                    state.currentPageIndex = preservedPage
                 }
             }
         }
     }
 
-    private func applyNewConfig(_ newConfig: ReaderConfig) {
+    func applyNewConfig(_ newConfig: ReaderConfig, triggerHaptic: Bool = true) {
+        let oldConfig = state.config
         updateState { $0.config = newConfig }
-        repaginateCurrentChapter()
-        emitEffect(.hapticFeedback)
+        ReaderConfigStore.save(newConfig)
+        if newConfig.requiresRepagination(comparedTo: oldConfig) {
+            repaginateCurrentChapter()
+        }
+        if triggerHaptic {
+            emitHapticIfEnabled()
+        }
+    }
+
+    func emitHapticIfEnabled() {
+        if state.config.isHapticEnabled {
+            emitEffect(.hapticFeedback)
+        }
     }
 
     private func saveReadingProgress() {
         guard let chapter = state.currentChapter else { return }
         var updated = state.book
         updated.durChapterIndex = state.currentChapterIndex
+        updated.durChapterPos = state.currentPage?.textRange.location ?? 0
         updated.durChapterTitle = chapter.title
         updated.durChapterTime = Int64(Date().timeIntervalSince1970 * 1000)
 

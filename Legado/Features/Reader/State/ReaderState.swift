@@ -12,6 +12,8 @@ public struct ReaderState: ViewState, Equatable, Sendable {
     public var isHUDVisible: Bool
     public var isTocSheetVisible: Bool
     public var isConfigSheetVisible: Bool
+    public var isMoreSettingsVisible: Bool
+    public var isAutoPaging: Bool
     public var isLoading: Bool
     public var screenBounds: CGRect
     public var toastMessage: String?
@@ -27,6 +29,8 @@ public struct ReaderState: ViewState, Equatable, Sendable {
         isHUDVisible: Bool = false,
         isTocSheetVisible: Bool = false,
         isConfigSheetVisible: Bool = false,
+        isMoreSettingsVisible: Bool = false,
+        isAutoPaging: Bool = false,
         isLoading: Bool = false,
         screenBounds: CGRect = .zero,
         toastMessage: String? = nil,
@@ -40,6 +44,8 @@ public struct ReaderState: ViewState, Equatable, Sendable {
         self.isHUDVisible = isHUDVisible
         self.isTocSheetVisible = isTocSheetVisible
         self.isConfigSheetVisible = isConfigSheetVisible
+        self.isMoreSettingsVisible = isMoreSettingsVisible
+        self.isAutoPaging = isAutoPaging
         self.isLoading = isLoading
         self.screenBounds = screenBounds
         self.toastMessage = toastMessage

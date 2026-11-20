@@ -382,7 +382,9 @@ private extension BookshelfView {
             activeToast = message
 
         case .hapticFeedback:
-            hapticTrigger.toggle()
+            if ReaderConfigStore.isHapticEnabled {
+                hapticTrigger.toggle()
+            }
         }
     }
 }

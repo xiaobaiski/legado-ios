@@ -130,4 +130,88 @@ struct ReaderEngineTests {
         state.currentPageIndex = 1
         #expect(state.currentPage?.contentText == "页2")
     }
+
+    @Test("Test ReaderConfigStore Persistence and Repagination Detection")
+    func readerConfigPersistenceAndRepagination() {
+        let suiteName = "legado_reader_test_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        var config = ReaderConfig.defaultConfig
+        config.fontSize = 22
+        config.lineSpacing = 14
+        config.paragraphSpacing = 20
+        config.letterSpacing = 1.5
+        config.paragraphIndent = 0
+        config.isBoldFont = true
+        config.fontFamily = .songti
+        config.isHapticEnabled = false
+        config.leftHandMode = true
+        config.chineseConversion = .toTraditional
+
+        ReaderConfigStore.save(config, defaults: defaults)
+        let loaded = ReaderConfigStore.load(defaults: defaults)
+        #expect(loaded == config)
+        #expect(loaded.isHapticEnabled == false)
+        #expect(loaded.paragraphSpacing == 20)
+        #expect(loaded.lineSpacing == 14)
+
+        // 仅切换震动开关不应触发重排
+        var hapticOnly = loaded
+        hapticOnly.isHapticEnabled = true
+        #expect(!hapticOnly.requiresRepagination(comparedTo: loaded))
+
+        // 调整段距应触发重排
+        var spacingChanged = loaded
+        spacingChanged.paragraphSpacing = 28
+        #expect(spacingChanged.requiresRepagination(comparedTo: loaded))
+
+        let reset = ReaderConfigStore.reset(defaults: defaults)
+        #expect(reset == .defaultConfig)
+    }
+
+    @Test("Test TextLayoutEngine Indent, Spacing and Chinese Conversion")
+    func textLayoutTypographyControls() {
+        let engine = TextLayoutEngine.shared
+        let raw = "  第一段文字内容。\n　　第二段简体阅读测试。"
+
+        var noIndentConfig = ReaderConfig.defaultConfig
+        noIndentConfig.paragraphIndent = 0
+        let noIndentText = engine.normalizeContent(raw, config: noIndentConfig)
+        #expect(noIndentText == "第一段文字内容。\n第二段简体阅读测试。")
+
+        var twoIndentConfig = ReaderConfig.defaultConfig
+        twoIndentConfig.paragraphIndent = 2
+        twoIndentConfig.chineseConversion = .toTraditional
+        let traditionalText = engine.normalizeContent(raw, config: twoIndentConfig)
+        #expect(traditionalText.hasPrefix("\u{3000}\u{3000}"))
+        #expect(traditionalText.contains("簡體閱讀測試") || traditionalText.contains("閱讀"))
+
+        // 验证增大段距与行距后，相同文本所需页数增加或不少于紧凑排版
+        let longText = Array(repeating: "这是一段用于验证行距与段距排版效果的正文测试段落。", count: 35)
+            .joined(separator: "\n")
+        let bounds = CGRect(x: 0, y: 0, width: 320, height: 500)
+
+        var compact = ReaderConfig.defaultConfig
+        compact.lineSpacing = 2
+        compact.paragraphSpacing = 4
+
+        var spacious = ReaderConfig.defaultConfig
+        spacious.lineSpacing = 18
+        spacious.paragraphSpacing = 26
+
+        let compactPages = engine.paginate(
+            chapterTitle: "测试",
+            content: longText,
+            chapterIndex: 0,
+            bounds: bounds,
+            config: compact)
+        let spaciousPages = engine.paginate(
+            chapterTitle: "测试",
+            content: longText,
+            chapterIndex: 0,
+            bounds: bounds,
+            config: spacious)
+        #expect(spaciousPages.count > compactPages.count)
+    }
 }

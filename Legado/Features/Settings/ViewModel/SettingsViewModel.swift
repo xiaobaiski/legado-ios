@@ -29,7 +29,8 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             webDAVConfig: savedConfig,
             speechRate: initialSpeechRate,
             speechPitch: initialSpeechPitch,
-            cacheSizeBytes: initialCacheSize))
+            cacheSizeBytes: initialCacheSize,
+            readerConfig: ReaderConfigStore.load()))
     }
 
     override public func send(_ intent: SettingsIntent) {
@@ -40,7 +41,8 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
         case .testWebDAVConnection, .backupToWebDAV, .restoreFromWebDAV:
             handleSyncIntent(intent)
 
-        case .updateSpeechRate, .updateSpeechPitch, .refreshCacheSize, .clearAllCache, .clearNotice:
+        case .updateSpeechRate, .updateSpeechPitch, .refreshCacheSize, .clearAllCache,
+             .refreshReaderConfig, .updateReaderConfig, .resetReaderConfig, .clearNotice:
             handleGeneralIntent(intent)
         }
     }
@@ -103,6 +105,22 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             let size = manageBookCacheUseCase?.calculateTotalCacheSize() ?? 0
             updateState { $0.cacheSizeBytes = size }
             emitEffect(.showToast("已清理所有离线正文缓存"))
+            emitEffect(.hapticFeedback)
+
+        case .refreshReaderConfig:
+            updateState { $0.readerConfig = ReaderConfigStore.load() }
+
+        case let .updateReaderConfig(config):
+            updateState { $0.readerConfig = config }
+            ReaderConfigStore.save(config)
+            if config.isHapticEnabled {
+                emitEffect(.hapticFeedback)
+            }
+
+        case .resetReaderConfig:
+            let defaults = ReaderConfigStore.reset()
+            updateState { $0.readerConfig = defaults }
+            emitEffect(.showToast("已恢复默认阅读排版与偏好"))
             emitEffect(.hapticFeedback)
 
         case .clearNotice:

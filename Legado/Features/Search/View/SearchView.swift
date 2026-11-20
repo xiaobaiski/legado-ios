@@ -89,7 +89,9 @@ public struct SearchView: View {
                     }
 
                 case .hapticFeedback:
-                    hapticTrigger.toggle()
+                    if ReaderConfigStore.isHapticEnabled {
+                        hapticTrigger.toggle()
+                    }
                 }
             }
             .navigationDestination(item: $selectedBookForDetail) { book in

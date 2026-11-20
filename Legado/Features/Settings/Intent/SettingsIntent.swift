@@ -13,6 +13,9 @@ public enum SettingsIntent: ViewIntent {
     case updateSpeechPitch(Float)
     case refreshCacheSize
     case clearAllCache
+    case refreshReaderConfig
+    case updateReaderConfig(ReaderConfig)
+    case resetReaderConfig
     case clearNotice
 }
 

@@ -318,7 +318,9 @@ public struct BookSourceEditView: View {
             }
 
         case .hapticFeedback:
-            hapticTrigger.toggle()
+            if ReaderConfigStore.isHapticEnabled {
+                hapticTrigger.toggle()
+            }
 
         case let .copyToClipboard(text):
             UIPasteboard.general.string = text

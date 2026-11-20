@@ -129,7 +129,9 @@ public struct BookDetailView: View {
                 }
 
             case .hapticFeedback:
-                hapticTrigger.toggle()
+                if ReaderConfigStore.isHapticEnabled {
+                    hapticTrigger.toggle()
+                }
 
             case let .navigateToReader(chapterIndex):
                 readerDestination = ReaderDestination(book: viewModel.state.book, chapterIndex: chapterIndex)

@@ -29,6 +29,18 @@ public enum ReaderIntent: ViewIntent, Equatable, Sendable {
     case selectTheme(ReaderTheme)
     /// 切换翻页动效模式
     case selectPageTurnMode(PageTurnMode)
+    /// 批量更新完整排版/阅读配置并持久化
+    case updateConfig(ReaderConfig)
+    /// 恢复默认阅读排版配置
+    case resetConfig
+    /// 打开更多阅读设置抽屉
+    case openMoreSettings
+    /// 关闭更多阅读设置抽屉
+    case closeMoreSettings
+    /// 开关自动翻页
+    case toggleAutoPage
+    /// 调整自动翻页间隔（秒）
+    case setAutoPageInterval(Double)
     /// 屏幕尺寸尺寸更新重新排版
     case updateScreenBounds(CGRect)
     /// 切换书源并重载新目录与章节

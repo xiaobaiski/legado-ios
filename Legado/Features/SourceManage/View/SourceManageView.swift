@@ -127,7 +127,9 @@ public struct SourceManageView: View {
                     }
 
                 case .hapticFeedback:
-                    hapticTrigger.toggle()
+                    if ReaderConfigStore.isHapticEnabled {
+                        hapticTrigger.toggle()
+                    }
                 }
             }
             .overlay(alignment: .bottom) {

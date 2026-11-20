@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// 沉浸式阅读器主视图 (纯声明式渲染 View = f(State))
 public struct ReaderView: View {
@@ -17,6 +18,7 @@ public struct ReaderView: View {
     @State private var cacheInfo: BookCacheInfo?
     @State private var cacheDownloadProgress: BatchDownloadProgress?
     @State private var cacheDownloadTask: Task<Void, Never>?
+    @State private var originalBrightness: CGFloat?
 
     public init(viewModel: ReaderViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -41,6 +43,8 @@ public struct ReaderView: View {
                         totalChapters: viewModel.state.chapters.count,
                         config: viewModel.state.config,
                         isConfigOpen: viewModel.state.isConfigSheetVisible,
+                        isAutoPaging: viewModel.state.isAutoPaging,
+                        isLocalFile: viewModel.state.book.isLocalFile,
                         onBack: { dismiss() },
                         onPreviousChapter: {
                             viewModel.send(.loadChapter(viewModel.state.currentChapterIndex - 1))
@@ -55,14 +59,17 @@ public struct ReaderView: View {
                         onToggleConfig: {
                             viewModel.send(viewModel.state.isConfigSheetVisible ? .closeConfig : .openConfig)
                         },
-                        onFontSizeChange: { delta in
-                            viewModel.send(.changeFontSize(delta: delta))
+                        onUpdateConfig: { newConfig in
+                            viewModel.send(.updateConfig(newConfig))
                         },
-                        onSelectTheme: { theme in
-                            viewModel.send(.selectTheme(theme))
+                        onResetConfig: {
+                            viewModel.send(.resetConfig)
                         },
-                        onSelectPageTurnMode: { mode in
-                            viewModel.send(.selectPageTurnMode(mode))
+                        onOpenMoreSettings: {
+                            viewModel.send(.openMoreSettings)
+                        },
+                        onToggleAutoPage: {
+                            viewModel.send(.toggleAutoPage)
                         },
                         onStartTTS: {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
@@ -122,22 +129,47 @@ public struct ReaderView: View {
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+                // 自动翻页悬浮控制胶囊条
+                if viewModel.state.isAutoPaging && !viewModel.state.isHUDVisible && !isTTSSpeaking {
+                    autoPageFloatingBar
+                }
             }
             .onAppear {
                 viewModel.send(.updateScreenBounds(geometry.frame(in: .local)))
+                applySystemDisplaySettings()
             }
             .onDisappear {
                 cacheDownloadTask?.cancel()
                 cacheDownloadTask = nil
+                viewModel.stopAutoPageTimer()
+                restoreSystemDisplaySettings()
                 TTSPlayer.shared.stop()
             }
             .onChange(of: geometry.size) { _, newSize in
                 viewModel.send(.updateScreenBounds(CGRect(origin: .zero, size: newSize)))
             }
+            .onChange(of: viewModel.state.config) { _, _ in
+                applySystemDisplaySettings()
+            }
         }
         .navigationBarBackButtonHidden(true)
-        .statusBarHidden(!viewModel.state.isHUDVisible)
+        .statusBarHidden(!viewModel.state.isHUDVisible && !viewModel.state.config.showStatusBar)
         .sensoryFeedback(.impact(weight: .light), trigger: hapticTrigger)
+        .sheet(isPresented: Binding(
+            get: { viewModel.state.isMoreSettingsVisible },
+            set: {
+                if !$0 {
+                    viewModel.send(.closeMoreSettings)
+                }
+            })) {
+                ReaderSettingsSheet(
+                    config: viewModel.state.config,
+                    isAutoPaging: viewModel.state.isAutoPaging,
+                    onUpdateConfig: { viewModel.send(.updateConfig($0)) },
+                    onToggleAutoPage: { viewModel.send(.toggleAutoPage) },
+                    onSetAutoPageInterval: { viewModel.send(.setAutoPageInterval($0)) },
+                    onResetConfig: { viewModel.send(.resetConfig) })
+        }
         .sheet(isPresented: $isChangeSourcePresented) {
             ChangeSourceSheet(
                 viewModel: environment.makeChangeSourceViewModel(
@@ -229,7 +261,9 @@ public struct ReaderView: View {
                 }
 
             case .hapticFeedback:
-                hapticTrigger.toggle()
+                if viewModel.state.config.isHapticEnabled {
+                    hapticTrigger.toggle()
+                }
 
             case .navigateBack:
                 dismiss()
@@ -283,6 +317,74 @@ public struct ReaderView: View {
 }
 
 private extension ReaderView {
+    var autoPageFloatingBar: some View {
+        VStack {
+            Spacer()
+            HStack(spacing: 12) {
+                Image(systemName: "play.circle.fill")
+                    .foregroundStyle(Color.accentColor)
+                Text("自动翻页 \(Int(viewModel.state.config.autoPageIntervalSeconds))秒")
+                    .font(.caption.weight(.medium).monospacedDigit())
+
+                Button {
+                    viewModel.send(.setAutoPageInterval(viewModel.state.config.autoPageIntervalSeconds - 1))
+                } label: {
+                    Image(systemName: "minus.circle")
+                }
+
+                Button {
+                    viewModel.send(.setAutoPageInterval(viewModel.state.config.autoPageIntervalSeconds + 1))
+                } label: {
+                    Image(systemName: "plus.circle")
+                }
+
+                Button("停止") {
+                    viewModel.send(.toggleAutoPage)
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.red)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial)
+            .clipShape(Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.22), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+            .padding(.bottom, 22)
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    func applySystemDisplaySettings() {
+        let config = viewModel.state.config
+        UIApplication.shared.isIdleTimerDisabled = config.keepScreenOn
+
+        guard let screen = activeWindowScreen else { return }
+        if originalBrightness == nil {
+            originalBrightness = screen.brightness
+        }
+        if config.followSystemBrightness {
+            if let originalBrightness {
+                screen.brightness = originalBrightness
+            }
+        } else {
+            screen.brightness = CGFloat(config.customBrightness)
+        }
+    }
+
+    func restoreSystemDisplaySettings() {
+        UIApplication.shared.isIdleTimerDisabled = false
+        if let originalBrightness, let screen = activeWindowScreen {
+            screen.brightness = originalBrightness
+        }
+    }
+
+    var activeWindowScreen: UIScreen? {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.screen
+    }
+
     func startReaderCacheDownload(option: BatchDownloadOption) {
         guard !viewModel.state.book.isLocalFile else { return }
         cacheDownloadTask?.cancel()

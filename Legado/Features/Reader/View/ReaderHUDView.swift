@@ -8,20 +8,24 @@ public struct ReaderHUDView: View {
     let totalChapters: Int
     let config: ReaderConfig
     let isConfigOpen: Bool
+    let isAutoPaging: Bool
+    let isLocalFile: Bool
     let onBack: () -> Void
     let onPreviousChapter: () -> Void
     let onNextChapter: () -> Void
     let onSliderChange: (Double) -> Void
     let onOpenToc: () -> Void
     let onToggleConfig: () -> Void
-    let onFontSizeChange: (CGFloat) -> Void
-    let onSelectTheme: (ReaderTheme) -> Void
-    let onSelectPageTurnMode: (PageTurnMode) -> Void
+    let onUpdateConfig: (ReaderConfig) -> Void
+    let onResetConfig: () -> Void
+    let onOpenMoreSettings: () -> Void
+    let onToggleAutoPage: () -> Void
     let onStartTTS: () -> Void
     let onOpenChangeSource: () -> Void
     let onOpenSearch: () -> Void
     let isBookmarked: Bool
     let onToggleBookmark: () -> Void
+    public let onOpenCache: () -> Void
 
     public init(
         bookTitle: String,
@@ -30,15 +34,18 @@ public struct ReaderHUDView: View {
         totalChapters: Int,
         config: ReaderConfig,
         isConfigOpen: Bool,
+        isAutoPaging: Bool = false,
+        isLocalFile: Bool = false,
         onBack: @escaping () -> Void,
         onPreviousChapter: @escaping () -> Void,
         onNextChapter: @escaping () -> Void,
         onSliderChange: @escaping (Double) -> Void,
         onOpenToc: @escaping () -> Void,
         onToggleConfig: @escaping () -> Void,
-        onFontSizeChange: @escaping (CGFloat) -> Void,
-        onSelectTheme: @escaping (ReaderTheme) -> Void,
-        onSelectPageTurnMode: @escaping (PageTurnMode) -> Void = { _ in },
+        onUpdateConfig: @escaping (ReaderConfig) -> Void = { _ in },
+        onResetConfig: @escaping () -> Void = {},
+        onOpenMoreSettings: @escaping () -> Void = {},
+        onToggleAutoPage: @escaping () -> Void = {},
         onStartTTS: @escaping () -> Void = {},
         onOpenChangeSource: @escaping () -> Void = {},
         onOpenSearch: @escaping () -> Void = {},
@@ -51,15 +58,18 @@ public struct ReaderHUDView: View {
         self.totalChapters = totalChapters
         self.config = config
         self.isConfigOpen = isConfigOpen
+        self.isAutoPaging = isAutoPaging
+        self.isLocalFile = isLocalFile
         self.onBack = onBack
         self.onPreviousChapter = onPreviousChapter
         self.onNextChapter = onNextChapter
         self.onSliderChange = onSliderChange
         self.onOpenToc = onOpenToc
         self.onToggleConfig = onToggleConfig
-        self.onFontSizeChange = onFontSizeChange
-        self.onSelectTheme = onSelectTheme
-        self.onSelectPageTurnMode = onSelectPageTurnMode
+        self.onUpdateConfig = onUpdateConfig
+        self.onResetConfig = onResetConfig
+        self.onOpenMoreSettings = onOpenMoreSettings
+        self.onToggleAutoPage = onToggleAutoPage
         self.onStartTTS = onStartTTS
         self.onOpenChangeSource = onOpenChangeSource
         self.onOpenSearch = onOpenSearch
@@ -68,23 +78,24 @@ public struct ReaderHUDView: View {
         self.onOpenCache = onOpenCache
     }
 
-    public let onOpenCache: () -> Void
-
     public var body: some View {
         VStack {
-            // 顶部导航栏
             topBar
 
             Spacer()
 
-            // 底部操作区
             VStack(spacing: 12) {
-                // 排版设置浮动面板 (展开时展示)
                 if isConfigOpen {
-                    typographyPanel
+                    ReaderTypographyPanel(
+                        config: config,
+                        isAutoPaging: isAutoPaging,
+                        onUpdateConfig: onUpdateConfig,
+                        onResetConfig: onResetConfig,
+                        onOpenMoreSettings: onOpenMoreSettings,
+                        onToggleAutoPage: onToggleAutoPage)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
-                // 章节进度条与主控制栏
                 bottomControlBar
             }
             .padding(.horizontal, 16)
@@ -96,16 +107,8 @@ public struct ReaderHUDView: View {
     // MARK: - 顶部导航条
 
     private var topBar: some View {
-        HStack(spacing: 14) {
-            Button(action: onBack) {
-                Image(systemName: "chevron.left")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: 0.5))
-            }
+        HStack(spacing: 10) {
+            circleIconButton(systemName: "chevron.left", action: onBack)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(bookTitle)
@@ -119,35 +122,18 @@ public struct ReaderHUDView: View {
 
             Spacer()
 
-            Button(action: onOpenSearch) {
-                Image(systemName: "magnifyingglass")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: 0.5))
+            circleIconButton(systemName: "magnifyingglass", action: onOpenSearch)
+
+            if !isLocalFile {
+                circleIconButton(systemName: "arrow.down.circle", action: onOpenCache)
             }
 
-            Button(action: onOpenCache) {
-                Image(systemName: "arrow.down.circle")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: 0.5))
-            }
+            circleIconButton(
+                systemName: isBookmarked ? "bookmark.fill" : "bookmark",
+                foreground: isBookmarked ? Color.accentColor : .primary,
+                action: onToggleBookmark)
 
-            Button(action: onToggleBookmark) {
-                Image(systemName: isBookmarked ? "bookmark.fill" : "bookmark")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(isBookmarked ? Color.accentColor : .primary)
-                    .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: 0.5))
-            }
+            circleIconButton(systemName: "gearshape", action: onOpenMoreSettings)
         }
         .padding(.horizontal, 16)
         .padding(.top, 54)
@@ -160,11 +146,25 @@ public struct ReaderHUDView: View {
         }
     }
 
+    private func circleIconButton(
+        systemName: String,
+        foreground: Color = .primary,
+        action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(foreground)
+                .frame(width: 36, height: 36)
+                .background(.ultraThinMaterial)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: 0.5))
+        }
+    }
+
     // MARK: - 底部主控制栏
 
     private var bottomControlBar: some View {
         VStack(spacing: 12) {
-            // 章节切换滑块
             HStack(spacing: 12) {
                 Button(action: onPreviousChapter) {
                     Image(systemName: "backward.fill")
@@ -194,9 +194,9 @@ public struct ReaderHUDView: View {
         }
         .padding(16)
         .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 20)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(.white.opacity(0.18), lineWidth: 0.5))
         .shadow(color: .black.opacity(0.12), radius: 10, y: 5)
     }
@@ -204,16 +204,28 @@ public struct ReaderHUDView: View {
     private var quickActionsBar: some View {
         HStack {
             quickActionButton(title: "目录", systemImage: "list.bullet", action: onOpenToc)
-            quickActionButton(title: "排版", systemImage: "textformat.size", action: onToggleConfig)
+            quickActionButton(
+                title: "排版",
+                systemImage: "textformat.size",
+                isActive: isConfigOpen,
+                action: onToggleConfig)
             quickActionButton(title: "搜索", systemImage: "magnifyingglass", action: onOpenSearch)
             quickActionButton(title: "听书", systemImage: "headphones", action: onStartTTS)
-            quickActionButton(title: "换源", systemImage: "arrow.triangle.2.circlepath", action: onOpenChangeSource)
+            if isLocalFile {
+                quickActionButton(title: "设置", systemImage: "slider.horizontal.3", action: onOpenMoreSettings)
+            } else {
+                quickActionButton(title: "换源", systemImage: "arrow.triangle.2.circlepath", action: onOpenChangeSource)
+            }
         }
         .tint(.primary)
         .padding(.vertical, 4)
     }
 
-    private func quickActionButton(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+    private func quickActionButton(
+        title: String,
+        systemImage: String,
+        isActive: Bool = false,
+        action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: systemImage)
@@ -221,108 +233,8 @@ public struct ReaderHUDView: View {
                 Text(title)
                     .font(.caption2)
             }
+            .foregroundStyle(isActive ? Color.accentColor : Color.primary)
             .frame(maxWidth: .infinity)
         }
-    }
-
-    // MARK: - 排版调节浮动面板
-
-    private var typographyPanel: some View {
-        VStack(spacing: 14) {
-            // 字号调节
-            HStack(spacing: 16) {
-                Text("字号")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                Button {
-                    onFontSizeChange(-1)
-                } label: {
-                    Image(systemName: "textformat.size.smaller")
-                        .font(.body)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.secondary.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-
-                Text("\(Int(config.fontSize))")
-                    .font(.headline.monospacedDigit())
-                    .frame(width: 32)
-
-                Button {
-                    onFontSizeChange(1)
-                } label: {
-                    Image(systemName: "textformat.size.larger")
-                        .font(.body)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.secondary.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-            }
-            .tint(.primary)
-
-            // 主题配色选择
-            HStack(spacing: 12) {
-                ForEach(ReaderTheme.allCases) { theme in
-                    Button {
-                        onSelectTheme(theme)
-                    } label: {
-                        ZStack {
-                            Circle()
-                                .fill(theme.backgroundColor)
-                                .frame(width: 36, height: 36)
-                                .overlay(
-                                    Circle()
-                                        .stroke(
-                                            config.theme == theme ? Color.accentColor : Color.secondary.opacity(0.2),
-                                            lineWidth: config.theme == theme ? 2.5 : 0.5))
-
-                            Text("文")
-                                .font(.caption.bold())
-                                .foregroundStyle(theme.textColor)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            // 翻页动效模式切换
-            HStack(spacing: 12) {
-                Text("翻页")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                ForEach(PageTurnMode.allCases) { mode in
-                    let isSelected = config.pageTurnMode == mode
-                    Button {
-                        onSelectPageTurnMode(mode)
-                    } label: {
-                        Text(mode.rawValue)
-                            .font(.footnote.weight(isSelected ? .semibold : .regular))
-                            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 7)
-                            .background(
-                                Capsule(style: .continuous)
-                                    .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.10)))
-                            .overlay(
-                                Capsule(style: .continuous)
-                                    .stroke(
-                                        isSelected ? Color.accentColor.opacity(0.35) : Color.white.opacity(0.12),
-                                        lineWidth: 0.5))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(16)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(.white.opacity(0.18), lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
     }
 }

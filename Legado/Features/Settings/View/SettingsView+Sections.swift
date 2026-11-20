@@ -3,6 +3,44 @@ import SwiftUI
 // MARK: - SettingsView 辅助分区扩展
 
 extension SettingsView {
+    var readingPreferencesSection: some View {
+        Section {
+            Toggle("触感震动反馈", isOn: readerBinding(\.isHapticEnabled))
+            Toggle("阅读时屏幕常亮", isOn: readerBinding(\.keepScreenOn))
+            Toggle("点击屏幕翻页", isOn: readerBinding(\.tapToTurnPage))
+            Toggle("左手翻页模式", isOn: readerBinding(\.leftHandMode))
+
+            Picker("繁简转换", selection: readerBinding(\.chineseConversion)) {
+                ForEach(ChineseConversionMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+
+            Toggle("显示页眉（章节名与时间）", isOn: readerBinding(\.showHeader))
+            Toggle("显示页脚（页码、总进度与电量）", isOn: readerBinding(\.showFooter))
+
+            Button(role: .destructive) {
+                viewModel.send(.resetReaderConfig)
+            } label: {
+                Label("恢复默认阅读排版", systemImage: "arrow.counterclockwise")
+            }
+        } header: {
+            Label("阅读与交互偏好", systemImage: "book.pages")
+        } footer: {
+            Text("字号、字体、行距、段距、字距、边距与主题配色可在阅读器「排版」面板中实时调节并自动保存。")
+        }
+    }
+
+    private func readerBinding<T>(_ keyPath: WritableKeyPath<ReaderConfig, T>) -> Binding<T> {
+        Binding(
+            get: { viewModel.state.readerConfig[keyPath: keyPath] },
+            set: { newValue in
+                var updated = viewModel.state.readerConfig
+                updated[keyPath: keyPath] = newValue
+                viewModel.send(.updateReaderConfig(updated))
+            })
+    }
+
     var storageSection: some View {
         Section {
             HStack {

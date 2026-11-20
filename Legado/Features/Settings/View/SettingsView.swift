@@ -15,6 +15,10 @@ public struct SettingsView: View {
         NavigationStack {
             Form {
 
+                // MARK: - 阅读与交互偏好分区
+
+                readingPreferencesSection
+
                 // MARK: - WebDAV 云同步分区
 
                 webDAVSection
@@ -39,6 +43,7 @@ public struct SettingsView: View {
             .navigationBarTitleDisplayMode(.large)
             .onAppear {
                 viewModel.send(.refreshCacheSize)
+                viewModel.send(.refreshReaderConfig)
             }
             .sensoryFeedback(.impact(weight: .light), trigger: hapticTrigger)
             .onReceive(viewModel.effectPublisher) { effect in
@@ -53,7 +58,9 @@ public struct SettingsView: View {
                     }
 
                 case .hapticFeedback:
-                    hapticTrigger.toggle()
+                    if viewModel.state.readerConfig.isHapticEnabled {
+                        hapticTrigger.toggle()
+                    }
                 }
             }
             .overlay(alignment: .bottom) {
