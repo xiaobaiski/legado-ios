@@ -128,14 +128,19 @@ public final class PurifyContentUseCase: Sendable {
         from content: String,
         bookName: String,
         chapterTitle: String) -> String {
-        let escapedTitle = NSRegularExpression.escapedPattern(for: chapterTitle)
-            .replacingOccurrences(of: "\\s+", with: "\\s*", options: .regularExpression)
-        guard !escapedTitle.isEmpty else { return content }
+        let titleParts = chapterTitle
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+        guard !titleParts.isEmpty else { return content }
 
-        let escapedBook = bookName.isEmpty
-            ? ""
-            : "|\(NSRegularExpression.escapedPattern(for: bookName))"
-        let pattern = "^(?:[\\s\\p{P}]\(escapedBook))*\(escapedTitle)[\\t\\u{000B}\\u{000C}\\p{Zs}]*(?:\\n\\s*|$)"
+        let escapedTitle = titleParts
+            .map { NSRegularExpression.escapedPattern(for: $0) }
+            .joined(separator: "\\s*")
+        let prefixGroup = bookName.isEmpty
+            ? "[\\s\\p{P}]*"
+            : "(?:[\\s\\p{P}]|\(NSRegularExpression.escapedPattern(for: bookName)))*"
+        let pattern = "^\(prefixGroup)\(escapedTitle)[\\t\\p{Zs}]*(?:\\n\\s*|$)"
+
         guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
             return content
         }

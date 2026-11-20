@@ -36,28 +36,13 @@ public enum TxtTocParser {
 
         var bestCount = 0
         var bestRule: TxtTocRule?
+        var firstMatchedRule: TxtTocRule?
 
         for tocRule in candidateRules {
-            guard let regex = try? NSRegularExpression(
-                pattern: tocRule.rule,
-                options: [.anchorsMatchLines]) else {
-                continue
-            }
-            let matches = regex.matches(in: sample, options: [], range: fullRange)
-            guard !matches.isEmpty else { continue }
-
-            var lastEnd = 0
-            var validChapters = 0
-            var shortNoise = 0
-
-            for match in matches {
-                let gap = match.range.location - lastEnd
-                if lastEnd == 0 || gap > 100 {
-                    validChapters += 1
-                    lastEnd = match.range.location + match.range.length
-                } else {
-                    shortNoise += 1
-                }
+            let (validChapters, shortNoise) = scoreRule(tocRule, in: sample, fullRange: fullRange)
+            guard validChapters > 0 else { continue }
+            if firstMatchedRule == nil {
+                firstMatchedRule = tocRule
             }
 
             // 与 Legado 评分逻辑对齐：有效章节数至少为误判短行 3 倍，且需超过历史最优规则至少 2 章
@@ -70,20 +55,33 @@ public enum TxtTocParser {
             }
         }
 
-        // 若采样短文本仅匹配到 1~2 章（例如单元测试或短篇小说），回落到首个有命中的启用规则
-        if bestRule == nil {
-            for tocRule in candidateRules {
-                guard let regex = try? NSRegularExpression(
-                    pattern: tocRule.rule,
-                    options: [.anchorsMatchLines]) else {
-                    continue
-                }
-                if regex.firstMatch(in: sample, options: [], range: fullRange) != nil {
-                    return tocRule
-                }
+        return bestRule ?? firstMatchedRule
+    }
+
+    private static func scoreRule(
+        _ tocRule: TxtTocRule,
+        in sample: String,
+        fullRange: NSRange) -> (valid: Int, noise: Int) {
+        guard let regex = try? NSRegularExpression(
+            pattern: tocRule.rule,
+            options: [.anchorsMatchLines]) else {
+            return (0, 0)
+        }
+        let matches = regex.matches(in: sample, options: [], range: fullRange)
+        var lastEnd = 0
+        var validChapters = 0
+        var shortNoise = 0
+
+        for match in matches {
+            let gap = match.range.location - lastEnd
+            if lastEnd == 0 || gap > 100 {
+                validChapters += 1
+                lastEnd = match.range.location + match.range.length
+            } else {
+                shortNoise += 1
             }
         }
-        return bestRule
+        return (validChapters, shortNoise)
     }
 
     /// 解析全文并智能切分为章节单元（支持自定义正则或 Legado 多规则自动优选）
