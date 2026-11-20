@@ -49,12 +49,12 @@ public final class DebugBookSourceUseCase: Sendable {
         query: String,
         onLog: (@Sendable (SourceDebugLog) -> Void)? = nil) async -> SourceDebugReport {
         let startTime = Date()
-        var logs: [SourceDebugLog] = []
+        let logStore = ThreadSafeDebugLogStore()
 
         let recordLog: @Sendable (SourceDebugLog.LogLevel, String, String?) -> Void = { level, msg, payload in
             let elapsed = Int(Date().timeIntervalSince(startTime) * 1000)
             let log = SourceDebugLog(level: level, message: msg, elapsedMs: elapsed, payload: payload)
-            logs.append(log)
+            logStore.append(log)
             onLog?(log)
         }
 
@@ -76,7 +76,7 @@ public final class DebugBookSourceUseCase: Sendable {
             sourceName: source.bookSourceName,
             isSuccess: isSuccess,
             durationMs: totalElapsed,
-            logs: logs,
+            logs: logStore.snapshot(),
             sampleResult: sampleResult)
     }
 
@@ -296,5 +296,22 @@ public final class DebugBookSourceUseCase: Sendable {
             recordLog(.error, "正文抓取失败: \(error.localizedDescription)", nil)
             return false
         }
+    }
+}
+
+private final class ThreadSafeDebugLogStore: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [SourceDebugLog] = []
+
+    func append(_ log: SourceDebugLog) {
+        lock.lock()
+        items.append(log)
+        lock.unlock()
+    }
+
+    func snapshot() -> [SourceDebugLog] {
+        lock.lock()
+        defer { lock.unlock() }
+        return items
     }
 }

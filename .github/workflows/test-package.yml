@@ -20,16 +20,15 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup tools
         run: |
-          brew install xcodegen swiftlint swiftformat xcbeautify
+          brew install xcodegen swiftlint xcbeautify
 
-      - name: Check code formatting & linting
-        continue-on-error: true
+      - name: Lint Swift code
         run: |
-          make format-check
+          swiftlint lint
 
       - name: Generate Xcode project
         run: |
@@ -73,7 +72,7 @@ jobs:
           ls -lh Legado-Test.ipa
 
       - name: Upload Test IPA Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Legado-Test-IPA-${{ github.sha }}
           path: build/Legado-Test.ipa
@@ -94,7 +93,7 @@ jobs:
 
       - name: Upload Simulator App Artifact
         if: ${{ inputs.include_simulator == true }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Legado-Simulator-App-${{ github.sha }}
           path: build/Legado-Simulator.zip

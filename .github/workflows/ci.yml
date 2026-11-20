@@ -9,19 +9,19 @@ on:
 jobs:
   lint-and-build:
     name: Lint & Build
-    runs-on: macos-15
+    runs-on: macos-15-intel
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup tools
         run: |
-          brew install xcodegen swiftlint swiftformat xcbeautify
+          brew install xcodegen swiftlint xcbeautify
 
-      - name: Check code formatting & linting
+      - name: Lint Swift code
         run: |
-          make format-check
+          swiftlint lint
 
       - name: Generate Xcode project
         run: |

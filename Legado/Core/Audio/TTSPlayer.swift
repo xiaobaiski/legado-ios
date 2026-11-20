@@ -343,20 +343,22 @@ public final class TTSPlayer: NSObject, ObservableObject {
 
 // MARK: - AVSpeechSynthesizerDelegate
 
-extension TTSPlayer: @preconcurrency AVSpeechSynthesizerDelegate {
-    public func speechSynthesizer(
+extension TTSPlayer: AVSpeechSynthesizerDelegate {
+    public nonisolated func speechSynthesizer(
         _: AVSpeechSynthesizer,
         didFinish _: AVSpeechUtterance) {
-        guard state == .playing else { return }
-        if currentSentenceIndex + 1 < sentences.count {
-            currentSentenceIndex += 1
-            playSentence(at: currentSentenceIndex)
-        } else {
-            advanceToNextChapterOrStop()
+        Task { @MainActor [weak self] in
+            guard let self, self.state == .playing else { return }
+            if self.currentSentenceIndex + 1 < self.sentences.count {
+                self.currentSentenceIndex += 1
+                self.playSentence(at: self.currentSentenceIndex)
+            } else {
+                self.advanceToNextChapterOrStop()
+            }
         }
     }
 
-    public func speechSynthesizer(
+    public nonisolated func speechSynthesizer(
         _: AVSpeechSynthesizer,
         didCancel _: AVSpeechUtterance) {
         // 取消事件

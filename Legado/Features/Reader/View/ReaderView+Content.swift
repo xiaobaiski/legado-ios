@@ -33,14 +33,35 @@ extension ReaderView {
     }
 
     func pagedContent(width: CGFloat, animated: Bool) -> some View {
-        ZStack {
-            if let page = viewModel.state.currentPage {
+        let isDual = viewModel.state.config.isDualPageActive(for: viewModel.state.screenBounds)
+        let maxSingleWidth: CGFloat? = width >= 760 ? 680 : nil
+        let alignedLeftIndex = isDual
+            ? (viewModel.state.currentPageIndex - viewModel.state.currentPageIndex % 2)
+            : viewModel.state.currentPageIndex
+
+        return ZStack {
+            if isDual, alignedLeftIndex >= 0, alignedLeftIndex < viewModel.state.pages.count {
+                let leftPage = viewModel.state.pages[alignedLeftIndex]
+                let rightPage = alignedLeftIndex + 1 < viewModel.state.pages.count
+                    ? viewModel.state.pages[alignedLeftIndex + 1]
+                    : nil
+                ReaderDualPageSpreadView(
+                    leftPage: leftPage,
+                    rightPage: rightPage,
+                    totalPages: viewModel.state.pages.count,
+                    totalChapters: viewModel.state.chapters.count,
+                    config: viewModel.state.config,
+                    highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil)
+                    .id("dual_\(leftPage.chapterIndex)_\(leftPage.pageIndex)")
+                    .transition(animated ? .opacity : .identity)
+            } else if let page = viewModel.state.currentPage {
                 ReaderPageView(
                     page: page,
                     totalPages: viewModel.state.pages.count,
                     totalChapters: viewModel.state.chapters.count,
                     config: viewModel.state.config,
-                    highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil)
+                    highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil,
+                    maxContentWidth: maxSingleWidth)
                     .id("\(page.chapterIndex)_\(page.pageIndex)")
                     .transition(animated ? .opacity : .identity)
             }
@@ -66,21 +87,48 @@ extension ReaderView {
     }
 
     func slideContent(width: CGFloat) -> some View {
-        ZStack {
-            TabView(selection: Binding(
-                get: { viewModel.state.currentPageIndex },
-                set: { viewModel.send(.jumpToPage($0)) })) {
-                    ForEach(viewModel.state.pages) { page in
-                        ReaderPageView(
-                            page: page,
-                            totalPages: viewModel.state.pages.count,
-                            totalChapters: viewModel.state.chapters.count,
-                            config: viewModel.state.config,
-                            highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil)
-                            .tag(page.pageIndex)
+        let isDual = viewModel.state.config.isDualPageActive(for: viewModel.state.screenBounds)
+        let maxSingleWidth: CGFloat? = width >= 760 ? 680 : nil
+        let spreadIndices = stride(from: 0, to: viewModel.state.pages.count, by: 2).map { $0 }
+
+        return ZStack {
+            if isDual {
+                TabView(selection: Binding(
+                    get: { viewModel.state.currentPageIndex - viewModel.state.currentPageIndex % 2 },
+                    set: { viewModel.send(.jumpToPage($0)) })) {
+                        ForEach(spreadIndices, id: \.self) { leftIdx in
+                            let leftPage = viewModel.state.pages[leftIdx]
+                            let rightPage = leftIdx + 1 < viewModel.state.pages.count
+                                ? viewModel.state.pages[leftIdx + 1]
+                                : nil
+                            ReaderDualPageSpreadView(
+                                leftPage: leftPage,
+                                rightPage: rightPage,
+                                totalPages: viewModel.state.pages.count,
+                                totalChapters: viewModel.state.chapters.count,
+                                config: viewModel.state.config,
+                                highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil)
+                                .tag(leftIdx)
+                        }
                     }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+            } else {
+                TabView(selection: Binding(
+                    get: { viewModel.state.currentPageIndex },
+                    set: { viewModel.send(.jumpToPage($0)) })) {
+                        ForEach(viewModel.state.pages) { page in
+                            ReaderPageView(
+                                page: page,
+                                totalPages: viewModel.state.pages.count,
+                                totalChapters: viewModel.state.chapters.count,
+                                config: viewModel.state.config,
+                                highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil,
+                                maxContentWidth: maxSingleWidth)
+                                .tag(page.pageIndex)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+            }
 
             Color.clear
                 .frame(width: width * 0.4)
@@ -96,19 +144,20 @@ extension ReaderView {
         let paragraphs = viewModel.state.currentChapterText
             .components(separatedBy: .newlines)
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        let maxWidth: CGFloat? = viewModel.state.screenBounds.width >= 760 ? 700 : nil
 
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: config.paragraphSpacing) {
                 if let chapter = viewModel.state.currentChapter {
                     Text(config.chineseConversion.convert(chapter.title))
-                        .font(config.fontFamily.swiftUIFont(size: config.fontSize + 4, isBold: true))
+                        .font(config.resolvedSwiftUIFont(size: config.fontSize + 4, isBold: true))
                         .foregroundStyle(config.theme.textColor)
                         .padding(.bottom, 8)
                 }
 
                 ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, paragraph in
                     Text(renderedScrollText(paragraph))
-                        .font(config.fontFamily.swiftUIFont(size: config.fontSize, isBold: config.isBoldFont))
+                        .font(config.resolvedSwiftUIFont())
                         .tracking(config.letterSpacing)
                         .lineSpacing(config.lineSpacing)
                         .foregroundStyle(config.theme.textColor)
@@ -118,6 +167,8 @@ extension ReaderView {
                 scrollChapterFooter
                     .padding(.top, 24)
             }
+            .frame(maxWidth: maxWidth ?? .infinity)
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, config.horizontalMargin)
             .padding(.top, config.topMargin)
             .padding(.bottom, config.bottomMargin + 28)

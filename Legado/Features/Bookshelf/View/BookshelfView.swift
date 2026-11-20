@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 /// 书架主视图：遵循 MVI 单向数据流与 iOS 18+ 原生液态玻璃美学
 public struct BookshelfView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject private var viewModel: BookshelfViewModel
     @State private var activeToast: String?
@@ -214,13 +215,13 @@ public struct BookshelfView: View {
     // MARK: - Books Content
 
     private var booksGridContent: some View {
-        LazyVGrid(
-            columns: [
-                GridItem(.flexible(), spacing: 14),
-                GridItem(.flexible(), spacing: 14),
-                GridItem(.flexible(), spacing: 14),
-            ],
-            spacing: 16) {
+        let isWide = horizontalSizeClass == .regular
+        let gridSpacing: CGFloat = isWide ? 18 : 14
+        let columns = [GridItem(.adaptive(minimum: isWide ? 136 : 102, maximum: 180), spacing: gridSpacing)]
+
+        return LazyVGrid(
+            columns: columns,
+            spacing: isWide ? 20 : 16) {
                 ForEach(viewModel.state.filteredBooks) { book in
                     BookshelfBookCardView(
                         book: book,
@@ -336,6 +337,7 @@ private extension BookshelfView {
             onFinish: {
                 viewModel.send(.toggleBatchMode)
             })
+            .frame(maxWidth: horizontalSizeClass == .regular ? 540 : .infinity)
             .padding(.horizontal, 24)
             .padding(.bottom, 16)
             .transition(.move(edge: .bottom).combined(with: .opacity))

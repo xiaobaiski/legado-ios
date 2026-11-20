@@ -30,7 +30,8 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             speechRate: initialSpeechRate,
             speechPitch: initialSpeechPitch,
             cacheSizeBytes: initialCacheSize,
-            readerConfig: ReaderConfigStore.load()))
+            readerConfig: ReaderConfigStore.load(),
+            importedFonts: LocalFontManager.shared.listImportedFonts()))
     }
 
     override public func send(_ intent: SettingsIntent) {
@@ -42,7 +43,8 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             handleSyncIntent(intent)
 
         case .updateSpeechRate, .updateSpeechPitch, .refreshCacheSize, .clearAllCache,
-             .refreshReaderConfig, .updateReaderConfig, .resetReaderConfig, .clearNotice:
+             .refreshReaderConfig, .updateReaderConfig, .resetReaderConfig,
+             .importLocalFonts, .selectLocalFont, .deleteLocalFont, .clearNotice:
             handleGeneralIntent(intent)
         }
     }
@@ -108,7 +110,10 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             emitEffect(.hapticFeedback)
 
         case .refreshReaderConfig:
-            updateState { $0.readerConfig = ReaderConfigStore.load() }
+            updateState {
+                $0.readerConfig = ReaderConfigStore.load()
+                $0.importedFonts = LocalFontManager.shared.listImportedFonts()
+            }
 
         case let .updateReaderConfig(config):
             updateState { $0.readerConfig = config }
@@ -123,6 +128,21 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             emitEffect(.showToast("已恢复默认阅读排版与偏好"))
             emitEffect(.hapticFeedback)
 
+        case let .importLocalFonts(urls):
+            handleImportLocalFonts(urls: urls)
+
+        case let .selectLocalFont(font):
+            var updated = state.readerConfig
+            updated.customFontName = font.postScriptName
+            updated.customFontDisplayName = font.displayName
+            updateState { $0.readerConfig = updated }
+            ReaderConfigStore.save(updated)
+            emitEffect(.showToast("已切换阅读字体为「\(font.displayName)」"))
+            emitEffect(.hapticFeedback)
+
+        case let .deleteLocalFont(font):
+            handleDeleteLocalFont(font)
+
         case .clearNotice:
             updateState {
                 $0.errorMessage = nil
@@ -131,6 +151,61 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
 
         default:
             break
+        }
+    }
+
+    private func handleImportLocalFonts(urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                var imported: [ImportedFont] = []
+                var lastError: Error?
+                for url in urls {
+                    do {
+                        let font = try LocalFontManager.shared.importFont(from: url)
+                        imported.append(font)
+                    } catch {
+                        lastError = error
+                    }
+                }
+                let allFonts = LocalFontManager.shared.listImportedFonts()
+                return (imported, allFonts, lastError)
+            }.value
+
+            updateState { $0.importedFonts = result.1 }
+            if let first = result.0.first {
+                var updated = state.readerConfig
+                updated.customFontName = first.postScriptName
+                updated.customFontDisplayName = first.displayName
+                updateState { $0.readerConfig = updated }
+                ReaderConfigStore.save(updated)
+                let msg = result.0.count == 1
+                    ? "已导入并应用字体「\(first.displayName)」"
+                    : "成功导入 \(result.0.count) 款本地字体"
+                emitEffect(.showToast(msg))
+                emitEffect(.hapticFeedback)
+            } else if let lastError = result.2 {
+                emitEffect(.showToast("字体导入失败: \(lastError.localizedDescription)"))
+            }
+        }
+    }
+
+    private func handleDeleteLocalFont(_ font: ImportedFont) {
+        do {
+            try LocalFontManager.shared.deleteFont(font)
+            let updatedFonts = LocalFontManager.shared.listImportedFonts()
+            updateState { $0.importedFonts = updatedFonts }
+            if state.readerConfig.customFontName == font.postScriptName {
+                var updated = state.readerConfig
+                updated.customFontName = nil
+                updated.customFontDisplayName = nil
+                updateState { $0.readerConfig = updated }
+                ReaderConfigStore.save(updated)
+            }
+            emitEffect(.showToast("已删除字体「\(font.displayName)」"))
+            emitEffect(.hapticFeedback)
+        } catch {
+            emitEffect(.showToast("删除字体失败: \(error.localizedDescription)"))
         }
     }
 

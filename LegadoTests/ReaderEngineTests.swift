@@ -214,4 +214,45 @@ struct ReaderEngineTests {
             config: spacious)
         #expect(spaciousPages.count > compactPages.count)
     }
+
+    @Test("Test iPad Dual-Page Layout Calculation and LocalFontManager Validation")
+    func iPadLayoutAndLocalFontValidation() {
+        let engine = TextLayoutEngine.shared
+        let iPhoneBounds = CGRect(x: 0, y: 0, width: 393, height: 852)
+        let iPadBounds = CGRect(x: 0, y: 0, width: 1024, height: 768)
+
+        var config = ReaderConfig.defaultConfig
+        config.enableIPadDualPage = true
+
+        #expect(!config.isDualPageActive(for: iPhoneBounds))
+        #expect(config.isDualPageActive(for: iPadBounds))
+
+        // iPad 双页单栏宽度应严格小于半屏
+        let dualRect = engine.contentRenderRect(for: iPadBounds, config: config)
+        #expect(dualRect.width < iPadBounds.width / 2)
+
+        // iPad 单页模式下内容宽度受最大舒适行宽限制 (<= 680pt)
+        config.enableIPadDualPage = false
+        let singleWideRect = engine.contentRenderRect(for: iPadBounds, config: config)
+        #expect(singleWideRect.width <= 680)
+
+        // 验证 LocalFontManager 对非法格式的校验
+        let tempFontsDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TestFonts_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempFontsDir) }
+        let manager = LocalFontManager(fontsDirectory: tempFontsDir)
+        #expect(manager.listImportedFonts().isEmpty)
+
+        let badExtFile = FileManager.default.temporaryDirectory.appendingPathComponent("bad_font.txt")
+        try? Data("not a font".utf8).write(to: badExtFile)
+        defer { try? FileManager.default.removeItem(at: badExtFile) }
+
+        var caughtUnsupported = false
+        do {
+            _ = try manager.importFont(from: badExtFile)
+        } catch is LocalFontImportError {
+            caughtUnsupported = true
+        } catch {}
+        #expect(caughtUnsupported)
+    }
 }

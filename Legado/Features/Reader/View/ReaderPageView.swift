@@ -9,18 +9,21 @@ public struct ReaderPageView: View {
     let totalChapters: Int
     let config: ReaderConfig
     let highlightedSentence: String?
+    let maxContentWidth: CGFloat?
 
     public init(
         page: ReaderPage,
         totalPages: Int,
         totalChapters: Int = 1,
         config: ReaderConfig,
-        highlightedSentence: String? = nil) {
+        highlightedSentence: String? = nil,
+        maxContentWidth: CGFloat? = nil) {
         self.page = page
         self.totalPages = totalPages
         self.totalChapters = totalChapters
         self.config = config
         self.highlightedSentence = highlightedSentence
+        self.maxContentWidth = maxContentWidth
     }
 
     private var bookProgressPercent: String {
@@ -48,6 +51,7 @@ public struct ReaderPageView: View {
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(config.theme.textColor.opacity(0.48))
                 }
+                .frame(maxWidth: maxContentWidth ?? .infinity)
                 .padding(.horizontal, config.horizontalMargin)
                 .padding(.top, 10)
                 .frame(height: config.topMargin, alignment: .bottom)
@@ -60,7 +64,7 @@ public struct ReaderPageView: View {
                 content: page.contentText,
                 config: config,
                 highlightedSentence: highlightedSentence)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: maxContentWidth ?? .infinity, maxHeight: .infinity)
                 .padding(.horizontal, config.horizontalMargin)
                 .padding(.top, 8)
                 .padding(.bottom, 8)
@@ -80,6 +84,7 @@ public struct ReaderPageView: View {
 
                     batteryBadge
                 }
+                .frame(maxWidth: maxContentWidth ?? .infinity)
                 .padding(.horizontal, config.horizontalMargin)
                 .padding(.bottom, 12)
                 .frame(height: config.bottomMargin, alignment: .top)
@@ -165,5 +170,69 @@ private final class CoreTextDrawView: UIView {
         let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
         CTFrameDraw(frame, context)
         context.restoreGState()
+    }
+}
+
+/// iPad 大屏双页并排阅读视图（左右双栏 + 中央轻书脊分隔线）
+public struct ReaderDualPageSpreadView: View {
+    let leftPage: ReaderPage
+    let rightPage: ReaderPage?
+    let totalPages: Int
+    let totalChapters: Int
+    let config: ReaderConfig
+    let highlightedSentence: String?
+
+    public init(
+        leftPage: ReaderPage,
+        rightPage: ReaderPage?,
+        totalPages: Int,
+        totalChapters: Int,
+        config: ReaderConfig,
+        highlightedSentence: String? = nil) {
+        self.leftPage = leftPage
+        self.rightPage = rightPage
+        self.totalPages = totalPages
+        self.totalChapters = totalChapters
+        self.config = config
+        self.highlightedSentence = highlightedSentence
+    }
+
+    public var body: some View {
+        HStack(spacing: 0) {
+            ReaderPageView(
+                page: leftPage,
+                totalPages: totalPages,
+                totalChapters: totalChapters,
+                config: config,
+                highlightedSentence: highlightedSentence)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // 居中柔和书脊分隔区（32pt 与 TextLayoutEngine centerGutter 精确对应）
+            ZStack {
+                config.theme.backgroundColor
+                Rectangle()
+                    .fill(config.theme.textColor.opacity(0.08))
+                    .frame(width: 1)
+                    .padding(.vertical, 36)
+            }
+            .frame(width: 32)
+            .ignoresSafeArea()
+
+            if let rightPage {
+                ReaderPageView(
+                    page: rightPage,
+                    totalPages: totalPages,
+                    totalChapters: totalChapters,
+                    config: config,
+                    highlightedSentence: highlightedSentence)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                config.theme.backgroundColor
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea()
+            }
+        }
+        .background(config.theme.backgroundColor)
+        .ignoresSafeArea()
     }
 }

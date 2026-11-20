@@ -42,7 +42,8 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
             book: book,
             currentChapterIndex: startChapter,
             config: ReaderConfigStore.load(),
-            isHUDVisible: showHUDInitially))
+            isHUDVisible: showHUDInitially,
+            importedFonts: LocalFontManager.shared.listImportedFonts()))
 
         loadTocAndStartReading()
         loadBookmarks()
@@ -94,7 +95,8 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
             handleConfigIntent(intent)
 
         case .updateConfig, .resetConfig, .openMoreSettings, .closeMoreSettings,
-             .toggleAutoPage, .setAutoPageInterval:
+             .toggleAutoPage, .setAutoPageInterval, .importFonts, .selectCustomFont,
+             .deleteImportedFont, .refreshImportedFonts:
             handleExtendedConfigIntent(intent)
 
         case let .updateScreenBounds(rect):
@@ -263,8 +265,10 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
     }
 
     private func handleNextPage() {
-        if state.currentPageIndex + 1 < state.pages.count {
-            updateState { $0.currentPageIndex += 1 }
+        let step = state.config.isDualPageActive(for: state.screenBounds) ? 2 : 1
+        let alignedCurrent = step == 2 ? (state.currentPageIndex - state.currentPageIndex % 2) : state.currentPageIndex
+        if alignedCurrent + step < state.pages.count {
+            updateState { $0.currentPageIndex = alignedCurrent + step }
             saveReadingProgress()
             emitHapticIfEnabled()
         } else if state.currentChapterIndex + 1 < state.chapters.count {
@@ -277,8 +281,14 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
     }
 
     private func handlePrevPage() {
-        if state.currentPageIndex > 0 {
-            updateState { $0.currentPageIndex -= 1 }
+        let step = state.config.isDualPageActive(for: state.screenBounds) ? 2 : 1
+        let alignedCurrent = step == 2 ? (state.currentPageIndex - state.currentPageIndex % 2) : state.currentPageIndex
+        if alignedCurrent - step >= 0 {
+            updateState { $0.currentPageIndex = alignedCurrent - step }
+            saveReadingProgress()
+            emitHapticIfEnabled()
+        } else if alignedCurrent > 0 {
+            updateState { $0.currentPageIndex = 0 }
             saveReadingProgress()
             emitHapticIfEnabled()
         } else if state.currentChapterIndex > 0 {

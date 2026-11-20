@@ -6,6 +6,7 @@ public struct SettingsView: View {
     @State private var toastMessage: String?
     @State private var hapticTrigger = false
     @State var isShowingClearAlert = false
+    @State var isShowingFontPicker = false
 
     public init(viewModel: SettingsViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -18,6 +19,10 @@ public struct SettingsView: View {
                 // MARK: - 阅读与交互偏好分区
 
                 readingPreferencesSection
+
+                // MARK: - 本地字体管理分区
+
+                localFontsSection
 
                 // MARK: - WebDAV 云同步分区
 
@@ -85,6 +90,21 @@ public struct SettingsView: View {
                 }
             } message: {
                 Text("确定要删除所有书籍已下载的离线章节正文吗？此操作可释放 \(viewModel.state.formattedCacheSize) 存储空间。")
+            }
+            .sheet(isPresented: $isShowingFontPicker) {
+                DocumentPickerView(
+                    allowedContentTypes: LocalFontManager.allowedContentTypes,
+                    allowsMultipleSelection: true,
+                    onPick: { urls in
+                        isShowingFontPicker = false
+                        if !urls.isEmpty {
+                            viewModel.send(.importLocalFonts(urls))
+                        }
+                    },
+                    onCancel: {
+                        isShowingFontPicker = false
+                    })
+                    .ignoresSafeArea()
             }
         }
     }

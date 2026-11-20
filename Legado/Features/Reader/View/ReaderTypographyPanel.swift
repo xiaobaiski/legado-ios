@@ -12,8 +12,11 @@ public struct ReaderTypographyPanel: View {
     }
 
     let config: ReaderConfig
+    let importedFonts: [ImportedFont]
     let isAutoPaging: Bool
     let onUpdateConfig: (ReaderConfig) -> Void
+    let onSelectCustomFont: (ImportedFont) -> Void
+    let onOpenFontImporter: () -> Void
     let onResetConfig: () -> Void
     let onOpenMoreSettings: () -> Void
     let onToggleAutoPage: () -> Void
@@ -22,14 +25,20 @@ public struct ReaderTypographyPanel: View {
 
     public init(
         config: ReaderConfig,
+        importedFonts: [ImportedFont] = [],
         isAutoPaging: Bool = false,
         onUpdateConfig: @escaping (ReaderConfig) -> Void,
+        onSelectCustomFont: @escaping (ImportedFont) -> Void = { _ in },
+        onOpenFontImporter: @escaping () -> Void = {},
         onResetConfig: @escaping () -> Void,
         onOpenMoreSettings: @escaping () -> Void,
         onToggleAutoPage: @escaping () -> Void) {
         self.config = config
+        self.importedFonts = importedFonts
         self.isAutoPaging = isAutoPaging
         self.onUpdateConfig = onUpdateConfig
+        self.onSelectCustomFont = onSelectCustomFont
+        self.onOpenFontImporter = onOpenFontImporter
         self.onResetConfig = onResetConfig
         self.onOpenMoreSettings = onOpenMoreSettings
         self.onToggleAutoPage = onToggleAutoPage
@@ -133,28 +142,61 @@ private extension ReaderTypographyPanel {
                 .foregroundStyle(.secondary)
                 .frame(width: 34, alignment: .leading)
 
-            ForEach(ReaderFontFamily.allCases) { family in
-                let isSelected = config.fontFamily == family
-                Button {
-                    update { $0.fontFamily = family }
-                } label: {
-                    Text(family.rawValue)
-                        .font(.caption.weight(isSelected ? .semibold : .regular))
-                        .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.10)))
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(
-                                    isSelected ? Color.accentColor.opacity(0.4) : Color.white.opacity(0.12),
-                                    lineWidth: 0.5))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(ReaderFontFamily.allCases) { family in
+                        let isSelected = config.customFontName == nil && config.fontFamily == family
+                        fontChip(title: family.rawValue, isSelected: isSelected) {
+                            update {
+                                $0.customFontName = nil
+                                $0.customFontDisplayName = nil
+                                $0.fontFamily = family
+                            }
+                        }
+                    }
+
+                    ForEach(importedFonts) { font in
+                        let isSelected = config.customFontName == font.postScriptName
+                        fontChip(title: font.displayName, isSelected: isSelected) {
+                            onSelectCustomFont(font)
+                        }
+                    }
+
+                    Button(action: onOpenFontImporter) {
+                        Label("导入字体", systemImage: "plus")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Capsule(style: .continuous).fill(Color.accentColor.opacity(0.12)))
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(Color.accentColor.opacity(0.35), lineWidth: 0.5))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
+    }
+
+    func fontChip(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption.weight(isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.10)))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(
+                            isSelected ? Color.accentColor.opacity(0.4) : Color.white.opacity(0.12),
+                            lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
     }
 
     var spacingSliders: some View {
@@ -294,167 +336,7 @@ private extension ReaderTypographyPanel {
     }
 }
 
-// MARK: - 外观与快捷开关区
-
-private extension ReaderTypographyPanel {
-    var appearanceControlsSection: some View {
-        VStack(spacing: 14) {
-            brightnessSection
-            themesGridSection
-            quickToggleButtons
-            footerActionRow
-        }
-        .padding(.vertical, 2)
-    }
-
-    var brightnessSection: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "sun.min")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Slider(
-                value: Binding(
-                    get: { config.customBrightness },
-                    set: { newVal in
-                        update {
-                            $0.followSystemBrightness = false
-                            $0.customBrightness = newVal
-                        }
-                    }),
-                in: 0.05 ... 1.0)
-                .tint(.accentColor)
-
-            Image(systemName: "sun.max.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button {
-                update { $0.followSystemBrightness.toggle() }
-            } label: {
-                Text("系统")
-                    .font(.caption.weight(config.followSystemBrightness ? .semibold : .regular))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(
-                                config.followSystemBrightness
-                                    ? Color.accentColor.opacity(0.18)
-                                    : Color.secondary.opacity(0.12)))
-                    .foregroundStyle(config.followSystemBrightness ? Color.accentColor : Color.primary)
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    var themesGridSection: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(ReaderTheme.allCases) { theme in
-                    let isSelected = config.theme == theme
-                    Button {
-                        update { $0.theme = theme }
-                    } label: {
-                        VStack(spacing: 4) {
-                            ZStack {
-                                Circle()
-                                    .fill(theme.backgroundColor)
-                                    .frame(width: 38, height: 38)
-                                    .overlay(
-                                        Circle()
-                                            .stroke(
-                                                isSelected ? Color.accentColor : Color.secondary.opacity(0.25),
-                                                lineWidth: isSelected ? 2.5 : 0.8))
-
-                                Text("文")
-                                    .font(.caption.bold())
-                                    .foregroundStyle(theme.textColor)
-                            }
-
-                            Text(theme.name)
-                                .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
-                                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 2)
-        }
-    }
-
-    var quickToggleButtons: some View {
-        HStack(spacing: 8) {
-            quickPillToggle(
-                title: "震动反馈",
-                icon: config.isHapticEnabled ? "iphone.radiowaves.left.and.right" : "iphone.slash",
-                isOn: config.isHapticEnabled) {
-                    update { $0.isHapticEnabled.toggle() }
-                }
-
-            quickPillToggle(
-                title: "屏幕常亮",
-                icon: config.keepScreenOn ? "sun.max" : "moon.zzz",
-                isOn: config.keepScreenOn) {
-                    update { $0.keepScreenOn.toggle() }
-                }
-
-            quickPillToggle(
-                title: isAutoPaging ? "停止自动" : "自动翻页",
-                icon: isAutoPaging ? "pause.circle.fill" : "play.circle",
-                isOn: isAutoPaging,
-                action: onToggleAutoPage)
-        }
-    }
-
-    func quickPillToggle(
-        title: String,
-        icon: String,
-        isOn: Bool,
-        action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.caption2)
-                Text(title)
-                    .font(.caption.weight(isOn ? .semibold : .regular))
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(isOn ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.10)))
-            .foregroundStyle(isOn ? Color.accentColor : Color.primary)
-        }
-        .buttonStyle(.plain)
-    }
-
-    var footerActionRow: some View {
-        HStack(spacing: 10) {
-            Button(action: onOpenMoreSettings) {
-                Label("更多阅读设置", systemImage: "slider.horizontal.3")
-                    .font(.caption.weight(.medium))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(Color.secondary.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .buttonStyle(.plain)
-
-            Button(action: onResetConfig) {
-                Label("恢复默认", systemImage: "arrow.counterclockwise")
-                    .font(.caption.weight(.medium))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Color.secondary.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
+extension ReaderTypographyPanel {
     func update(_ mutate: (inout ReaderConfig) -> Void) {
         var next = config
         mutate(&next)

@@ -36,8 +36,77 @@ extension ReaderViewModel {
                 restartAutoPageTimer()
             }
 
+        case let .importFonts(urls):
+            handleImportFonts(urls: urls)
+
+        case let .selectCustomFont(font):
+            var updated = state.config
+            updated.customFontName = font.postScriptName
+            updated.customFontDisplayName = font.displayName
+            applyNewConfig(updated)
+
+        case let .deleteImportedFont(font):
+            handleDeleteImportedFont(font)
+
+        case .refreshImportedFonts:
+            let fonts = LocalFontManager.shared.listImportedFonts()
+            updateState { $0.importedFonts = fonts }
+
         default:
             break
+        }
+    }
+
+    func handleImportFonts(urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                var imported: [ImportedFont] = []
+                var lastError: Error?
+                for url in urls {
+                    do {
+                        let font = try LocalFontManager.shared.importFont(from: url)
+                        imported.append(font)
+                    } catch {
+                        lastError = error
+                    }
+                }
+                let allFonts = LocalFontManager.shared.listImportedFonts()
+                return (imported, allFonts, lastError)
+            }.value
+
+            updateState { $0.importedFonts = result.1 }
+
+            if let first = result.0.first {
+                var updated = state.config
+                updated.customFontName = first.postScriptName
+                updated.customFontDisplayName = first.displayName
+                applyNewConfig(updated)
+                let msg = result.0.count == 1
+                    ? "已导入并应用字体「\(first.displayName)」"
+                    : "成功导入 \(result.0.count) 款本地字体"
+                emitEffect(.showToast(msg))
+            } else if let lastError = result.2 {
+                emitEffect(.showToast("字体导入失败: \(lastError.localizedDescription)"))
+            }
+        }
+    }
+
+    func handleDeleteImportedFont(_ font: ImportedFont) {
+        do {
+            try LocalFontManager.shared.deleteFont(font)
+            let updatedFonts = LocalFontManager.shared.listImportedFonts()
+            updateState { $0.importedFonts = updatedFonts }
+            if state.config.customFontName == font.postScriptName {
+                var updated = state.config
+                updated.customFontName = nil
+                updated.customFontDisplayName = nil
+                applyNewConfig(updated)
+            }
+            emitEffect(.showToast("已删除字体「\(font.displayName)」"))
+            emitHapticIfEnabled()
+        } catch {
+            emitEffect(.showToast("删除字体失败: \(error.localizedDescription)"))
         }
     }
 

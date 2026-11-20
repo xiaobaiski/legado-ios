@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 书籍详情页面视图 (纯声明式渲染 View = f(State))
 public struct BookDetailView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject var viewModel: BookDetailViewModel
     @State private var toastMessage: String?
@@ -28,6 +29,8 @@ public struct BookDetailView: View {
                 // 目录与最新章节预览卡片
                 tocPreviewCard
             }
+            .frame(maxWidth: horizontalSizeClass == .regular ? 720 : .infinity)
+            .frame(maxWidth: .infinity)
             .padding(16)
         }
         .background {

@@ -18,6 +18,7 @@ public struct ReaderState: ViewState, Equatable, Sendable {
     public var screenBounds: CGRect
     public var toastMessage: String?
     public var bookmarks: [Bookmark]
+    public var importedFonts: [ImportedFont]
 
     public init(
         book: Book,
@@ -34,7 +35,8 @@ public struct ReaderState: ViewState, Equatable, Sendable {
         isLoading: Bool = false,
         screenBounds: CGRect = .zero,
         toastMessage: String? = nil,
-        bookmarks: [Bookmark] = []) {
+        bookmarks: [Bookmark] = [],
+        importedFonts: [ImportedFont] = []) {
         self.book = book
         self.chapters = chapters
         self.currentChapterIndex = currentChapterIndex
@@ -50,6 +52,7 @@ public struct ReaderState: ViewState, Equatable, Sendable {
         self.screenBounds = screenBounds
         self.toastMessage = toastMessage
         self.bookmarks = bookmarks
+        self.importedFonts = importedFonts
     }
 
     public var currentChapter: Chapter? {

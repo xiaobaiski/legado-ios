@@ -9,6 +9,7 @@ extension SettingsView {
             Toggle("阅读时屏幕常亮", isOn: readerBinding(\.keepScreenOn))
             Toggle("点击屏幕翻页", isOn: readerBinding(\.tapToTurnPage))
             Toggle("左手翻页模式", isOn: readerBinding(\.leftHandMode))
+            Toggle("iPad 大屏双页分栏", isOn: readerBinding(\.enableIPadDualPage))
 
             Picker("繁简转换", selection: readerBinding(\.chineseConversion)) {
                 ForEach(ChineseConversionMode.allCases) { mode in
@@ -39,6 +40,56 @@ extension SettingsView {
                 updated[keyPath: keyPath] = newValue
                 viewModel.send(.updateReaderConfig(updated))
             })
+    }
+
+    var localFontsSection: some View {
+        Section {
+            Button {
+                isShowingFontPicker = true
+            } label: {
+                Label("导入本地字体 (TTF / OTF / TTC)", systemImage: "textformat.alt")
+            }
+
+            if viewModel.state.importedFonts.isEmpty {
+                Text("尚未导入自定义字体")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(viewModel.state.importedFonts) { font in
+                    let isSelected = viewModel.state.readerConfig.customFontName == font.postScriptName
+                    HStack {
+                        Button {
+                            viewModel.send(.selectLocalFont(font))
+                        } label: {
+                            HStack {
+                                Text(font.displayName)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                if isSelected {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(role: .destructive) {
+                            viewModel.send(.deleteLocalFont(font))
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.leading, 8)
+                    }
+                }
+            }
+        } header: {
+            Label("自定义阅读字体", systemImage: "character.book.closed")
+        } footer: {
+            Text("也支持在 iOS「文件」App 中直接将字体文件放入「我的 iPhone / iPad -> Legado -> Fonts」目录。")
+        }
     }
 
     var storageSection: some View {

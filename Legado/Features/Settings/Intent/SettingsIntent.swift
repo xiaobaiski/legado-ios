@@ -16,6 +16,9 @@ public enum SettingsIntent: ViewIntent {
     case refreshReaderConfig
     case updateReaderConfig(ReaderConfig)
     case resetReaderConfig
+    case importLocalFonts([URL])
+    case selectLocalFont(ImportedFont)
+    case deleteLocalFont(ImportedFont)
     case clearNotice
 }
 

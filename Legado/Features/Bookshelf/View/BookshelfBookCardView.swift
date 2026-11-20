@@ -78,9 +78,12 @@ public struct BookshelfBookCardView: View {
 
     private var coverSection: some View {
         ZStack(alignment: .topTrailing) {
-            bookCoverImage
-                .frame(maxWidth: .infinity)
-                .frame(height: 140)
+            Color.clear
+                .aspectRatio(0.72, contentMode: .fit)
+                .overlay {
+                    bookCoverImage
+                }
+                .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             // 批量选择勾选框

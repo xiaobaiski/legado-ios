@@ -138,6 +138,8 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
     public var isTextJustified: Bool
     public var isBoldFont: Bool
     public var fontFamily: ReaderFontFamily
+    public var customFontName: String?
+    public var customFontDisplayName: String?
     public var theme: ReaderTheme
     public var pageTurnMode: PageTurnMode
     public var horizontalMargin: CGFloat
@@ -154,6 +156,7 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
     public var leftHandMode: Bool
     public var autoPageIntervalSeconds: Double
     public var chineseConversion: ChineseConversionMode
+    public var enableIPadDualPage: Bool
 
     public init(
         fontSize: CGFloat = 19.0,
@@ -164,6 +167,8 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         isTextJustified: Bool = true,
         isBoldFont: Bool = false,
         fontFamily: ReaderFontFamily = .system,
+        customFontName: String? = nil,
+        customFontDisplayName: String? = nil,
         theme: ReaderTheme = .paper,
         pageTurnMode: PageTurnMode = .cover,
         horizontalMargin: CGFloat = 18.0,
@@ -179,7 +184,8 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         tapToTurnPage: Bool = true,
         leftHandMode: Bool = false,
         autoPageIntervalSeconds: Double = 8.0,
-        chineseConversion: ChineseConversionMode = .none) {
+        chineseConversion: ChineseConversionMode = .none,
+        enableIPadDualPage: Bool = true) {
         self.fontSize = fontSize
         self.lineSpacing = lineSpacing
         self.paragraphSpacing = paragraphSpacing
@@ -188,6 +194,8 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         self.isTextJustified = isTextJustified
         self.isBoldFont = isBoldFont
         self.fontFamily = fontFamily
+        self.customFontName = customFontName
+        self.customFontDisplayName = customFontDisplayName
         self.theme = theme
         self.pageTurnMode = pageTurnMode
         self.horizontalMargin = horizontalMargin
@@ -204,6 +212,7 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         self.leftHandMode = leftHandMode
         self.autoPageIntervalSeconds = autoPageIntervalSeconds
         self.chineseConversion = chineseConversion
+        self.enableIPadDualPage = enableIPadDualPage
     }
 
     public init(from decoder: Decoder) throws {
@@ -222,6 +231,8 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         self.isBoldFont = try container.decodeIfPresent(Bool.self, forKey: .isBoldFont) ?? defaults.isBoldFont
         self.fontFamily = try container.decodeIfPresent(ReaderFontFamily.self, forKey: .fontFamily)
             ?? defaults.fontFamily
+        self.customFontName = try container.decodeIfPresent(String.self, forKey: .customFontName)
+        self.customFontDisplayName = try container.decodeIfPresent(String.self, forKey: .customFontDisplayName)
         self.theme = try container.decodeIfPresent(ReaderTheme.self, forKey: .theme) ?? defaults.theme
         self.pageTurnMode = try container.decodeIfPresent(PageTurnMode.self, forKey: .pageTurnMode)
             ?? defaults.pageTurnMode
@@ -245,9 +256,36 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
             ?? defaults.autoPageIntervalSeconds
         self.chineseConversion = try container.decodeIfPresent(ChineseConversionMode.self, forKey: .chineseConversion)
             ?? defaults.chineseConversion
+        self.enableIPadDualPage = try container.decodeIfPresent(Bool.self, forKey: .enableIPadDualPage)
+            ?? defaults.enableIPadDualPage
     }
 
     public static let defaultConfig = ReaderConfig()
+
+    /// 判断给定画布尺寸下是否启用 iPad 双页并排阅读
+    public func isDualPageActive(for bounds: CGRect) -> Bool {
+        enableIPadDualPage && pageTurnMode != .scroll && bounds.width >= 760
+    }
+
+    /// 解析当前最终使用的 UIFont（优先自定义本地字体，失败回退内置字体）
+    public func resolvedUIFont(size: CGFloat? = nil, isBold: Bool? = nil) -> UIFont {
+        let targetSize = size ?? fontSize
+        let targetBold = isBold ?? isBoldFont
+        if let customName = customFontName, !customName.isEmpty,
+           let baseFont = UIFont(name: customName, size: targetSize) {
+            if targetBold,
+               let boldDescriptor = baseFont.fontDescriptor.withSymbolicTraits(.traitBold) {
+                return UIFont(descriptor: boldDescriptor, size: targetSize)
+            }
+            return baseFont
+        }
+        return fontFamily.uiFont(size: targetSize, isBold: targetBold)
+    }
+
+    /// 解析当前最终使用的 SwiftUI Font
+    public func resolvedSwiftUIFont(size: CGFloat? = nil, isBold: Bool? = nil) -> Font {
+        Font(resolvedUIFont(size: size, isBold: isBold))
+    }
 
     /// 判断变更是否影响排版分页（用于决定是否需要重新执行 CoreText 分页）
     public func requiresRepagination(comparedTo other: ReaderConfig) -> Bool {
@@ -259,10 +297,13 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
             isTextJustified != other.isTextJustified ||
             isBoldFont != other.isBoldFont ||
             fontFamily != other.fontFamily ||
+            customFontName != other.customFontName ||
             horizontalMargin != other.horizontalMargin ||
             topMargin != other.topMargin ||
             bottomMargin != other.bottomMargin ||
-            chineseConversion != other.chineseConversion
+            chineseConversion != other.chineseConversion ||
+            enableIPadDualPage != other.enableIPadDualPage ||
+            (pageTurnMode == .scroll) != (other.pageTurnMode == .scroll)
     }
 }
 

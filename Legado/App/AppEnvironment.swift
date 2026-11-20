@@ -111,6 +111,7 @@ public final class AppEnvironment: ObservableObject {
             bookCacheRepository: cacheRepo)
 
         if !inMemory {
+            LocalFontManager.shared.registerAllStoredFonts()
             primeSampleChapterCache()
             seedInitialDataIfNeeded()
         }

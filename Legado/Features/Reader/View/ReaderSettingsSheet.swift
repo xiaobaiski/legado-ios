@@ -4,22 +4,34 @@ import SwiftUI
 public struct ReaderSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     let config: ReaderConfig
+    let importedFonts: [ImportedFont]
     let isAutoPaging: Bool
     let onUpdateConfig: (ReaderConfig) -> Void
+    let onSelectCustomFont: (ImportedFont) -> Void
+    let onDeleteCustomFont: (ImportedFont) -> Void
+    let onOpenFontImporter: () -> Void
     let onToggleAutoPage: () -> Void
     let onSetAutoPageInterval: (Double) -> Void
     let onResetConfig: () -> Void
 
     public init(
         config: ReaderConfig,
+        importedFonts: [ImportedFont] = [],
         isAutoPaging: Bool,
         onUpdateConfig: @escaping (ReaderConfig) -> Void,
+        onSelectCustomFont: @escaping (ImportedFont) -> Void = { _ in },
+        onDeleteCustomFont: @escaping (ImportedFont) -> Void = { _ in },
+        onOpenFontImporter: @escaping () -> Void = {},
         onToggleAutoPage: @escaping () -> Void,
         onSetAutoPageInterval: @escaping (Double) -> Void,
         onResetConfig: @escaping () -> Void) {
         self.config = config
+        self.importedFonts = importedFonts
         self.isAutoPaging = isAutoPaging
         self.onUpdateConfig = onUpdateConfig
+        self.onSelectCustomFont = onSelectCustomFont
+        self.onDeleteCustomFont = onDeleteCustomFont
+        self.onOpenFontImporter = onOpenFontImporter
         self.onToggleAutoPage = onToggleAutoPage
         self.onSetAutoPageInterval = onSetAutoPageInterval
         self.onResetConfig = onResetConfig
@@ -29,6 +41,7 @@ public struct ReaderSettingsSheet: View {
         NavigationStack {
             Form {
                 interactionSection
+                localFontsSection
                 autoPageSection
                 typographyDetailSection
                 displaySection
@@ -69,10 +82,58 @@ private extension ReaderSettingsSheet {
             Toggle(
                 "左手翻页模式",
                 isOn: binding(\.leftHandMode))
+
+            Toggle(
+                "iPad 大屏双页分栏",
+                isOn: binding(\.enableIPadDualPage))
         } header: {
             Label("交互与触感", systemImage: "hand.tap")
         } footer: {
-            Text("关闭「触感震动反馈」将全局关闭震动；开启「左手模式」后点击左侧为下一页、右侧为上一页。")
+            Text("关闭「触感震动反馈」将全局关闭震动；在 iPad 横屏或宽屏窗口下可开启双页并排阅读。")
+        }
+    }
+
+    var localFontsSection: some View {
+        Section {
+            Button {
+                onOpenFontImporter()
+            } label: {
+                Label("导入本地字体 (TTF / OTF / TTC)", systemImage: "textformat.alt")
+            }
+
+            ForEach(importedFonts) { font in
+                let isSelected = config.customFontName == font.postScriptName
+                HStack {
+                    Button {
+                        onSelectCustomFont(font)
+                    } label: {
+                        HStack {
+                            Text(font.displayName)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if isSelected {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(role: .destructive) {
+                        onDeleteCustomFont(font)
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 8)
+                }
+            }
+        } header: {
+            Label("自定义字体", systemImage: "character.book.closed")
+        } footer: {
+            Text("支持直接从「文件」App 导入字体，也可将字体文件放入「我的 iPhone / iPad -> Legado -> Fonts」目录。")
         }
     }
 

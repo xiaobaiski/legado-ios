@@ -41,6 +41,14 @@ public enum ReaderIntent: ViewIntent, Equatable, Sendable {
     case toggleAutoPage
     /// 调整自动翻页间隔（秒）
     case setAutoPageInterval(Double)
+    /// 导入本地自定义字体文件 (TTF/OTF/TTC)
+    case importFonts([URL])
+    /// 选择已导入的自定义字体
+    case selectCustomFont(ImportedFont)
+    /// 删除已导入的自定义字体
+    case deleteImportedFont(ImportedFont)
+    /// 刷新本地字体列表
+    case refreshImportedFonts
     /// 屏幕尺寸尺寸更新重新排版
     case updateScreenBounds(CGRect)
     /// 切换书源并重载新目录与章节

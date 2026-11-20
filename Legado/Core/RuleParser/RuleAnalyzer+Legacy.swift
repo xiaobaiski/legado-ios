@@ -74,7 +74,8 @@ public extension RuleAnalyzer {
         } else {
             script = trimmed
         }
-        return JSEngine().evaluate(script: script, bindings: ["result": text, "src": text])
+        let jsEngine = JSEngine()
+        return jsEngine.evaluate(script: script, bindings: ["result": text, "src": text])
     }
 
     private struct RegexRulePart {

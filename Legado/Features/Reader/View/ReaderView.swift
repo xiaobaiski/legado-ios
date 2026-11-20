@@ -19,6 +19,7 @@ public struct ReaderView: View {
     @State private var cacheDownloadProgress: BatchDownloadProgress?
     @State private var cacheDownloadTask: Task<Void, Never>?
     @State private var originalBrightness: CGFloat?
+    @State private var isFontPickerPresented = false
 
     public init(viewModel: ReaderViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -42,6 +43,8 @@ public struct ReaderView: View {
                         currentChapterIndex: viewModel.state.currentChapterIndex,
                         totalChapters: viewModel.state.chapters.count,
                         config: viewModel.state.config,
+                        importedFonts: viewModel.state.importedFonts,
+                        safeAreaTop: geometry.safeAreaInsets.top,
                         isConfigOpen: viewModel.state.isConfigSheetVisible,
                         isAutoPaging: viewModel.state.isAutoPaging,
                         isLocalFile: viewModel.state.book.isLocalFile,
@@ -61,6 +64,12 @@ public struct ReaderView: View {
                         },
                         onUpdateConfig: { newConfig in
                             viewModel.send(.updateConfig(newConfig))
+                        },
+                        onSelectCustomFont: { font in
+                            viewModel.send(.selectCustomFont(font))
+                        },
+                        onOpenFontImporter: {
+                            isFontPickerPresented = true
                         },
                         onResetConfig: {
                             viewModel.send(.resetConfig)
@@ -125,6 +134,7 @@ public struct ReaderView: View {
                                 isTTSSpeaking = false
                             }
                         }
+                        .frame(maxWidth: 520)
                         .padding(.bottom, 24)
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -164,11 +174,36 @@ public struct ReaderView: View {
             })) {
                 ReaderSettingsSheet(
                     config: viewModel.state.config,
+                    importedFonts: viewModel.state.importedFonts,
                     isAutoPaging: viewModel.state.isAutoPaging,
                     onUpdateConfig: { viewModel.send(.updateConfig($0)) },
+                    onSelectCustomFont: { viewModel.send(.selectCustomFont($0)) },
+                    onDeleteCustomFont: { viewModel.send(.deleteImportedFont($0)) },
+                    onOpenFontImporter: {
+                        viewModel.send(.closeMoreSettings)
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 250_000_000)
+                            isFontPickerPresented = true
+                        }
+                    },
                     onToggleAutoPage: { viewModel.send(.toggleAutoPage) },
                     onSetAutoPageInterval: { viewModel.send(.setAutoPageInterval($0)) },
                     onResetConfig: { viewModel.send(.resetConfig) })
+        }
+        .sheet(isPresented: $isFontPickerPresented) {
+            DocumentPickerView(
+                allowedContentTypes: LocalFontManager.allowedContentTypes,
+                allowsMultipleSelection: true,
+                onPick: { urls in
+                    isFontPickerPresented = false
+                    if !urls.isEmpty {
+                        viewModel.send(.importFonts(urls))
+                    }
+                },
+                onCancel: {
+                    isFontPickerPresented = false
+                })
+                .ignoresSafeArea()
         }
         .sheet(isPresented: $isChangeSourcePresented) {
             ChangeSourceSheet(

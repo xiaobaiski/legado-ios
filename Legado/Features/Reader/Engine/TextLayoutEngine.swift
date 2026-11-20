@@ -104,9 +104,17 @@ public final class TextLayoutEngine: Sendable {
         return pages
     }
 
-    /// 计算除去上下左右安全内边距的实际排版矩阵
+    /// 计算除去上下左右安全内边距的实际排版矩阵（支持 iPad 双页分栏与单页居中最佳行宽）
     public func contentRenderRect(for bounds: CGRect, config: ReaderConfig) -> CGRect {
-        let renderWidth = max(bounds.width - config.horizontalMargin * 2, 100)
+        let renderWidth: CGFloat
+        if config.isDualPageActive(for: bounds) {
+            let centerGutter: CGFloat = 32
+            let singleColumnWidth = (bounds.width - centerGutter) / 2
+            renderWidth = max(singleColumnWidth - config.horizontalMargin * 2, 160)
+        } else {
+            let rawWidth = max(bounds.width - config.horizontalMargin * 2, 100)
+            renderWidth = bounds.width >= 760 ? min(rawWidth, 680) : rawWidth
+        }
         let renderHeight = max(bounds.height - config.topMargin - config.bottomMargin - 16, 100)
         return CGRect(x: 0, y: 0, width: renderWidth, height: renderHeight)
     }
@@ -117,7 +125,7 @@ public final class TextLayoutEngine: Sendable {
         content: String,
         config: ReaderConfig,
         highlightedSentence: String? = nil) -> NSAttributedString {
-        let font = config.fontFamily.uiFont(size: config.fontSize, isBold: config.isBoldFont)
+        let font = config.resolvedUIFont()
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = config.lineSpacing
         paragraphStyle.paragraphSpacing = config.paragraphSpacing

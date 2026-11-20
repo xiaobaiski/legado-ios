@@ -2,11 +2,15 @@ import SwiftUI
 
 /// 阅读器液态玻璃控制面板 (HUD Overlay)
 public struct ReaderHUDView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     let bookTitle: String
     let currentChapterTitle: String
     let currentChapterIndex: Int
     let totalChapters: Int
     let config: ReaderConfig
+    let importedFonts: [ImportedFont]
+    let safeAreaTop: CGFloat
     let isConfigOpen: Bool
     let isAutoPaging: Bool
     let isLocalFile: Bool
@@ -17,6 +21,8 @@ public struct ReaderHUDView: View {
     let onOpenToc: () -> Void
     let onToggleConfig: () -> Void
     let onUpdateConfig: (ReaderConfig) -> Void
+    let onSelectCustomFont: (ImportedFont) -> Void
+    let onOpenFontImporter: () -> Void
     let onResetConfig: () -> Void
     let onOpenMoreSettings: () -> Void
     let onToggleAutoPage: () -> Void
@@ -33,6 +39,8 @@ public struct ReaderHUDView: View {
         currentChapterIndex: Int,
         totalChapters: Int,
         config: ReaderConfig,
+        importedFonts: [ImportedFont] = [],
+        safeAreaTop: CGFloat = 48,
         isConfigOpen: Bool,
         isAutoPaging: Bool = false,
         isLocalFile: Bool = false,
@@ -43,6 +51,8 @@ public struct ReaderHUDView: View {
         onOpenToc: @escaping () -> Void,
         onToggleConfig: @escaping () -> Void,
         onUpdateConfig: @escaping (ReaderConfig) -> Void = { _ in },
+        onSelectCustomFont: @escaping (ImportedFont) -> Void = { _ in },
+        onOpenFontImporter: @escaping () -> Void = {},
         onResetConfig: @escaping () -> Void = {},
         onOpenMoreSettings: @escaping () -> Void = {},
         onToggleAutoPage: @escaping () -> Void = {},
@@ -57,6 +67,8 @@ public struct ReaderHUDView: View {
         self.currentChapterIndex = currentChapterIndex
         self.totalChapters = totalChapters
         self.config = config
+        self.importedFonts = importedFonts
+        self.safeAreaTop = safeAreaTop
         self.isConfigOpen = isConfigOpen
         self.isAutoPaging = isAutoPaging
         self.isLocalFile = isLocalFile
@@ -67,6 +79,8 @@ public struct ReaderHUDView: View {
         self.onOpenToc = onOpenToc
         self.onToggleConfig = onToggleConfig
         self.onUpdateConfig = onUpdateConfig
+        self.onSelectCustomFont = onSelectCustomFont
+        self.onOpenFontImporter = onOpenFontImporter
         self.onResetConfig = onResetConfig
         self.onOpenMoreSettings = onOpenMoreSettings
         self.onToggleAutoPage = onToggleAutoPage
@@ -88,8 +102,11 @@ public struct ReaderHUDView: View {
                 if isConfigOpen {
                     ReaderTypographyPanel(
                         config: config,
+                        importedFonts: importedFonts,
                         isAutoPaging: isAutoPaging,
                         onUpdateConfig: onUpdateConfig,
+                        onSelectCustomFont: onSelectCustomFont,
+                        onOpenFontImporter: onOpenFontImporter,
                         onResetConfig: onResetConfig,
                         onOpenMoreSettings: onOpenMoreSettings,
                         onToggleAutoPage: onToggleAutoPage)
@@ -98,6 +115,7 @@ public struct ReaderHUDView: View {
 
                 bottomControlBar
             }
+            .frame(maxWidth: horizontalSizeClass == .regular ? 560 : .infinity)
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
         }
@@ -136,7 +154,7 @@ public struct ReaderHUDView: View {
             circleIconButton(systemName: "gearshape", action: onOpenMoreSettings)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 54)
+        .padding(.top, max(safeAreaTop, 14) + 6)
         .padding(.bottom, 12)
         .background(.ultraThinMaterial)
         .overlay(alignment: .bottom) {

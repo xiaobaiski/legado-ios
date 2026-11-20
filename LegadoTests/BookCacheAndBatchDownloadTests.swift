@@ -124,16 +124,16 @@ struct BookCacheAndBatchDownloadTests {
         try cacheRepo.saveChapterContent(bookUrl: book.bookUrl, index: 1, content: "正文1")
         try cacheRepo.saveChapterContent(bookUrl: book.bookUrl, index: 2, content: "正文2")
 
-        var lastProgress: BatchDownloadProgress?
+        let progressBox = ProgressCaptureBox()
         try await batchUseCase.execute(
             book: book,
             chapters: chapters,
             option: .all,
             concurrency: 2) { progress in
-                lastProgress = progress
+                progressBox.set(progress)
             }
 
-        #expect(lastProgress?.status == .completed)
+        #expect(progressBox.get()?.status == .completed)
         #expect(cacheRepo.getCachedChapterIndices(bookUrl: book.bookUrl).count == 3)
 
         try? FileManager.default.removeItem(at: tempDir)
@@ -214,5 +214,22 @@ struct BookCacheAndBatchDownloadTests {
         #expect(vm.state.cacheSizeBytes == 0)
 
         try? FileManager.default.removeItem(at: tempDir)
+    }
+}
+
+private final class ProgressCaptureBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: BatchDownloadProgress?
+
+    func set(_ progress: BatchDownloadProgress) {
+        lock.lock()
+        value = progress
+        lock.unlock()
+    }
+
+    func get() -> BatchDownloadProgress? {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
     }
 }

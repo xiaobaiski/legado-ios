@@ -11,6 +11,7 @@ public struct SettingsState: ViewState, Equatable, Sendable {
     public var speechPitch: Float
     public var cacheSizeBytes: Int64
     public var readerConfig: ReaderConfig
+    public var importedFonts: [ImportedFont]
     public var errorMessage: String?
     public var successMessage: String?
 
@@ -24,6 +25,7 @@ public struct SettingsState: ViewState, Equatable, Sendable {
         speechPitch: Float = 1.0,
         cacheSizeBytes: Int64 = 0,
         readerConfig: ReaderConfig = ReaderConfig.defaultConfig,
+        importedFonts: [ImportedFont] = [],
         errorMessage: String? = nil,
         successMessage: String? = nil) {
         self.webDAVConfig = webDAVConfig
@@ -35,6 +37,7 @@ public struct SettingsState: ViewState, Equatable, Sendable {
         self.speechPitch = speechPitch
         self.cacheSizeBytes = cacheSizeBytes
         self.readerConfig = readerConfig
+        self.importedFonts = importedFonts
         self.errorMessage = errorMessage
         self.successMessage = successMessage
     }
