@@ -174,22 +174,12 @@ public struct BookDetailView: View {
     private var headerCard: some View {
         HStack(alignment: .top, spacing: 16) {
             // 封面图
-            if let coverUrl = viewModel.state.book.coverUrl, let url = URL(string: coverUrl) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case let .success(image):
-                        image.resizable().scaledToFill()
-
-                    default:
-                        placeholderCover
-                    }
-                }
-                .frame(width: 100, height: 138)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
-            } else {
+            BookCoverImage(coverUrl: viewModel.state.book.coverUrl) {
                 placeholderCover
             }
+            .frame(width: 100, height: 138)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(viewModel.state.book.name)

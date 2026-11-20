@@ -36,6 +36,13 @@ extension ReaderViewModel {
                 restartAutoPageTimer()
             }
 
+        default:
+            handleFontIntent(intent)
+        }
+    }
+
+    private func handleFontIntent(_ intent: ReaderIntent) {
+        switch intent {
         case let .importFonts(urls):
             handleImportFonts(urls: urls)
 

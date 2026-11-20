@@ -20,6 +20,7 @@ public struct ReaderView: View {
     @State private var cacheDownloadTask: Task<Void, Never>?
     @State private var originalBrightness: CGFloat?
     @State private var isFontPickerPresented = false
+    @State private var volumeHandler = VolumeButtonHandler()
 
     public init(viewModel: ReaderViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -147,11 +148,13 @@ public struct ReaderView: View {
             .onAppear {
                 viewModel.send(.updateScreenBounds(geometry.frame(in: .local)))
                 applySystemDisplaySettings()
+                updateVolumeButtonBinding()
             }
             .onDisappear {
                 cacheDownloadTask?.cancel()
                 cacheDownloadTask = nil
                 viewModel.stopAutoPageTimer()
+                volumeHandler.stop()
                 restoreSystemDisplaySettings()
                 TTSPlayer.shared.stop()
             }
@@ -160,6 +163,10 @@ public struct ReaderView: View {
             }
             .onChange(of: viewModel.state.config) { _, _ in
                 applySystemDisplaySettings()
+                updateVolumeButtonBinding()
+            }
+            .onChange(of: isTTSSpeaking) { _, _ in
+                updateVolumeButtonBinding()
             }
         }
         .navigationBarBackButtonHidden(true)
@@ -388,6 +395,17 @@ private extension ReaderView {
             .padding(.bottom, 22)
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    func updateVolumeButtonBinding() {
+        let shouldEnable = viewModel.state.config.volumeKeyPageTurn && !isTTSSpeaking
+        if shouldEnable {
+            volumeHandler.start(
+                onVolumeUp: { viewModel.send(.prevPage) },
+                onVolumeDown: { viewModel.send(.nextPage) })
+        } else {
+            volumeHandler.stop()
+        }
     }
 
     func applySystemDisplaySettings() {

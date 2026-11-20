@@ -62,6 +62,10 @@ targets:
             LSItemContentTypes:
               - public.plain-text
               - public.text
+          - CFBundleTypeName: EPUB Electronic Publication
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - org.idpf.epub-container
     preBuildScripts:
       - name: SwiftLint
         script: |

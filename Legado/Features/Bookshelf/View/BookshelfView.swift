@@ -135,22 +135,13 @@ public struct BookshelfView: View {
                         .font(.subheadline.weight(.medium))
                 }
 
-                Menu {
-                    Button {
-                        presentFileImporter()
-                    } label: {
-                        Label("导入本地 TXT", systemImage: "doc.badge.plus")
-                    }
-
-                    Button {
-                        viewModel.send(.refreshAllBookUpdates)
-                    } label: {
-                        Label("刷新全书架更新", systemImage: "arrow.clockwise")
-                    }
+                Button {
+                    isShowingFileImporter = true
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: "plus.circle")
                         .symbolRenderingMode(.hierarchical)
                 }
+                .accessibilityLabel("导入本地书籍")
             }
         }
     }
@@ -260,13 +251,13 @@ public struct BookshelfView: View {
                 viewModel.state.searchText.isEmpty ? "书架空空如也" : "无搜索结果",
                 systemImage: "books.vertical")
         } description: {
-            Text(viewModel.state.searchText.isEmpty ? "前往搜索页面添加小说，或直接导入本地 TXT 文件" : "未找到匹配的书籍")
+            Text(viewModel.state.searchText.isEmpty ? "点击右上角「+」导入本地 TXT 或 EPUB 电子书" : "未找到匹配的书籍")
         } actions: {
             if viewModel.state.searchText.isEmpty {
                 Button {
                     isShowingFileImporter = true
                 } label: {
-                    Label("导入本地 TXT", systemImage: "doc.badge.plus")
+                    Label("导入本地书籍 (TXT / EPUB)", systemImage: "doc.badge.plus")
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -278,16 +269,13 @@ public struct BookshelfView: View {
 // MARK: - Overlays, Effects & File Import
 
 private extension BookshelfView {
-    /// 允许选择纯文本与通用数据文件，避免 iOS 文件选择器中部分下载的 TXT 文件呈灰色不可选
+    /// 允许选择 TXT / EPUB 与通用数据文件，避免 iOS 文件选择器中部分下载的电子书变灰不可选
     static var localBookContentTypes: [UTType] {
-        [.plainText, .text, .data]
-    }
-
-    func presentFileImporter() {
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            isShowingFileImporter = true
+        var types: [UTType] = [.plainText, .text, .data]
+        if let epubType = UTType(filenameExtension: "epub") {
+            types.insert(epubType, at: 0)
         }
+        return types
     }
 
     func consumeExternalImports() {

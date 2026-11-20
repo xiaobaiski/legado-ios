@@ -92,19 +92,8 @@ public struct BookshelfBookRowView: View {
             .transition(.scale.combined(with: .opacity))
     }
 
-    @ViewBuilder
     private var coverImage: some View {
-        if let coverUrl = book.coverUrl, let url = URL(string: coverUrl) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case let .success(img):
-                    img.resizable().scaledToFill()
-
-                default:
-                    placeholderCover
-                }
-            }
-        } else {
+        BookCoverImage(coverUrl: book.coverUrl) {
             placeholderCover
         }
     }

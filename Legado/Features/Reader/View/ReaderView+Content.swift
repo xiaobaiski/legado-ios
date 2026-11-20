@@ -20,6 +20,9 @@ extension ReaderView {
                 }
         } else {
             switch viewModel.state.config.pageTurnMode {
+            case .curl:
+                curlContent(width: width)
+
             case .cover, .none:
                 pagedContent(width: width, animated: viewModel.state.config.pageTurnMode == .cover)
 
@@ -30,6 +33,51 @@ extension ReaderView {
                 scrollContent
             }
         }
+    }
+
+    func curlContent(width: CGFloat) -> some View {
+        let config = viewModel.state.config
+        let isDual = config.isDualPageActive(for: viewModel.state.screenBounds)
+        let maxSingleWidth: CGFloat? = width >= 760 ? 680 : nil
+        let leftIsNext = config.leftHandMode
+
+        return PageCurlReaderView(
+            pages: viewModel.state.pages,
+            currentPageIndex: viewModel.state.currentPageIndex,
+            chapterIndex: viewModel.state.currentChapterIndex,
+            totalChapters: viewModel.state.chapters.count,
+            config: config,
+            highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil,
+            isDualPage: isDual,
+            maxSingleWidth: maxSingleWidth,
+            onPageChanged: { newIndex in
+                viewModel.send(.jumpToPage(newIndex))
+            },
+            onRequestNextChapter: {
+                viewModel.send(.loadChapter(viewModel.state.currentChapterIndex + 1))
+            },
+            onRequestPrevChapter: {
+                viewModel.send(.prevPage)
+            },
+            onTapLeft: {
+                if viewModel.state.isHUDVisible {
+                    viewModel.send(.hideHUD)
+                } else if config.tapToTurnPage {
+                    viewModel.send(leftIsNext ? .nextPage : .prevPage)
+                }
+            },
+            onTapCenter: {
+                viewModel.send(.toggleHUD)
+            },
+            onTapRight: {
+                if viewModel.state.isHUDVisible {
+                    viewModel.send(.hideHUD)
+                } else if config.tapToTurnPage {
+                    viewModel.send(leftIsNext ? .prevPage : .nextPage)
+                }
+            })
+            .id("curl_\(isDual ? 2 : 1)")
+            .ignoresSafeArea()
     }
 
     func pagedContent(width: CGFloat, animated: Bool) -> some View {

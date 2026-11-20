@@ -94,6 +94,7 @@ public enum ReaderFontFamily: String, CaseIterable, Identifiable, Codable, Senda
 
 /// 翻页动效模式
 public enum PageTurnMode: String, CaseIterable, Identifiable, Codable, Sendable {
+    case curl = "仿真"
     case cover = "覆盖"
     case slide = "滑动"
     case scroll = "连续滚动"
@@ -154,6 +155,7 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
     public var showStatusBar: Bool
     public var tapToTurnPage: Bool
     public var leftHandMode: Bool
+    public var volumeKeyPageTurn: Bool
     public var autoPageIntervalSeconds: Double
     public var chineseConversion: ChineseConversionMode
     public var enableIPadDualPage: Bool
@@ -183,6 +185,7 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         showStatusBar: Bool = false,
         tapToTurnPage: Bool = true,
         leftHandMode: Bool = false,
+        volumeKeyPageTurn: Bool = true,
         autoPageIntervalSeconds: Double = 8.0,
         chineseConversion: ChineseConversionMode = .none,
         enableIPadDualPage: Bool = true) {
@@ -210,6 +213,7 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         self.showStatusBar = showStatusBar
         self.tapToTurnPage = tapToTurnPage
         self.leftHandMode = leftHandMode
+        self.volumeKeyPageTurn = volumeKeyPageTurn
         self.autoPageIntervalSeconds = autoPageIntervalSeconds
         self.chineseConversion = chineseConversion
         self.enableIPadDualPage = enableIPadDualPage
@@ -252,6 +256,8 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         self.showStatusBar = try container.decodeIfPresent(Bool.self, forKey: .showStatusBar) ?? defaults.showStatusBar
         self.tapToTurnPage = try container.decodeIfPresent(Bool.self, forKey: .tapToTurnPage) ?? defaults.tapToTurnPage
         self.leftHandMode = try container.decodeIfPresent(Bool.self, forKey: .leftHandMode) ?? defaults.leftHandMode
+        self.volumeKeyPageTurn = try container.decodeIfPresent(Bool.self, forKey: .volumeKeyPageTurn)
+            ?? defaults.volumeKeyPageTurn
         self.autoPageIntervalSeconds = try container.decodeIfPresent(Double.self, forKey: .autoPageIntervalSeconds)
             ?? defaults.autoPageIntervalSeconds
         self.chineseConversion = try container.decodeIfPresent(ChineseConversionMode.self, forKey: .chineseConversion)

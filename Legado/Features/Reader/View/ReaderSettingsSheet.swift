@@ -84,12 +84,16 @@ private extension ReaderSettingsSheet {
                 isOn: binding(\.leftHandMode))
 
             Toggle(
+                "音量键翻页",
+                isOn: binding(\.volumeKeyPageTurn))
+
+            Toggle(
                 "iPad 大屏双页分栏",
                 isOn: binding(\.enableIPadDualPage))
         } header: {
             Label("交互与触感", systemImage: "hand.tap")
         } footer: {
-            Text("关闭「触感震动反馈」将全局关闭震动；在 iPad 横屏或宽屏窗口下可开启双页并排阅读。")
+            Text("开启「音量键翻页」后按音量+上一页、音量-下一页（朗读听书时自动恢复音量调节）。")
         }
     }
 

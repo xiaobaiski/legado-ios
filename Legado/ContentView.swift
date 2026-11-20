@@ -1,11 +1,8 @@
 import SwiftUI
 
-/// App 主导航标签页枚举
+/// App 主导航标签页枚举（纯粹阅读器定位：书架 + 设置）
 public enum MainTab: String, CaseIterable, Identifiable {
     case bookshelf
-    case search
-    case explore
-    case sourceManage
     case settings
 
     public var id: String {
@@ -15,9 +12,6 @@ public enum MainTab: String, CaseIterable, Identifiable {
     public var title: String {
         switch self {
         case .bookshelf: return "书架"
-        case .search: return "搜索"
-        case .explore: return "发现"
-        case .sourceManage: return "书源"
         case .settings: return "设置"
         }
     }
@@ -25,35 +19,21 @@ public enum MainTab: String, CaseIterable, Identifiable {
     public var icon: String {
         switch self {
         case .bookshelf: return "books.vertical.fill"
-        case .search: return "magnifyingglass"
-        case .explore: return "compass.drawing"
-        case .sourceManage: return "network"
         case .settings: return "gearshape.fill"
         }
     }
 }
 
-/// App 根视图：全面采用 iOS 18 原生 TabView 与 Tab 容器架构
+/// App 根视图：采用 iOS 18 原生 TabView 与 Tab 容器架构，专注纯粹本地阅读体验
 struct ContentView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @State private var selectedTab: MainTab = .bookshelf
+    @State private var demoReaderPresented = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab(MainTab.bookshelf.title, systemImage: MainTab.bookshelf.icon, value: .bookshelf) {
                 BookshelfView(viewModel: environment.makeBookshelfViewModel())
-            }
-
-            Tab(MainTab.search.title, systemImage: MainTab.search.icon, value: .search) {
-                SearchView(viewModel: environment.makeSearchViewModel())
-            }
-
-            Tab(MainTab.explore.title, systemImage: MainTab.explore.icon, value: .explore) {
-                ExploreView(viewModel: environment.makeExploreViewModel())
-            }
-
-            Tab(MainTab.sourceManage.title, systemImage: MainTab.sourceManage.icon, value: .sourceManage) {
-                SourceManageView(viewModel: environment.makeSourceManageViewModel())
             }
 
             Tab(MainTab.settings.title, systemImage: MainTab.settings.icon, value: .settings) {
@@ -81,10 +61,6 @@ struct ContentView: View {
             if ProcessInfo.processInfo.arguments.contains("--open-reader-demo") ||
                 ProcessInfo.processInfo.arguments.contains("--open-reader-hud") {
                 demoReaderPresented = true
-            } else if ProcessInfo.processInfo.arguments.contains("--tab-explore") {
-                selectedTab = .explore
-            } else if ProcessInfo.processInfo.arguments.contains("--tab-source") {
-                selectedTab = .sourceManage
             } else if ProcessInfo.processInfo.arguments.contains("--tab-settings") {
                 selectedTab = .settings
             }
@@ -95,8 +71,6 @@ struct ContentView: View {
             environment.enqueueExternalImport(url)
         }
     }
-
-    @State private var demoReaderPresented = false
 }
 
 #Preview {

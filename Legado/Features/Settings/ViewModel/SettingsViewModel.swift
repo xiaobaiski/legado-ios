@@ -42,10 +42,12 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
         case .testWebDAVConnection, .backupToWebDAV, .restoreFromWebDAV:
             handleSyncIntent(intent)
 
-        case .updateSpeechRate, .updateSpeechPitch, .refreshCacheSize, .clearAllCache,
-             .refreshReaderConfig, .updateReaderConfig, .resetReaderConfig,
-             .importLocalFonts, .selectLocalFont, .deleteLocalFont, .clearNotice:
+        case .updateSpeechRate, .updateSpeechPitch, .refreshCacheSize, .clearAllCache, .clearNotice:
             handleGeneralIntent(intent)
+
+        case .refreshReaderConfig, .updateReaderConfig, .resetReaderConfig,
+             .importLocalFonts, .selectLocalFont, .deleteLocalFont:
+            handleReaderAndFontIntent(intent)
         }
     }
 
@@ -109,6 +111,19 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             emitEffect(.showToast("已清理所有离线正文缓存"))
             emitEffect(.hapticFeedback)
 
+        case .clearNotice:
+            updateState {
+                $0.errorMessage = nil
+                $0.successMessage = nil
+            }
+
+        default:
+            break
+        }
+    }
+
+    private func handleReaderAndFontIntent(_ intent: SettingsIntent) {
+        switch intent {
         case .refreshReaderConfig:
             updateState {
                 $0.readerConfig = ReaderConfigStore.load()
@@ -142,12 +157,6 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
 
         case let .deleteLocalFont(font):
             handleDeleteLocalFont(font)
-
-        case .clearNotice:
-            updateState {
-                $0.errorMessage = nil
-                $0.successMessage = nil
-            }
 
         default:
             break

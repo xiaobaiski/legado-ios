@@ -9,6 +9,7 @@ extension SettingsView {
             Toggle("阅读时屏幕常亮", isOn: readerBinding(\.keepScreenOn))
             Toggle("点击屏幕翻页", isOn: readerBinding(\.tapToTurnPage))
             Toggle("左手翻页模式", isOn: readerBinding(\.leftHandMode))
+            Toggle("音量键翻页", isOn: readerBinding(\.volumeKeyPageTurn))
             Toggle("iPad 大屏双页分栏", isOn: readerBinding(\.enableIPadDualPage))
 
             Picker("繁简转换", selection: readerBinding(\.chineseConversion)) {

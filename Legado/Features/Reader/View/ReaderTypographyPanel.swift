@@ -289,26 +289,33 @@ private extension ReaderTypographyPanel {
                 .foregroundStyle(.secondary)
                 .frame(width: 34, alignment: .leading)
 
-            ForEach(PageTurnMode.allCases) { mode in
-                let isSelected = config.pageTurnMode == mode
-                Button {
-                    update { $0.pageTurnMode = mode }
-                } label: {
-                    Text(mode.rawValue)
-                        .font(.caption.weight(isSelected ? .semibold : .regular))
-                        .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.10)))
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(
-                                    isSelected ? Color.accentColor.opacity(0.4) : Color.white.opacity(0.12),
-                                    lineWidth: 0.5))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(PageTurnMode.allCases) { mode in
+                        let isSelected = config.pageTurnMode == mode
+                        Button {
+                            update { $0.pageTurnMode = mode }
+                        } label: {
+                            Text(mode.rawValue)
+                                .font(.caption.weight(isSelected ? .semibold : .regular))
+                                .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(
+                                            isSelected
+                                                ? Color.accentColor.opacity(0.15)
+                                                : Color.secondary.opacity(0.10)))
+                                .overlay(
+                                    Capsule(style: .continuous)
+                                        .stroke(
+                                            isSelected ? Color.accentColor.opacity(0.4) : Color.white.opacity(0.12),
+                                            lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .buttonStyle(.plain)
             }
         }
     }

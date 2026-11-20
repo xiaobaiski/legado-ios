@@ -92,10 +92,23 @@ struct ReaderEngineTests {
 
         // 翻页动效模式验证与切换
         #expect(config.pageTurnMode == .cover)
+        config.pageTurnMode = .curl
+        #expect(config.pageTurnMode == .curl)
         config.pageTurnMode = .slide
         #expect(config.pageTurnMode == .slide)
         config.pageTurnMode = .scroll
         #expect(config.pageTurnMode == .scroll)
+
+        // 音量键翻页配置默认值与编解码验证
+        #expect(config.volumeKeyPageTurn == true)
+        config.volumeKeyPageTurn = false
+        if let encoded = try? JSONEncoder().encode(config),
+           let decoded = try? JSONDecoder().decode(ReaderConfig.self, from: encoded) {
+            #expect(decoded.volumeKeyPageTurn == false)
+            #expect(decoded.pageTurnMode == .scroll)
+        } else {
+            Issue.record("ReaderConfig JSON 编解码失败")
+        }
     }
 
     @Test("Test ReaderState Page Navigation Logic")

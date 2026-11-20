@@ -140,6 +140,142 @@ struct LocalImportAndHealthCheckTests {
         #expect(didThrowUnsupported)
     }
 
+    @Test("Test ZipArchiveReader, EpubParser and ImportLocalBookUseCase with Stored EPUB")
+    func importLocalEpubUseCase() async throws {
+        let containerXml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+          <rootfiles>
+            <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+          </rootfiles>
+        </container>
+        """
+        let contentOpf = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <dc:title>星辰大海</dc:title>
+            <dc:creator>测试作者</dc:creator>
+            <dc:description>一部本地 EPUB 测试小说。</dc:description>
+          </metadata>
+          <manifest>
+            <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+            <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+            <item id="ch2" href="ch2.xhtml" media-type="application/xhtml+xml"/>
+          </manifest>
+          <spine toc="ncx">
+            <itemref idref="ch1"/>
+            <itemref idref="ch2"/>
+          </spine>
+        </package>
+        """
+        let tocNcx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/">
+          <navMap>
+            <navPoint id="n1"><navLabel><text>第一章 启航</text></navLabel><content src="ch1.xhtml"/></navPoint>
+            <navPoint id="n2"><navLabel><text>第二章 航线</text></navLabel><content src="ch2.xhtml"/></navPoint>
+          </navMap>
+        </ncx>
+        """
+        let ch1Html = "<html><body><h1>第一章 启航</h1><p>飞船缓缓离开港口。</p><p>星光洒满舷窗。</p></body></html>"
+        let ch2Html = "<html><body><h1>第二章 航线</h1><p>跃迁引擎轰鸣启动。</p></body></html>"
+
+        let epubData = Self.makeStoredZip(entries: [
+            ("META-INF/container.xml", Data(containerXml.utf8)),
+            ("OEBPS/content.opf", Data(contentOpf.utf8)),
+            ("OEBPS/toc.ncx", Data(tocNcx.utf8)),
+            ("OEBPS/ch1.xhtml", Data(ch1Html.utf8)),
+            ("OEBPS/ch2.xhtml", Data(ch2Html.utf8)),
+        ])
+
+        let tempEpub = FileManager.default.temporaryDirectory.appendingPathComponent("test_book.epub")
+        try epubData.write(to: tempEpub)
+        defer { try? FileManager.default.removeItem(at: tempEpub) }
+
+        let provider = ModelContainerProvider(inMemory: true)
+        let bookRepo = BookRepositoryImpl(modelContainer: provider.container)
+        let tempCacheDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TestEpubCache_\(UUID().uuidString)", isDirectory: true)
+        let cacheRepo = BookCacheRepositoryImpl(baseDirectory: tempCacheDir)
+        defer { try? FileManager.default.removeItem(at: tempCacheDir) }
+
+        let useCase = ImportLocalBookUseCase(bookRepository: bookRepo, bookCacheRepository: cacheRepo)
+        let book = try await useCase.execute(fileUrl: tempEpub)
+
+        #expect(book.name == "星辰大海")
+        #expect(book.author == "测试作者")
+        #expect(book.totalChapterNum == 2)
+        #expect(book.isLocalFile == true)
+
+        let chapters = try await bookRepo.getChapters(for: book.bookUrl)
+        #expect(chapters.count == 2)
+        #expect(chapters[0].title == "第一章 启航")
+        #expect(chapters[1].title == "第二章 航线")
+
+        let ch1Content = cacheRepo.getCachedChapterContent(bookUrl: book.bookUrl, index: 0)
+        #expect(ch1Content?.contains("飞船缓缓离开港口") == true)
+        #expect(ch1Content?.contains("星光洒满舷窗") == true)
+    }
+
+    private static func makeStoredZip(entries: [(String, Data)]) -> Data {
+        var output = Data()
+        var centralDir = Data()
+
+        for (name, payload) in entries {
+            let nameData = Data(name.utf8)
+            let localOffset = UInt32(output.count)
+            let size = UInt32(payload.count)
+
+            output.appendLE(UInt32(0x0403_4B50))
+            output.appendLE(UInt16(20))
+            output.appendLE(UInt16(0))
+            output.appendLE(UInt16(0))
+            output.appendLE(UInt16(0))
+            output.appendLE(UInt16(0))
+            output.appendLE(UInt32(0))
+            output.appendLE(size)
+            output.appendLE(size)
+            output.appendLE(UInt16(nameData.count))
+            output.appendLE(UInt16(0))
+            output.append(nameData)
+            output.append(payload)
+
+            centralDir.appendLE(UInt32(0x0201_4B50))
+            centralDir.appendLE(UInt16(20))
+            centralDir.appendLE(UInt16(20))
+            centralDir.appendLE(UInt16(0))
+            centralDir.appendLE(UInt16(0))
+            centralDir.appendLE(UInt16(0))
+            centralDir.appendLE(UInt16(0))
+            centralDir.appendLE(UInt32(0))
+            centralDir.appendLE(size)
+            centralDir.appendLE(size)
+            centralDir.appendLE(UInt16(nameData.count))
+            centralDir.appendLE(UInt16(0))
+            centralDir.appendLE(UInt16(0))
+            centralDir.appendLE(UInt16(0))
+            centralDir.appendLE(UInt16(0))
+            centralDir.appendLE(UInt32(0))
+            centralDir.appendLE(localOffset)
+            centralDir.append(nameData)
+        }
+
+        let cdOffset = UInt32(output.count)
+        let cdSize = UInt32(centralDir.count)
+        output.append(centralDir)
+
+        output.appendLE(UInt32(0x0605_4B50))
+        output.appendLE(UInt16(0))
+        output.appendLE(UInt16(0))
+        output.appendLE(UInt16(entries.count))
+        output.appendLE(UInt16(entries.count))
+        output.appendLE(cdSize)
+        output.appendLE(cdOffset)
+        output.appendLE(UInt16(0))
+        return output
+    }
+
     @Test("Test SourceHealthReport Model Properties")
     func sourceHealthReportModel() {
         let report = SourceHealthReport(
@@ -195,5 +331,17 @@ struct LocalImportAndHealthCheckTests {
         #expect(reports.count == 2)
         let totalProgressCalls = await tracker.count
         #expect(totalProgressCalls >= 0)
+    }
+}
+
+private extension Data {
+    mutating func appendLE(_ value: UInt16) {
+        var little = value.littleEndian
+        Swift.withUnsafeBytes(of: &little) { append(contentsOf: $0) }
+    }
+
+    mutating func appendLE(_ value: UInt32) {
+        var little = value.littleEndian
+        Swift.withUnsafeBytes(of: &little) { append(contentsOf: $0) }
     }
 }
