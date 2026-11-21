@@ -9,6 +9,8 @@ public struct ReaderHUDView: View {
     let currentChapterTitle: String
     let currentChapterIndex: Int
     let totalChapters: Int
+    let currentPageIndex: Int
+    let totalPages: Int
     let chapters: [Chapter]
     let config: ReaderConfig
     let importedFonts: [ImportedFont]
@@ -20,6 +22,7 @@ public struct ReaderHUDView: View {
     let onPreviousChapter: () -> Void
     let onNextChapter: () -> Void
     let onSliderChange: (Double) -> Void
+    let onPageSliderChange: (Int) -> Void
     let onOpenToc: () -> Void
     let onToggleConfig: () -> Void
     let onUpdateConfig: (ReaderConfig) -> Void
@@ -42,6 +45,8 @@ public struct ReaderHUDView: View {
         currentChapterTitle: String,
         currentChapterIndex: Int,
         totalChapters: Int,
+        currentPageIndex: Int = 0,
+        totalPages: Int = 1,
         chapters: [Chapter] = [],
         config: ReaderConfig,
         importedFonts: [ImportedFont] = [],
@@ -53,6 +58,7 @@ public struct ReaderHUDView: View {
         onPreviousChapter: @escaping () -> Void,
         onNextChapter: @escaping () -> Void,
         onSliderChange: @escaping (Double) -> Void,
+        onPageSliderChange: @escaping (Int) -> Void = { _ in },
         onOpenToc: @escaping () -> Void,
         onToggleConfig: @escaping () -> Void,
         onUpdateConfig: @escaping (ReaderConfig) -> Void = { _ in },
@@ -73,6 +79,8 @@ public struct ReaderHUDView: View {
         self.currentChapterTitle = currentChapterTitle
         self.currentChapterIndex = currentChapterIndex
         self.totalChapters = totalChapters
+        self.currentPageIndex = currentPageIndex
+        self.totalPages = totalPages
         self.chapters = chapters
         self.config = config
         self.importedFonts = importedFonts
@@ -84,6 +92,7 @@ public struct ReaderHUDView: View {
         self.onPreviousChapter = onPreviousChapter
         self.onNextChapter = onNextChapter
         self.onSliderChange = onSliderChange
+        self.onPageSliderChange = onPageSliderChange
         self.onOpenToc = onOpenToc
         self.onToggleConfig = onToggleConfig
         self.onUpdateConfig = onUpdateConfig
@@ -130,7 +139,7 @@ public struct ReaderHUDView: View {
             .padding(.bottom, horizontalSizeClass == .regular ? 28 : 24)
         }
         .ignoresSafeArea(edges: .top)
-        .preferredColorScheme(config.theme.isDark ? .dark : .light)
+        .preferredColorScheme(config.isEffectiveDark ? .dark : .light)
     }
 
     // MARK: - 顶部导航条
@@ -153,8 +162,8 @@ public struct ReaderHUDView: View {
                 Spacer()
 
                 circleIconButton(
-                    systemName: config.theme.isDark ? "sun.max.fill" : "moon.fill",
-                    foreground: config.theme.isDark ? .yellow : .primary,
+                    systemName: config.isEffectiveDark ? "sun.max.fill" : "moon.fill",
+                    foreground: config.isEffectiveDark ? .yellow : .primary,
                     action: onToggleNightMode)
 
                 circleIconButton(systemName: "text.quote", action: onOpenTextAction)
@@ -204,12 +213,17 @@ public struct ReaderHUDView: View {
     // MARK: - 底部主控制栏
 
     private var bottomControlBar: some View {
-        let maxIndex = max(totalChapters - 1, 1)
-        let activeIndex = Int(draggingChapterIndex ?? Double(currentChapterIndex))
-        let clampedIndex = min(max(activeIndex, 0), max(totalChapters - 1, 0))
-        let previewTitle = (clampedIndex < chapters.count ? chapters[clampedIndex].title : currentChapterTitle)
-        let progressPct = totalChapters > 1
-            ? Double(clampedIndex) / Double(totalChapters - 1) * 100.0
+        let isPageMode = config.progressBarBehavior == .page && totalPages > 1
+        let itemTotal = isPageMode ? totalPages : totalChapters
+        let currentItem = isPageMode ? currentPageIndex : currentChapterIndex
+        let maxIndex = max(itemTotal - 1, 1)
+        let activeIndex = Int(draggingChapterIndex ?? Double(currentItem))
+        let clampedIndex = min(max(activeIndex, 0), max(itemTotal - 1, 0))
+        let previewTitle = isPageMode
+            ? "\(currentChapterTitle) · 第 \(clampedIndex + 1) 页"
+            : (clampedIndex < chapters.count ? chapters[clampedIndex].title : currentChapterTitle)
+        let progressPct = itemTotal > 1
+            ? Double(clampedIndex) / Double(itemTotal - 1) * 100.0
             : 100.0
 
         return VStack(spacing: 12) {
@@ -219,7 +233,7 @@ public struct ReaderHUDView: View {
                         .font(.caption.weight(.medium))
                         .lineLimit(1)
                     Spacer()
-                    Text("\(clampedIndex + 1)/\(max(totalChapters, 1)) · \(String(format: "%.1f%%", progressPct))")
+                    Text("\(clampedIndex + 1)/\(max(itemTotal, 1)) · \(String(format: "%.1f%%", progressPct))")
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -238,7 +252,7 @@ public struct ReaderHUDView: View {
 
                 Slider(
                     value: Binding(
-                        get: { draggingChapterIndex ?? Double(currentChapterIndex) },
+                        get: { draggingChapterIndex ?? Double(currentItem) },
                         set: { newValue in
                             draggingChapterIndex = newValue
                         }),
@@ -246,15 +260,19 @@ public struct ReaderHUDView: View {
                     step: 1,
                     onEditingChanged: { isEditing in
                         if !isEditing, let target = draggingChapterIndex {
-                            let targetInt = min(max(Int(target.rounded()), 0), max(totalChapters - 1, 0))
+                            let targetInt = min(max(Int(target.rounded()), 0), max(itemTotal - 1, 0))
                             draggingChapterIndex = nil
-                            if targetInt != currentChapterIndex {
+                            if isPageMode {
+                                if targetInt != currentPageIndex {
+                                    onPageSliderChange(targetInt)
+                                }
+                            } else if targetInt != currentChapterIndex {
                                 onSliderChange(Double(targetInt))
                             }
                         }
                     })
                     .tint(.accentColor)
-                    .disabled(totalChapters <= 1)
+                    .disabled(itemTotal <= 1)
 
                 Button(action: onNextChapter) {
                     Image(systemName: "forward.fill")

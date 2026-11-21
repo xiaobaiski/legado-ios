@@ -229,7 +229,7 @@ public struct SettingsView: View {
                     Text("最近备份已完成")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.green)
-                    Text("包含 \(summary.bookCount) 本书，\(summary.sourceCount) 个书源 (\(summary.dataSizeBytes / 1024) KB)")
+                    Text("包含 \(summary.bookCount) 本书 (\(summary.dataSizeBytes / 1024) KB)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -237,7 +237,7 @@ public struct SettingsView: View {
         } header: {
             Label("WebDAV 云备份同步", systemImage: "icloud")
         } footer: {
-            Text("支持坚果云、Nextcloud、群晖 WebDAV 服务，自动无损加密打包书架与书源配置。")
+            Text("支持坚果云、Nextcloud、群晖 WebDAV 服务，自动无损打包同步书架、阅读进度与净化规则。")
         }
     }
 

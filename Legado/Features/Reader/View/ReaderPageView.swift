@@ -2,7 +2,7 @@ import CoreText
 import SwiftUI
 import UIKit
 
-/// 单页排版内容呈现视图（使用 CoreText 与分页引擎像素级一致绘制，缓存 CTFramesetter 避免冗余重绘）
+/// 单页排版内容呈现视图（支持 6 槽位自定义页眉页脚、正文章节大标题、自定义配色与 CoreText 零冗余绘制）
 public struct ReaderPageView: View {
     public enum SpineEdge: Sendable {
         case none
@@ -11,6 +11,7 @@ public struct ReaderPageView: View {
     }
 
     let page: ReaderPage
+    let bookTitle: String
     let totalPages: Int
     let totalChapters: Int
     let config: ReaderConfig
@@ -20,6 +21,7 @@ public struct ReaderPageView: View {
 
     public init(
         page: ReaderPage,
+        bookTitle: String = "",
         totalPages: Int,
         totalChapters: Int = 1,
         config: ReaderConfig,
@@ -27,21 +29,13 @@ public struct ReaderPageView: View {
         maxContentWidth: CGFloat? = nil,
         spineEdge: SpineEdge = .none) {
         self.page = page
+        self.bookTitle = bookTitle
         self.totalPages = totalPages
         self.totalChapters = totalChapters
         self.config = config
         self.highlightedSentence = highlightedSentence
         self.maxContentWidth = maxContentWidth
         self.spineEdge = spineEdge
-    }
-
-    private var bookProgressPercent: String {
-        let safeChapters = max(totalChapters, 1)
-        let safePages = max(totalPages, 1)
-        let chapterBase = Double(page.chapterIndex) / Double(safeChapters)
-        let inChapter = Double(page.pageIndex + 1) / Double(safePages) / Double(safeChapters)
-        let total = min(max((chapterBase + inChapter) * 100.0, 0), 100)
-        return String(format: "%.1f%%", total)
     }
 
     private var leadingPadding: CGFloat {
@@ -56,27 +50,22 @@ public struct ReaderPageView: View {
         let topHeight = TextLayoutEngine.effectiveTopMargin(for: config)
         let bottomHeight = TextLayoutEngine.effectiveBottomMargin(for: config)
         let halfCanvasPad = TextLayoutEngine.verticalCanvasPadding / 2
+        let textColor = config.effectiveTextColor
+        let bgColor = config.effectiveBackgroundColor
 
         ZStack {
             VStack(spacing: 0) {
                 if config.showHeader {
                     VStack(spacing: 3) {
-                        HStack {
-                            Text(config.chineseConversion.convert(page.chapterTitle))
-                                .font(.caption2)
-                                .foregroundStyle(config.theme.textColor.opacity(0.48))
-                                .lineLimit(1)
-
-                            Spacer()
-
-                            Text(Date(), format: .dateTime.hour().minute())
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(config.theme.textColor.opacity(0.48))
-                        }
+                        tipBarRow(
+                            left: config.tipConfig.headerLeft,
+                            center: config.tipConfig.headerCenter,
+                            right: config.tipConfig.headerRight,
+                            textColor: textColor)
 
                         if config.showHeaderDivider {
                             Rectangle()
-                                .fill(config.theme.textColor.opacity(0.14))
+                                .fill(textColor.opacity(0.14))
                                 .frame(height: 0.5)
                         }
                     }
@@ -91,6 +80,7 @@ public struct ReaderPageView: View {
 
                 CoreTextPageCanvas(
                     content: page.contentText,
+                    titlePrefixLength: page.titlePrefixLength,
                     config: config,
                     highlightedSentence: highlightedSentence)
                     .frame(maxWidth: maxContentWidth ?? .infinity, maxHeight: .infinity)
@@ -102,23 +92,15 @@ public struct ReaderPageView: View {
                     VStack(spacing: 3) {
                         if config.showFooterDivider {
                             Rectangle()
-                                .fill(config.theme.textColor.opacity(0.14))
+                                .fill(textColor.opacity(0.14))
                                 .frame(height: 0.5)
                         }
 
-                        HStack(spacing: 10) {
-                            Text("第 \(page.pageIndex + 1) / \(max(totalPages, 1)) 页")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(config.theme.textColor.opacity(0.48))
-
-                            Spacer()
-
-                            Text(bookProgressPercent)
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(config.theme.textColor.opacity(0.48))
-
-                            batteryBadge
-                        }
+                        tipBarRow(
+                            left: config.tipConfig.footerLeft,
+                            center: config.tipConfig.footerCenter,
+                            right: config.tipConfig.footerRight,
+                            textColor: textColor)
                     }
                     .frame(maxWidth: maxContentWidth ?? .infinity)
                     .padding(.leading, leadingPadding)
@@ -130,19 +112,116 @@ public struct ReaderPageView: View {
                 }
             }
 
-            // iPad 双页模式书脊柔光折痕阴影
             if spineEdge != .none {
                 spineShadowOverlay
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(config.theme.backgroundColor)
+        .background(bgColor)
         .ignoresSafeArea()
+    }
+
+    private func tipBarRow(
+        left: ReadTipItem,
+        center: ReadTipItem,
+        right: ReadTipItem,
+        textColor: Color) -> some View {
+        let fontSize = config.tipConfig.tipFontSize
+        let foreground = textColor.opacity(0.50)
+
+        return HStack(spacing: 8) {
+            tipSlotView(left, fontSize: fontSize, color: foreground)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if center != .none {
+                tipSlotView(center, fontSize: fontSize, color: foreground)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+
+            tipSlotView(right, fontSize: fontSize, color: foreground)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .lineLimit(1)
+    }
+
+    @ViewBuilder
+    private func tipSlotView(_ item: ReadTipItem, fontSize: CGFloat, color: Color) -> some View {
+        switch item {
+        case .none:
+            EmptyView()
+
+        case .bookTitle:
+            Text(config.chineseConversion.convert(bookTitle))
+                .font(.system(size: fontSize))
+                .foregroundStyle(color)
+
+        case .chapterTitle:
+            Text(config.chineseConversion.convert(page.chapterTitle))
+                .font(.system(size: fontSize))
+                .foregroundStyle(color)
+
+        case .time:
+            Text(Date(), format: .dateTime.hour().minute())
+                .font(.system(size: fontSize).monospacedDigit())
+                .foregroundStyle(color)
+
+        case .battery:
+            batteryView(fontSize: fontSize, color: color)
+
+        case .pageAndTotal:
+            Text("\(page.pageIndex + 1)/\(max(totalPages, 1))")
+                .font(.system(size: fontSize).monospacedDigit())
+                .foregroundStyle(color)
+
+        case .chapterProgress:
+            let pct = Int(round(Double(page.pageIndex + 1) / Double(max(totalPages, 1)) * 100))
+            Text("\(pct)%")
+                .font(.system(size: fontSize).monospacedDigit())
+                .foregroundStyle(color)
+
+        case .bookProgress:
+            Text(bookProgressPercent)
+                .font(.system(size: fontSize).monospacedDigit())
+                .foregroundStyle(color)
+
+        case .chapterIndex:
+            Text("\(page.chapterIndex + 1)/\(max(totalChapters, 1))")
+                .font(.system(size: fontSize).monospacedDigit())
+                .foregroundStyle(color)
+
+        case .remainingPages:
+            let left = max(totalPages - page.pageIndex - 1, 0)
+            Text(left == 0 ? "本章末页" : "余\(left)页")
+                .font(.system(size: fontSize).monospacedDigit())
+                .foregroundStyle(color)
+        }
+    }
+
+    private var bookProgressPercent: String {
+        let safeChapters = max(totalChapters, 1)
+        let safePages = max(totalPages, 1)
+        let chapterBase = Double(page.chapterIndex) / Double(safeChapters)
+        let inChapter = Double(page.pageIndex + 1) / Double(safePages) / Double(safeChapters)
+        let total = min(max((chapterBase + inChapter) * 100.0, 0), 100)
+        return String(format: "%.1f%%", total)
+    }
+
+    @ViewBuilder
+    private func batteryView(fontSize: CGFloat, color: Color) -> some View {
+        let level = BatteryMonitor.currentLevel
+        if level >= 0 {
+            HStack(spacing: 3) {
+                Image(systemName: batterySymbol(for: level))
+                Text("\(Int(round(level * 100)))%")
+            }
+            .font(.system(size: fontSize).monospacedDigit())
+            .foregroundStyle(color)
+        }
     }
 
     @ViewBuilder
     private var spineShadowOverlay: some View {
-        let shadowAlpha = config.theme.isDark ? 0.22 : 0.06
+        let shadowAlpha = config.isEffectiveDark ? 0.22 : 0.06
         HStack(spacing: 0) {
             if spineEdge == .leading {
                 LinearGradient(
@@ -161,16 +240,6 @@ public struct ReaderPageView: View {
             }
         }
         .allowsHitTesting(false)
-    }
-
-    @ViewBuilder
-    private var batteryBadge: some View {
-        let level = BatteryMonitor.currentLevel
-        if level >= 0 {
-            Image(systemName: batterySymbol(for: level))
-                .font(.caption2)
-                .foregroundStyle(config.theme.textColor.opacity(0.48))
-        }
     }
 
     private func batterySymbol(for level: Float) -> String {
@@ -197,9 +266,10 @@ private enum BatteryMonitor {
     }
 }
 
-/// CoreText 同步排版绘制画布（仅在内容或排版参数实际变化时重建 CTFramesetter，消除 HUD 闪烁重绘）
+/// CoreText 同步排版绘制画布（仅在内容、标题长度或排版参数实际变化时重建 CTFramesetter）
 private struct CoreTextPageCanvas: UIViewRepresentable {
     let content: String
+    let titlePrefixLength: Int
     let config: ReaderConfig
     let highlightedSentence: String?
 
@@ -214,6 +284,7 @@ private struct CoreTextPageCanvas: UIViewRepresentable {
     func updateUIView(_ uiView: CoreTextDrawView, context _: Context) {
         uiView.updateIfNeeded(
             content: content,
+            titlePrefixLength: titlePrefixLength,
             config: config,
             highlightedSentence: highlightedSentence)
     }
@@ -222,6 +293,7 @@ private struct CoreTextPageCanvas: UIViewRepresentable {
 private final class CoreTextDrawView: UIView {
     private struct RenderKey: Equatable {
         let content: String
+        let titlePrefixLength: Int
         let config: ReaderConfig
         let highlightedSentence: String?
     }
@@ -229,14 +301,23 @@ private final class CoreTextDrawView: UIView {
     private var lastKey: RenderKey?
     private var cachedFramesetter: CTFramesetter?
 
-    func updateIfNeeded(content: String, config: ReaderConfig, highlightedSentence: String?) {
-        let key = RenderKey(content: content, config: config, highlightedSentence: highlightedSentence)
+    func updateIfNeeded(
+        content: String,
+        titlePrefixLength: Int,
+        config: ReaderConfig,
+        highlightedSentence: String?) {
+        let key = RenderKey(
+            content: content,
+            titlePrefixLength: titlePrefixLength,
+            config: config,
+            highlightedSentence: highlightedSentence)
         guard key != lastKey else { return }
         lastKey = key
         let attributed = TextLayoutEngine.shared.createAttributedString(
             content: content,
             config: config,
-            highlightedSentence: highlightedSentence)
+            highlightedSentence: highlightedSentence,
+            titlePrefixLength: titlePrefixLength)
         cachedFramesetter = attributed.length > 0
             ? CTFramesetterCreateWithAttributedString(attributed as CFAttributedString)
             : nil
@@ -266,6 +347,7 @@ private final class CoreTextDrawView: UIView {
 public struct ReaderDualPageSpreadView: View {
     let leftPage: ReaderPage
     let rightPage: ReaderPage?
+    let bookTitle: String
     let totalPages: Int
     let totalChapters: Int
     let config: ReaderConfig
@@ -274,12 +356,14 @@ public struct ReaderDualPageSpreadView: View {
     public init(
         leftPage: ReaderPage,
         rightPage: ReaderPage?,
+        bookTitle: String = "",
         totalPages: Int,
         totalChapters: Int,
         config: ReaderConfig,
         highlightedSentence: String? = nil) {
         self.leftPage = leftPage
         self.rightPage = rightPage
+        self.bookTitle = bookTitle
         self.totalPages = totalPages
         self.totalChapters = totalChapters
         self.config = config
@@ -290,6 +374,7 @@ public struct ReaderDualPageSpreadView: View {
         HStack(spacing: 0) {
             ReaderPageView(
                 page: leftPage,
+                bookTitle: bookTitle,
                 totalPages: totalPages,
                 totalChapters: totalChapters,
                 config: config,
@@ -300,6 +385,7 @@ public struct ReaderDualPageSpreadView: View {
             if let rightPage {
                 ReaderPageView(
                     page: rightPage,
+                    bookTitle: bookTitle,
                     totalPages: totalPages,
                     totalChapters: totalChapters,
                     config: config,
@@ -307,10 +393,10 @@ public struct ReaderDualPageSpreadView: View {
                     spineEdge: .leading)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                config.theme.backgroundColor
+                config.effectiveBackgroundColor
                     .overlay(alignment: .leading) {
                         LinearGradient(
-                            colors: [Color.black.opacity(config.theme.isDark ? 0.22 : 0.06), .clear],
+                            colors: [Color.black.opacity(config.isEffectiveDark ? 0.22 : 0.06), .clear],
                             startPoint: .leading,
                             endPoint: .trailing)
                             .frame(width: 18)
@@ -321,11 +407,11 @@ public struct ReaderDualPageSpreadView: View {
         }
         .overlay {
             Rectangle()
-                .fill(config.theme.textColor.opacity(0.08))
+                .fill(config.effectiveTextColor.opacity(0.08))
                 .frame(width: 0.5)
                 .padding(.vertical, 28)
         }
-        .background(config.theme.backgroundColor)
+        .background(config.effectiveBackgroundColor)
         .ignoresSafeArea()
     }
 }

@@ -6,11 +6,33 @@ extension ReaderTypographyPanel {
     var appearanceControlsSection: some View {
         VStack(spacing: 14) {
             brightnessSection
+            warmthSliderSection
             themesGridSection
             quickToggleButtons
             footerActionRow
         }
         .padding(.vertical, 2)
+    }
+
+    private var warmthSliderSection: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "eye")
+                .font(.caption)
+                .foregroundStyle(.orange)
+
+            Slider(
+                value: Binding(
+                    get: { config.eyeProtectionWarmth },
+                    set: { newVal in update { $0.eyeProtectionWarmth = newVal } }),
+                in: 0 ... 0.45,
+                step: 0.05)
+                .tint(.orange)
+
+            Text(config.eyeProtectionWarmth > 0 ? "暖光\(Int(config.eyeProtectionWarmth * 100))%" : "护眼关")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 46, alignment: .trailing)
+        }
     }
 
     private var brightnessSection: some View {
@@ -59,13 +81,20 @@ extension ReaderTypographyPanel {
             HStack(spacing: 12) {
                 ForEach(ReaderTheme.allCases) { theme in
                     let isSelected = config.theme == theme
+                    let swatchBg = theme == .custom
+                        ? HexColorCodec.color(from: config.customBackgroundHex, fallback: theme.backgroundColor)
+                        : theme.backgroundColor
+                    let swatchText = theme == .custom
+                        ? HexColorCodec.color(from: config.customTextHex, fallback: theme.textColor)
+                        : theme.textColor
+
                     Button {
                         update { $0.applyTheme(theme) }
                     } label: {
                         VStack(spacing: 4) {
                             ZStack {
                                 Circle()
-                                    .fill(theme.backgroundColor)
+                                    .fill(swatchBg)
                                     .frame(width: 38, height: 38)
                                     .overlay(
                                         Circle()
@@ -75,7 +104,7 @@ extension ReaderTypographyPanel {
 
                                 Text("文")
                                     .font(.caption.bold())
-                                    .foregroundStyle(theme.textColor)
+                                    .foregroundStyle(swatchText)
                             }
 
                             Text(theme.name)
@@ -93,9 +122,9 @@ extension ReaderTypographyPanel {
     private var quickToggleButtons: some View {
         HStack(spacing: 8) {
             quickPillToggle(
-                title: config.theme.isDark ? "日间模式" : "夜间模式",
-                icon: config.theme.isDark ? "sun.max.fill" : "moon.fill",
-                isOn: config.theme.isDark) {
+                title: config.isEffectiveDark ? "日间模式" : "夜间模式",
+                icon: config.isEffectiveDark ? "sun.max.fill" : "moon.fill",
+                isOn: config.isEffectiveDark) {
                     update { $0.toggleNightMode() }
                 }
 

@@ -24,6 +24,7 @@ public struct ReaderView: View {
     @State var isFontChooserPresented = false
     @State var isTextActionPresented = false
     @State var readingSessionStart: Date?
+    @State var screenKeepOnTask: Task<Void, Never>?
     @State var volumeHandler = VolumeButtonHandler()
 
     public init(viewModel: ReaderViewModel) {
@@ -31,7 +32,7 @@ public struct ReaderView: View {
     }
 
     private var readerColorScheme: ColorScheme {
-        viewModel.state.config.theme.isDark ? .dark : .light
+        viewModel.state.config.isEffectiveDark ? .dark : .light
     }
 
     public var body: some View {
@@ -40,8 +41,14 @@ public struct ReaderView: View {
                 // 全屏沉浸式排版画布：与 ReaderPageView 严格共享同一全屏尺寸，彻底消除底部多余空白
                 GeometryReader { fullGeo in
                     ZStack {
-                        viewModel.state.config.theme.backgroundColor
+                        viewModel.state.config.effectiveBackgroundColor
                         contentLayer(width: fullGeo.size.width)
+
+                        if viewModel.state.config.eyeProtectionWarmth > 0 {
+                            Color(red: 1.0, green: 0.62, blue: 0.12)
+                                .opacity(viewModel.state.config.eyeProtectionWarmth * 0.45)
+                                .allowsHitTesting(false)
+                        }
                     }
                     .frame(width: fullGeo.size.width, height: fullGeo.size.height)
                     .onAppear {
@@ -98,6 +105,9 @@ public struct ReaderView: View {
                 } else {
                     flushReadingSession()
                 }
+            }
+            .onChange(of: viewModel.state.currentPageIndex) { _, _ in
+                scheduleScreenKeepOnTimer()
             }
             .onChange(of: viewModel.state.config) { _, _ in
                 applySystemDisplaySettings()
@@ -323,6 +333,8 @@ public struct ReaderView: View {
             currentChapterTitle: viewModel.state.currentChapter?.title ?? "",
             currentChapterIndex: viewModel.state.currentChapterIndex,
             totalChapters: viewModel.state.chapters.count,
+            currentPageIndex: viewModel.state.currentPageIndex,
+            totalPages: viewModel.state.pages.count,
             chapters: viewModel.state.chapters,
             config: viewModel.state.config,
             importedFonts: viewModel.state.importedFonts,
@@ -334,6 +346,7 @@ public struct ReaderView: View {
             onPreviousChapter: { viewModel.send(.loadChapter(viewModel.state.currentChapterIndex - 1)) },
             onNextChapter: { viewModel.send(.loadChapter(viewModel.state.currentChapterIndex + 1)) },
             onSliderChange: { viewModel.send(.loadChapter(Int($0))) },
+            onPageSliderChange: { viewModel.send(.jumpToPage($0)) },
             onOpenToc: { viewModel.send(.openToc) },
             onToggleConfig: {
                 viewModel.send(viewModel.state.isConfigSheetVisible ? .closeConfig : .openConfig)

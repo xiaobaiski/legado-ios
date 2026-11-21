@@ -6,6 +6,7 @@ public struct AutoScrollReaderView: UIViewRepresentable {
     let chapterIndex: Int
     let chapterTitle: String
     let contentText: String
+    let titlePrefixLength: Int
     let config: ReaderConfig
     let highlightedSentence: String?
     let isAutoScrolling: Bool
@@ -23,7 +24,7 @@ public struct AutoScrollReaderView: UIViewRepresentable {
         textView.isSelectable = true
         textView.alwaysBounceVertical = true
         textView.showsVerticalScrollIndicator = false
-        textView.backgroundColor = UIColor(config.theme.backgroundColor)
+        textView.backgroundColor = UIColor(config.effectiveBackgroundColor)
         textView.textContainer.lineFragmentPadding = 0
         textView.contentInsetAdjustmentBehavior = .never
         textView.delegate = context.coordinator
@@ -44,7 +45,7 @@ public struct AutoScrollReaderView: UIViewRepresentable {
         let coordinator = context.coordinator
         let chapterChanged = coordinator.lastChapterIndex != chapterIndex
         coordinator.parent = self
-        uiView.backgroundColor = UIColor(config.theme.backgroundColor)
+        uiView.backgroundColor = UIColor(config.effectiveBackgroundColor)
         coordinator.applyContentIfNeeded(to: uiView, resetOffset: chapterChanged)
         coordinator.syncDisplayLink()
     }
@@ -86,25 +87,11 @@ public struct AutoScrollReaderView: UIViewRepresentable {
             lastRenderSignature = signature
             lastChapterIndex = parent.chapterIndex
 
-            let combined = NSMutableAttributedString()
-            if !parent.chapterTitle.isEmpty {
-                let titleFont = parent.config.resolvedUIFont(size: parent.config.fontSize + 4, isBold: true)
-                let titleStyle = NSMutableParagraphStyle()
-                titleStyle.paragraphSpacing = max(parent.config.paragraphSpacing + 8, 16)
-                let titleStr = parent.config.chineseConversion.convert(parent.chapterTitle) + "\n"
-                combined.append(NSAttributedString(string: titleStr, attributes: [
-                    .font: titleFont,
-                    .foregroundColor: UIColor(parent.config.theme.textColor),
-                    .paragraphStyle: titleStyle,
-                ]))
-            }
-
-            let bodyAttr = TextLayoutEngine.shared.createAttributedString(
+            textView.attributedText = TextLayoutEngine.shared.createAttributedString(
                 content: parent.contentText,
                 config: parent.config,
-                highlightedSentence: parent.highlightedSentence)
-            combined.append(bodyAttr)
-            textView.attributedText = combined
+                highlightedSentence: parent.highlightedSentence,
+                titlePrefixLength: parent.titlePrefixLength)
 
             if resetOffset {
                 textView.setContentOffset(.zero, animated: false)

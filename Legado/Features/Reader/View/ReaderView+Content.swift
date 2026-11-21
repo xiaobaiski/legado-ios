@@ -7,7 +7,7 @@ extension ReaderView {
     func contentLayer(width: CGFloat) -> some View {
         if viewModel.state.isLoading {
             ProgressView("正在排版正文...")
-                .tint(viewModel.state.config.theme.textColor)
+                .tint(viewModel.state.config.effectiveTextColor)
         } else if viewModel.state.pages.isEmpty {
             ContentUnavailableView(
                 "章节内容加载失败",
@@ -50,6 +50,7 @@ extension ReaderView {
                 chapterIndex: viewModel.state.currentChapterIndex,
                 chapterTitle: chapterTitle,
                 contentText: viewModel.state.currentChapterText,
+                titlePrefixLength: viewModel.state.pages.first?.titlePrefixLength ?? 0,
                 config: config,
                 highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil,
                 isAutoScrolling: autoScroll,
@@ -73,6 +74,7 @@ extension ReaderView {
         let isDual = config.isDualPageActive(for: viewModel.state.screenBounds)
 
         return PageCurlReaderView(
+            bookTitle: viewModel.state.book.name,
             pages: viewModel.state.pages,
             currentPageIndex: viewModel.state.currentPageIndex,
             chapterIndex: viewModel.state.currentChapterIndex,
@@ -112,6 +114,7 @@ extension ReaderView {
                 ReaderDualPageSpreadView(
                     leftPage: leftPage,
                     rightPage: rightPage,
+                    bookTitle: viewModel.state.book.name,
                     totalPages: viewModel.state.pages.count,
                     totalChapters: viewModel.state.chapters.count,
                     config: viewModel.state.config,
@@ -121,6 +124,7 @@ extension ReaderView {
             } else if let page = viewModel.state.currentPage {
                 ReaderPageView(
                     page: page,
+                    bookTitle: viewModel.state.book.name,
                     totalPages: viewModel.state.pages.count,
                     totalChapters: viewModel.state.chapters.count,
                     config: viewModel.state.config,
@@ -167,6 +171,7 @@ extension ReaderView {
                             ReaderDualPageSpreadView(
                                 leftPage: leftPage,
                                 rightPage: rightPage,
+                                bookTitle: viewModel.state.book.name,
                                 totalPages: viewModel.state.pages.count,
                                 totalChapters: viewModel.state.chapters.count,
                                 config: viewModel.state.config,
@@ -182,6 +187,7 @@ extension ReaderView {
                         ForEach(viewModel.state.pages) { page in
                             ReaderPageView(
                                 page: page,
+                                bookTitle: viewModel.state.book.name,
                                 totalPages: viewModel.state.pages.count,
                                 totalChapters: viewModel.state.chapters.count,
                                 config: viewModel.state.config,

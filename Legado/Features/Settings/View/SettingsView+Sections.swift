@@ -24,9 +24,9 @@ extension SettingsView {
             }
 
             Toggle("阅读器夜间模式", isOn: Binding(
-                get: { viewModel.state.readerConfig.theme.isDark },
+                get: { viewModel.state.readerConfig.isEffectiveDark },
                 set: { wantDark in
-                    if wantDark != viewModel.state.readerConfig.theme.isDark {
+                    if wantDark != viewModel.state.readerConfig.isEffectiveDark {
                         var updated = viewModel.state.readerConfig
                         updated.toggleNightMode()
                         viewModel.send(.updateReaderConfig(updated))
@@ -34,13 +34,52 @@ extension SettingsView {
                 }))
 
             Toggle("触感震动反馈", isOn: readerBinding(\.isHapticEnabled))
-            Toggle("阅读时屏幕常亮", isOn: readerBinding(\.keepScreenOn))
+
+            Picker(
+                "屏幕常亮时长",
+                selection: Binding(
+                    get: { viewModel.state.readerConfig.keepScreenOnDuration },
+                    set: { duration in
+                        var updated = viewModel.state.readerConfig
+                        updated.keepScreenOnDuration = duration
+                        updated.keepScreenOn = duration != .system
+                        viewModel.send(.updateReaderConfig(updated))
+                    })) {
+                        ForEach(KeepScreenOnDuration.allCases) { duration in
+                            Text(duration.title).tag(duration)
+                        }
+                    }
+
+            Picker("底部进度条行为", selection: readerBinding(\.progressBarBehavior)) {
+                ForEach(ProgressBarBehavior.allCases) { behavior in
+                    Text(behavior.rawValue).tag(behavior)
+                }
+            }
+
             Toggle("点击屏幕翻页", isOn: readerBinding(\.tapToTurnPage))
 
             NavigationLink {
                 TapZoneConfigView(tapZoneConfig: readerBinding(\.tapZoneConfig))
             } label: {
                 Label("点按区域自定义 (九宫格)", systemImage: "square.grid.3x3")
+            }
+
+            NavigationLink {
+                ChapterTitleConfigView(config: fullReaderConfigBinding)
+            } label: {
+                Label("正文章节标题样式", systemImage: "textformat.size.larger")
+            }
+
+            NavigationLink {
+                HeaderFooterConfigView(config: fullReaderConfigBinding)
+            } label: {
+                Label("页眉与页脚自定义 (6 槽位)", systemImage: "rectangle.topthird.inset.filled")
+            }
+
+            NavigationLink {
+                CustomThemeConfigView(config: fullReaderConfigBinding)
+            } label: {
+                Label("自定义配色与护眼滤镜", systemImage: "paintpalette")
             }
 
             Toggle("音量键翻页", isOn: readerBinding(\.volumeKeyPageTurn))
@@ -58,9 +97,6 @@ extension SettingsView {
                 }
             }
 
-            Toggle("显示页眉（章节名与时间）", isOn: readerBinding(\.showHeader))
-            Toggle("显示页脚（页码、总进度与电量）", isOn: readerBinding(\.showFooter))
-
             Button(role: .destructive) {
                 viewModel.send(.resetReaderConfig)
             } label: {
@@ -69,8 +105,14 @@ extension SettingsView {
         } header: {
             Label("阅读与外观偏好", systemImage: "book.pages")
         } footer: {
-            Text("字号、字体、行距、段距、字距、边距与主题配色可在阅读器「排版」面板中实时调节并自动保存。")
+            Text("字号、字体、行距、段距、字距、四边边距与主题配色可在阅读器底部「排版」面板中实时调节并自动保存。")
         }
+    }
+
+    private var fullReaderConfigBinding: Binding<ReaderConfig> {
+        Binding(
+            get: { viewModel.state.readerConfig },
+            set: { viewModel.send(.updateReaderConfig($0)) })
     }
 
     private var appearanceBinding: Binding<AppAppearanceMode> {

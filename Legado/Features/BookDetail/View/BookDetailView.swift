@@ -215,9 +215,12 @@ public struct BookDetailView: View {
 
                 HStack(spacing: 8) {
                     HStack(spacing: 4) {
-                        Image(systemName: "network")
+                        Image(systemName: viewModel.state.book.isLocalFile ? "doc.text" : "network")
                             .font(.caption2)
-                        Text("书源: \(viewModel.state.book.originName)")
+                        Text(
+                            viewModel.state.book.isLocalFile
+                                ? "来源: \(viewModel.state.book.originName)"
+                                : "书源: \(viewModel.state.book.originName)")
                             .font(.caption2)
                             .lineLimit(1)
                     }

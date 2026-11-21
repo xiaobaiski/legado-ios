@@ -3,6 +3,7 @@ import UIKit
 
 /// 原生 UIKit 仿真翻页视图（支持 iPhone 单页仿真卷页与 iPad 中脊双页拟真翻书）
 public struct PageCurlReaderView: UIViewControllerRepresentable {
+    let bookTitle: String
     let pages: [ReaderPage]
     let currentPageIndex: Int
     let chapterIndex: Int
@@ -29,7 +30,7 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
         controller.isDoubleSided = isDualPage
         controller.dataSource = context.coordinator
         controller.delegate = context.coordinator
-        controller.view.backgroundColor = UIColor(config.theme.backgroundColor)
+        controller.view.backgroundColor = UIColor(config.effectiveBackgroundColor)
 
         // 禁用 UIPageViewController 默认点击翻页手势，保留完整手指拖拽卷页，点击由自定义三区热区处理
         for recognizer in controller.gestureRecognizers where recognizer is UITapGestureRecognizer {
@@ -57,7 +58,7 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
     public func updateUIViewController(_ uiViewController: UIPageViewController, context: Context) {
         let coordinator = context.coordinator
         coordinator.parent = self
-        uiViewController.view.backgroundColor = UIColor(config.theme.backgroundColor)
+        uiViewController.view.backgroundColor = UIColor(config.effectiveBackgroundColor)
 
         let targetAligned = coordinator.alignedIndex(currentPageIndex)
         let chapterChanged = coordinator.lastRenderedChapter != chapterIndex
@@ -144,6 +145,7 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
                 : .none
             let view = ReaderPageView(
                 page: page,
+                bookTitle: parent.bookTitle,
                 totalPages: parent.pages.count,
                 totalChapters: parent.totalChapters,
                 config: parent.config,
@@ -151,7 +153,7 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
                 maxContentWidth: parent.isDualPage ? nil : parent.maxSingleWidth,
                 spineEdge: spineEdge)
             let controller = IndexedPageHostingController(pageIndex: index, rootView: view)
-            controller.view.backgroundColor = UIColor(parent.config.theme.backgroundColor)
+            controller.view.backgroundColor = UIColor(parent.config.effectiveBackgroundColor)
             return controller
         }
 
@@ -167,12 +169,13 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
             blankConfig.showFooter = false
             let view = ReaderPageView(
                 page: dummy,
+                bookTitle: parent.bookTitle,
                 totalPages: parent.pages.count,
                 totalChapters: parent.totalChapters,
                 config: blankConfig,
                 spineEdge: parent.isDualPage ? .leading : .none)
             let controller = IndexedPageHostingController(pageIndex: pageIndex, rootView: view)
-            controller.view.backgroundColor = UIColor(parent.config.theme.backgroundColor)
+            controller.view.backgroundColor = UIColor(parent.config.effectiveBackgroundColor)
             return controller
         }
 

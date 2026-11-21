@@ -86,12 +86,49 @@ private extension ReaderTypographyPanel {
     var layoutControlsSection: some View {
         VStack(spacing: 12) {
             fontSizeRow
+            fontWeightRow
             fontFamilyRow
             spacingSliders
             indentAndAlignmentRow
             pageTurnModeRow
         }
         .padding(.vertical, 2)
+    }
+
+    var fontWeightRow: some View {
+        HStack(spacing: 8) {
+            Text("字重")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 34, alignment: .leading)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(ReaderFontWeight.allCases) { weight in
+                        let isSelected = config.fontWeight == weight
+                        Button {
+                            update {
+                                $0.fontWeight = weight
+                                $0.isBoldFont = weight.isBoldLike
+                            }
+                        } label: {
+                            Text(weight.rawValue)
+                                .font(.caption.weight(isSelected ? .semibold : .regular))
+                                .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(
+                                            isSelected
+                                                ? Color.accentColor.opacity(0.15)
+                                                : Color.secondary.opacity(0.10)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
     }
 
     var fontSizeRow: some View {

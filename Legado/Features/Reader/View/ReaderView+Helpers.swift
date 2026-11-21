@@ -115,8 +115,8 @@ extension ReaderView {
     }
 
     func applySystemDisplaySettings() {
+        scheduleScreenKeepOnTimer()
         let config = viewModel.state.config
-        UIApplication.shared.isIdleTimerDisabled = config.keepScreenOn
 
         guard let screen = activeWindowScreen else { return }
         if originalBrightness == nil {
@@ -131,7 +131,31 @@ extension ReaderView {
         }
     }
 
+    func scheduleScreenKeepOnTimer() {
+        screenKeepOnTask?.cancel()
+        screenKeepOnTask = nil
+        let duration = viewModel.state.config.keepScreenOnDuration
+        switch duration {
+        case .system:
+            UIApplication.shared.isIdleTimerDisabled = false
+
+        case .always:
+            UIApplication.shared.isIdleTimerDisabled = true
+
+        case .minutes5, .minutes10, .minutes30:
+            UIApplication.shared.isIdleTimerDisabled = true
+            let seconds = UInt64(duration.rawValue) * 60
+            screenKeepOnTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+                guard !Task.isCancelled else { return }
+                UIApplication.shared.isIdleTimerDisabled = false
+            }
+        }
+    }
+
     func restoreSystemDisplaySettings() {
+        screenKeepOnTask?.cancel()
+        screenKeepOnTask = nil
         UIApplication.shared.isIdleTimerDisabled = false
         if let originalBrightness, let screen = activeWindowScreen {
             screen.brightness = originalBrightness

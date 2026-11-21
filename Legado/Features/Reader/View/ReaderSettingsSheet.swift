@@ -61,20 +61,26 @@ public struct ReaderSettingsSheet: View {
                 }
             }
         }
-        .preferredColorScheme(config.theme.isDark ? .dark : .light)
+        .preferredColorScheme(config.isEffectiveDark ? .dark : .light)
         .presentationDetents([.medium, .large])
     }
 }
 
 private extension ReaderSettingsSheet {
+    var configBinding: Binding<ReaderConfig> {
+        Binding(
+            get: { config },
+            set: { onUpdateConfig($0) })
+    }
+
     var interactionSection: some View {
         Section {
             Toggle(
                 "夜间模式",
                 isOn: Binding(
-                    get: { config.theme.isDark },
+                    get: { config.isEffectiveDark },
                     set: { wantDark in
-                        if wantDark != config.theme.isDark {
+                        if wantDark != config.isEffectiveDark {
                             update { $0.toggleNightMode() }
                         }
                     }))
@@ -83,9 +89,26 @@ private extension ReaderSettingsSheet {
                 "触感震动反馈",
                 isOn: binding(\.isHapticEnabled))
 
-            Toggle(
-                "阅读时屏幕常亮",
-                isOn: binding(\.keepScreenOn))
+            Picker(
+                "屏幕常亮时长",
+                selection: Binding(
+                    get: { config.keepScreenOnDuration },
+                    set: { duration in
+                        update {
+                            $0.keepScreenOnDuration = duration
+                            $0.keepScreenOn = duration != .system
+                        }
+                    })) {
+                        ForEach(KeepScreenOnDuration.allCases) { duration in
+                            Text(duration.title).tag(duration)
+                        }
+                    }
+
+            Picker("底部进度条行为", selection: binding(\.progressBarBehavior)) {
+                ForEach(ProgressBarBehavior.allCases) { behavior in
+                    Text(behavior.rawValue).tag(behavior)
+                }
+            }
 
             Toggle(
                 "点击屏幕翻页",
@@ -113,7 +136,7 @@ private extension ReaderSettingsSheet {
         } header: {
             Label("交互与夜间模式", systemImage: "hand.tap")
         } footer: {
-            Text("支持 3×3 九宫格自定义点按区域；开启「音量键翻页」后按音量+上一页、音量-下一页（朗读时自动恢复音量调节）。")
+            Text("支持 3×3 九宫格自定义点按区域与屏幕常亮倒计时；音量键翻页在朗读听书时自动恢复音量调节。")
         }
     }
 
@@ -257,19 +280,47 @@ private extension ReaderSettingsSheet {
 
     var displaySection: some View {
         Section {
+            NavigationLink {
+                ChapterTitleConfigView(config: configBinding)
+            } label: {
+                HStack {
+                    Label("正文章节标题样式", systemImage: "textformat.size.larger")
+                    Spacer()
+                    Text(config.titleStyle.alignment.rawValue)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            NavigationLink {
+                HeaderFooterConfigView(config: configBinding)
+            } label: {
+                Label("页眉与页脚自定义 (6 槽位)", systemImage: "rectangle.topthird.inset.filled")
+            }
+
+            NavigationLink {
+                CustomThemeConfigView(config: configBinding)
+            } label: {
+                HStack {
+                    Label("自定义配色与护眼滤镜", systemImage: "paintpalette")
+                    Spacer()
+                    if config.eyeProtectionWarmth > 0 {
+                        Text("暖光 \(Int(config.eyeProtectionWarmth * 100))%")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+
             Picker("繁简转换", selection: binding(\.chineseConversion)) {
                 ForEach(ChineseConversionMode.allCases) { mode in
                     Text(mode.rawValue).tag(mode)
                 }
             }
 
-            Toggle("显示页眉（章节标题与时间）", isOn: binding(\.showHeader))
-            Toggle("显示页脚（页码、总进度与电量）", isOn: binding(\.showFooter))
-            Toggle("显示页眉分隔线", isOn: binding(\.showHeaderDivider))
-            Toggle("显示页脚分隔线", isOn: binding(\.showFooterDivider))
             Toggle("阅读时显示系统状态栏", isOn: binding(\.showStatusBar))
         } header: {
-            Label("页眉、页脚与文字显示", systemImage: "rectangle.topthird.inset.filled")
+            Label("版面、标题与配色细节", systemImage: "rectangle.topthird.inset.filled")
         } footer: {
             Text("上、下、左、右边距可在阅读器底部「排版 -> 边距」面板中实时拖动预览。")
         }

@@ -2,7 +2,7 @@ import CoreText
 import Foundation
 import UIKit
 
-/// 基于 CoreText 的高性能非阻塞分页排版引擎
+/// 基于 CoreText 的高性能非阻塞分页排版引擎（支持正文章节大标题排版、精确定位与 pixel-perfect 绘制）
 public final class TextLayoutEngine: Sendable {
     public static let shared = TextLayoutEngine()
     public static let verticalCanvasPadding: CGFloat = 6
@@ -11,12 +11,14 @@ public final class TextLayoutEngine: Sendable {
 
     /// 计算与 ReaderPageView 严格像素对齐的有效页眉高度
     public static func effectiveTopMargin(for config: ReaderConfig) -> CGFloat {
-        config.showHeader ? max(config.topMargin, 22) : config.topMargin
+        let minHeader = max(config.tipConfig.tipFontSize + 11, 22)
+        return config.showHeader ? max(config.topMargin, minHeader) : config.topMargin
     }
 
     /// 计算与 ReaderPageView 严格像素对齐的有效页脚高度
     public static func effectiveBottomMargin(for config: ReaderConfig) -> CGFloat {
-        config.showFooter ? max(config.bottomMargin, 20) : config.bottomMargin
+        let minFooter = max(config.tipConfig.tipFontSize + 9, 20)
+        return config.showFooter ? max(config.bottomMargin, minFooter) : config.bottomMargin
     }
 
     /// 规范化章节文本（Legado 去重标题 + 智能重分段 + 替换净化规则 + 繁简转换 + 统一段首缩进）
@@ -50,7 +52,7 @@ public final class TextLayoutEngine: Sendable {
         return paragraphs.map { indentPrefix + $0 }.joined(separator: "\n")
     }
 
-    /// 将整章文本依据屏幕可视区域和排版配置精确切割为多个 ReaderPage
+    /// 将整章文本依据屏幕可视区域和排版配置精确切割为多个 ReaderPage（首部按 `titleStyle` 渲染章节大标题）
     public func paginate(
         chapterTitle: String,
         content: String,
@@ -82,17 +84,25 @@ public final class TextLayoutEngine: Sendable {
             bookName: bookName,
             bookOrigin: bookOrigin,
             config: config)
+        let convertedTitle = config.chineseConversion.convert(displayTitle)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let includeBodyTitle = config.titleStyle.alignment != .hidden && !convertedTitle.isEmpty
+        let fullText = includeBodyTitle ? "\(convertedTitle)\n\(normalized)" : normalized
+        let titlePrefixLength = includeBodyTitle ? ((convertedTitle + "\n") as NSString).length : 0
+
         let renderRect = contentRenderRect(for: bounds, config: config)
         let attrString = createAttributedString(
-            title: displayTitle,
-            content: normalized,
-            config: config)
+            content: fullText,
+            config: config,
+            titlePrefixLength: titlePrefixLength)
 
         let pages = slicePages(
             attrString: attrString,
             chapterTitle: displayTitle,
             chapterIndex: chapterIndex,
-            renderRect: renderRect)
+            renderRect: renderRect,
+            chapterTitlePrefixLength: titlePrefixLength)
 
         if pages.isEmpty {
             return [
@@ -111,7 +121,8 @@ public final class TextLayoutEngine: Sendable {
         attrString: NSAttributedString,
         chapterTitle: String,
         chapterIndex: Int,
-        renderRect: CGRect) -> [ReaderPage] {
+        renderRect: CGRect,
+        chapterTitlePrefixLength: Int) -> [ReaderPage] {
         let framesetter = CTFramesetterCreateWithAttributedString(attrString as CFAttributedString)
         let path = CGPath(rect: renderRect, transform: nil)
         let nsText = attrString.string as NSString
@@ -129,12 +140,14 @@ public final class TextLayoutEngine: Sendable {
             }
 
             let nsRange = NSRange(location: visibleRange.location, length: visibleRange.length)
+            let pageTitlePrefix = max(0, min(chapterTitlePrefixLength - nsRange.location, nsRange.length))
             pages.append(ReaderPage(
                 pageIndex: pageIndex,
                 chapterIndex: chapterIndex,
                 chapterTitle: chapterTitle,
                 textRange: nsRange,
-                contentText: nsText.substring(with: nsRange)))
+                contentText: nsText.substring(with: nsRange),
+                titlePrefixLength: pageTitlePrefix))
 
             textPos += visibleRange.length
             pageIndex += 1
@@ -158,12 +171,13 @@ public final class TextLayoutEngine: Sendable {
         return CGRect(x: 0, y: 0, width: renderWidth, height: renderHeight)
     }
 
-    /// 构造具备中文段落特征的排版富文本（分页与 CoreText 页面绘制共用，保证像素级一致）
+    /// 构造具备中文段落特征与正文章节大标题的排版富文本（分页与 CoreText 页面绘制共用，保证像素级一致）
     public func createAttributedString(
         title _: String = "",
         content: String,
         config: ReaderConfig,
-        highlightedSentence: String? = nil) -> NSAttributedString {
+        highlightedSentence: String? = nil,
+        titlePrefixLength: Int = 0) -> NSAttributedString {
         let font = config.resolvedUIFont()
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = config.lineSpacing
@@ -174,13 +188,31 @@ public final class TextLayoutEngine: Sendable {
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .paragraphStyle: paragraphStyle,
-            .foregroundColor: UIColor(config.theme.textColor),
+            .foregroundColor: UIColor(config.effectiveTextColor),
         ]
         if config.letterSpacing != 0 {
             attributes[.kern] = config.letterSpacing
         }
 
         let mutable = NSMutableAttributedString(string: content, attributes: attributes)
+
+        let clampedTitleLen = min(max(titlePrefixLength, 0), mutable.length)
+        if clampedTitleLen > 0, config.titleStyle.alignment != .hidden {
+            let titleFont = config.resolvedUIFont(
+                size: config.fontSize + config.titleStyle.sizeDelta,
+                isBold: true)
+            let titleParagraph = NSMutableParagraphStyle()
+            titleParagraph.alignment = config.titleStyle.alignment == .center ? .center : .left
+            titleParagraph.paragraphSpacingBefore = config.titleStyle.topSpacing
+            titleParagraph.paragraphSpacing = config.titleStyle.bottomSpacing
+            titleParagraph.lineSpacing = max(config.lineSpacing * 0.6, 4)
+
+            mutable.addAttributes([
+                .font: titleFont,
+                .paragraphStyle: titleParagraph,
+            ], range: NSRange(location: 0, length: clampedTitleLen))
+        }
+
         if let target = highlightedSentence, !target.isEmpty {
             let range = (content as NSString).range(of: target)
             if range.location != NSNotFound {

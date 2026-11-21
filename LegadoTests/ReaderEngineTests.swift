@@ -339,4 +339,62 @@ struct ReaderEngineTests {
         } catch {}
         #expect(caughtUnsupported)
     }
+
+    @Test("Test Chapter Title Layout, 6-Slot Header/Footer, Custom Theme and Reading Options")
+    func legadoReadingStyleExtensions() throws {
+        let engine = TextLayoutEngine.shared
+        let bounds = CGRect(x: 0, y: 0, width: 393, height: 852)
+
+        // 1. 正文章节大标题开启时第 0 页包含标题前缀，隐藏时为 0
+        var config = ReaderConfig.defaultConfig
+        config.titleStyle = ChapterTitleStyleConfig(alignment: .center, sizeDelta: 6, topSpacing: 12, bottomSpacing: 18)
+        let withTitlePages = engine.paginate(
+            chapterTitle: "第一章 星海启航",
+            content: "正文第一段内容，用来验证正文章节大标题渲染。",
+            chapterIndex: 0,
+            bounds: bounds,
+            config: config)
+        #expect((withTitlePages.first?.titlePrefixLength ?? 0) > 0)
+        #expect(withTitlePages.first?.contentText.hasPrefix("第一章 星海启航") == true)
+
+        config.titleStyle.alignment = .hidden
+        let hiddenTitlePages = engine.paginate(
+            chapterTitle: "第一章 星海启航",
+            content: "正文第一段内容，用来验证正文章节大标题隐藏。",
+            chapterIndex: 0,
+            bounds: bounds,
+            config: config)
+        #expect(hiddenTitlePages.first?.titlePrefixLength == 0)
+        #expect(hiddenTitlePages.first?.contentText.hasPrefix("第一章 星海启航") == false)
+
+        // 2. 自定义十六进制配色与亮度暗色识别
+        #expect(HexColorCodec.isDarkColor(hex: "#16202C") == true)
+        #expect(HexColorCodec.isDarkColor(hex: "#F7ECD8") == false)
+        config.customBackgroundHex = "#16202C"
+        config.customTextHex = "#C7D3E0"
+        config.applyTheme(.custom)
+        #expect(config.isEffectiveDark == true)
+
+        // 3. 6 槽位页眉页脚、字重、常亮时长、进度条行为与护眼滤镜完整编解码
+        config.tipConfig = HeaderFooterTipConfig(
+            headerLeft: .bookTitle,
+            headerCenter: .chapterTitle,
+            headerRight: .battery,
+            footerLeft: .chapterIndex,
+            footerCenter: .remainingPages,
+            footerRight: .bookProgress,
+            tipFontSize: 12)
+        config.fontWeight = .medium
+        config.keepScreenOnDuration = .minutes10
+        config.progressBarBehavior = .page
+        config.eyeProtectionWarmth = 0.25
+
+        let encoded = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(ReaderConfig.self, from: encoded)
+        #expect(decoded.tipConfig == config.tipConfig)
+        #expect(decoded.fontWeight == .medium)
+        #expect(decoded.keepScreenOnDuration == .minutes10)
+        #expect(decoded.progressBarBehavior == .page)
+        #expect(decoded.eyeProtectionWarmth == 0.25)
+    }
 }
