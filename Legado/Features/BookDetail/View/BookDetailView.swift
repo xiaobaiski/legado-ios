@@ -137,11 +137,14 @@ public struct BookDetailView: View {
                 readerDestination = ReaderDestination(book: viewModel.state.book, chapterIndex: chapterIndex)
             }
         }
-        .fullScreenCover(item: $readerDestination) { dest in
-            ReaderView(viewModel: environment.makeReaderViewModel(
-                book: dest.book,
-                initialChapterIndex: dest.chapterIndex))
-        }
+        .fullScreenCover(
+            item: $readerDestination,
+            onDismiss: { viewModel.send(.loadDetail) },
+            content: { dest in
+                ReaderView(viewModel: environment.makeReaderViewModel(
+                    book: dest.book,
+                    initialChapterIndex: dest.chapterIndex))
+            })
         .overlay(alignment: .bottom) {
             if let toastMessage {
                 Text(toastMessage)

@@ -347,7 +347,10 @@ public struct ReaderView: View {
             onNextChapter: { viewModel.send(.loadChapter(viewModel.state.currentChapterIndex + 1)) },
             onSliderChange: { viewModel.send(.loadChapter(Int($0))) },
             onPageSliderChange: { viewModel.send(.jumpToPage($0)) },
-            onOpenToc: { viewModel.send(.openToc) },
+            onOpenToc: {
+                tocSearchText = ""
+                viewModel.send(.openToc)
+            },
             onToggleConfig: {
                 viewModel.send(viewModel.state.isConfigSheetVisible ? .closeConfig : .openConfig)
             },

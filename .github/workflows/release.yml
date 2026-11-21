@@ -1,0 +1,110 @@
+name: Release IPA
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release-ipa:
+    name: Build & Publish Official Release IPA
+    runs-on: macos-15-intel
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup tools
+        run: |
+          brew install xcodegen swiftlint xcbeautify
+
+      - name: Lint Swift code
+        run: |
+          swiftlint lint
+
+      - name: Generate Xcode project
+        run: |
+          make generate
+
+      - name: Run Unit Tests
+        run: |
+          set -o pipefail
+          DEVICE_ID=$(xcrun simctl list devices available | grep -E "iPhone (16|15)" | head -n 1 | sed -E 's/.*\(([0-9A-F-]+)\).*/\1/')
+          if [ -z "$DEVICE_ID" ]; then
+            DEVICE_ID=$(xcrun simctl list devices available | grep "iPhone" | head -n 1 | sed -E 's/.*\(([0-9A-F-]+)\).*/\1/')
+          fi
+          echo "Using simulator device ID: $DEVICE_ID"
+          xcodebuild -project Legado.xcodeproj \
+            -scheme Legado \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -only-testing:LegadoTests \
+            -skip-testing:LegadoTests/RealBookSourceTests \
+            -skip-testing:LegadoTests/RealBookSourceE2ETests \
+            test | xcbeautify
+
+      - name: Build Release Archive (Unsigned iOS Device)
+        run: |
+          set -o pipefail
+          xcodebuild -project Legado.xcodeproj \
+            -scheme Legado \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Legado.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            archive | xcbeautify
+
+      - name: Package Release IPA
+        run: |
+          TAG_NAME="${GITHUB_REF_NAME}"
+          VERSION="${TAG_NAME#v}"
+          mkdir -p build/Payload
+          cp -r build/Legado.xcarchive/Products/Applications/Legado.app build/Payload/
+          cd build
+          zip -r -q "Legado-${VERSION}.ipa" Payload
+          ls -lh "Legado-${VERSION}.ipa"
+
+      - name: Upload Release IPA Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Legado-Release-IPA-${{ github.ref_name }}
+          path: build/Legado-*.ipa
+          retention-days: 30
+
+      - name: Publish Official GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${GITHUB_REF_NAME}"
+          VERSION="${TAG_NAME#v}"
+          IPA_FILE="build/Legado-${VERSION}.ipa"
+
+          cat > release_notes.md <<'EOF'
+          ## 🎉 Legado iOS 1.0.0 正式版（纯阅读体验版）
+
+          原生 iOS 18+ / iPadOS 纯本地电子书阅读器，采用 Apple Liquid Glass 美学与 MVI 架构，深度对标 Legado 核心阅读排版与净化能力。
+
+          ### ✨ 核心特性
+          - **本地电子书导入**：原生支持 **TXT（自动识别 UTF-8 / GBK / Big5 / UTF-16 BOM）** 与 **EPUB 2/3（自动解析元数据、目录树与本地封面）**，支持文件选择器批量导入及系统「用 Legado 打开」。
+          - **精细排版与四边边距**：CoreText 像素级排版引擎，三标签底部面板（`排版 | 边距 | 外观`）支持独立 **上/下/左/右边距**、联动左右、字号、5 档字重、行距、段距、字距、缩进、两端对齐、繁简转换、正文章节大标题样式及 6 槽位自定义页眉页脚。
+          - **真实字体选择器**：动态枚举设备真实已安装字体，支持从「文件」导入 `TTF / OTF / TTC` 字体文件并实时预览。
+          - **5 种翻页方式与自动阅读**：支持 **仿真翻页（iPhone 单页卷页 / iPad 横屏中脊双页仿真翻书）**、覆盖、滑动、连续滚动、无动画；自动翻页支持 **定时翻页** 与 **60/120Hz 丝滑上下滚动**。
+          - **交互与护眼**：一键日/夜间模式、全局外观模式、自定义配色主题、防蓝光护眼暖光滤镜、3×3 九宫格点按区域自定义、实体音量键翻页、屏幕常亮倒计时、iPad 外接键盘翻页。
+          - **兼容 Legado 净化与目录规则**：完整兼容 Legado Android `ReplaceRule` JSON（标题/正文/书名作用域、正则/文本、文件/剪贴板导入导出）与 `txtTocRule.json` 多规则自动评分分章，支持去除重复标题与智能重新分段。
+          - **阅读工具与管理**：原生 `UITableView` 精准聚焦当前章节目录（定位/顶/底/正倒序/搜索）、长按正文摘录复制/批注书签/一键创建净化规则、阅读时长统计、书架多维排序与书名作者编辑、TTS 语音朗读与 WebDAV 备份。
+
+          ### 📦 安装说明
+          - 附件 **`Legado-1.0.0.ipa`** 为未签名真机安装包，适用于 TrollStore（巨魔）、AltStore、SideStore 或个人开发者证书自签名安装（要求 iOS 18.0+ / iPadOS 18.0+）。
+          EOF
+
+          # Remove leading 10-space YAML indentation
+          sed -i '' 's/^          //' release_notes.md
+
+          gh release create "$TAG_NAME" "${IPA_FILE}#Legado-${VERSION}.ipa" \
+            --target "${{ github.sha }}" \
+            --title "Legado iOS ${TAG_NAME} 正式版" \
+            --notes-file release_notes.md \
+            --latest
