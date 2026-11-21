@@ -120,14 +120,18 @@ struct BookmarkTests {
             deleteBookmarkUseCase: deleteBookmarkUseCase)
 
         // 等待初始加载章节与排版
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        for _ in 0 ..< 40 where viewModel.state.pages.isEmpty {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
 
         #expect(viewModel.state.bookmarks.isEmpty)
         #expect(!viewModel.state.isCurrentPageBookmarked)
 
         // 1. 触发切换书签 (添加)
         viewModel.send(.toggleBookmark)
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        for _ in 0 ..< 30 where viewModel.state.bookmarks.isEmpty {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
 
         #expect(viewModel.state.bookmarks.count == 1)
         #expect(viewModel.state.isCurrentPageBookmarked)
@@ -135,7 +139,9 @@ struct BookmarkTests {
 
         // 2. 再次触发切换书签 (删除)
         viewModel.send(.toggleBookmark)
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        for _ in 0 ..< 30 where !viewModel.state.bookmarks.isEmpty {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
 
         #expect(viewModel.state.bookmarks.isEmpty)
         #expect(!viewModel.state.isCurrentPageBookmarked)
@@ -147,7 +153,9 @@ struct BookmarkTests {
             chapterTitle: "第一章 序幕",
             bookText: "摊开的手稿",
             note: "关键线索"))
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        for _ in 0 ..< 30 where viewModel.state.bookmarks.isEmpty {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
 
         #expect(viewModel.state.bookmarks.count == 1)
         #expect(viewModel.state.bookmarks.first?.content == "关键线索")

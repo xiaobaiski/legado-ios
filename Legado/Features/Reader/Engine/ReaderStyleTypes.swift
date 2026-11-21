@@ -172,7 +172,13 @@ public enum HexColorCodec {
         return luminance < 0.48
     }
 
-    private static func rgbComponents(from hex: String) -> (red: Double, green: Double, blue: Double)? {
+    private struct RGBComponents {
+        let red: Double
+        let green: Double
+        let blue: Double
+    }
+
+    private static func rgbComponents(from hex: String) -> RGBComponents? {
         let cleaned = hex.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "#", with: "")
         guard cleaned.count == 6, let value = UInt64(cleaned, radix: 16) else {
@@ -181,6 +187,6 @@ public enum HexColorCodec {
         let red = Double((value >> 16) & 0xFF) / 255.0
         let green = Double((value >> 8) & 0xFF) / 255.0
         let blue = Double(value & 0xFF) / 255.0
-        return (red, green, blue)
+        return RGBComponents(red: red, green: green, blue: blue)
     }
 }
