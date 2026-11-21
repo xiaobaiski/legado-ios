@@ -45,11 +45,11 @@ public struct ReaderPageView: View {
     }
 
     private var leadingPadding: CGFloat {
-        config.horizontalMargin + (spineEdge == .leading ? 16 : 0)
+        config.leftMargin + (spineEdge == .leading ? 16 : 0)
     }
 
     private var trailingPadding: CGFloat {
-        config.horizontalMargin + (spineEdge == .trailing ? 16 : 0)
+        config.rightMargin + (spineEdge == .trailing ? 16 : 0)
     }
 
     public var body: some View {
@@ -60,17 +60,25 @@ public struct ReaderPageView: View {
         ZStack {
             VStack(spacing: 0) {
                 if config.showHeader {
-                    HStack {
-                        Text(config.chineseConversion.convert(page.chapterTitle))
-                            .font(.caption2)
-                            .foregroundStyle(config.theme.textColor.opacity(0.48))
-                            .lineLimit(1)
+                    VStack(spacing: 3) {
+                        HStack {
+                            Text(config.chineseConversion.convert(page.chapterTitle))
+                                .font(.caption2)
+                                .foregroundStyle(config.theme.textColor.opacity(0.48))
+                                .lineLimit(1)
 
-                        Spacer()
+                            Spacer()
 
-                        Text(Date(), format: .dateTime.hour().minute())
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(config.theme.textColor.opacity(0.48))
+                            Text(Date(), format: .dateTime.hour().minute())
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(config.theme.textColor.opacity(0.48))
+                        }
+
+                        if config.showHeaderDivider {
+                            Rectangle()
+                                .fill(config.theme.textColor.opacity(0.14))
+                                .frame(height: 0.5)
+                        }
                     }
                     .frame(maxWidth: maxContentWidth ?? .infinity)
                     .padding(.leading, leadingPadding)
@@ -91,18 +99,26 @@ public struct ReaderPageView: View {
                     .padding(.vertical, halfCanvasPad)
 
                 if config.showFooter {
-                    HStack(spacing: 10) {
-                        Text("第 \(page.pageIndex + 1) / \(max(totalPages, 1)) 页")
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(config.theme.textColor.opacity(0.48))
+                    VStack(spacing: 3) {
+                        if config.showFooterDivider {
+                            Rectangle()
+                                .fill(config.theme.textColor.opacity(0.14))
+                                .frame(height: 0.5)
+                        }
 
-                        Spacer()
+                        HStack(spacing: 10) {
+                            Text("第 \(page.pageIndex + 1) / \(max(totalPages, 1)) 页")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(config.theme.textColor.opacity(0.48))
 
-                        Text(bookProgressPercent)
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(config.theme.textColor.opacity(0.48))
+                            Spacer()
 
-                        batteryBadge
+                            Text(bookProgressPercent)
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(config.theme.textColor.opacity(0.48))
+
+                            batteryBadge
+                        }
                     }
                     .frame(maxWidth: maxContentWidth ?? .infinity)
                     .padding(.leading, leadingPadding)

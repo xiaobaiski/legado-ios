@@ -142,16 +142,15 @@ public final class TextLayoutEngine: Sendable {
         return pages
     }
 
-    /// 计算除去上下左右边距的实际排版矩阵（与 ReaderPageView 严格 0px 误差一致，消除底部多余留白）
+    /// 计算除去上下左右边距的实际排版矩阵（严格按 leftMargin / rightMargin / topMargin / bottomMargin 像素级对齐）
     public func contentRenderRect(for bounds: CGRect, config: ReaderConfig) -> CGRect {
         let renderWidth: CGFloat
         if config.isDualPageActive(for: bounds) {
             let centerGutter: CGFloat = 32
             let singleColumnWidth = (bounds.width - centerGutter) / 2
-            renderWidth = max(singleColumnWidth - config.horizontalMargin * 2, 160)
+            renderWidth = max(singleColumnWidth - config.leftMargin - config.rightMargin, 120)
         } else {
-            let rawWidth = max(bounds.width - config.horizontalMargin * 2, 100)
-            renderWidth = bounds.width >= 760 ? min(rawWidth, 680) : rawWidth
+            renderWidth = max(bounds.width - config.leftMargin - config.rightMargin, 120)
         }
         let topReserve = Self.effectiveTopMargin(for: config)
         let bottomReserve = Self.effectiveBottomMargin(for: config)

@@ -96,6 +96,16 @@ public enum ReaderFontFamily: String, CaseIterable, Identifiable, Codable, Senda
     }
 }
 
+/// 自动翻页方式（对标 Legado：支持定时翻页与平滑上下滚动自动阅读）
+public enum AutoPageMode: String, CaseIterable, Identifiable, Codable, Sendable {
+    case paged = "定时翻页"
+    case smoothScroll = "上下滚动"
+
+    public var id: String {
+        rawValue
+    }
+}
+
 /// 翻页动效模式
 public enum PageTurnMode: String, CaseIterable, Identifiable, Codable, Sendable {
     case curl = "仿真"
@@ -147,7 +157,8 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
     public var customFontDisplayName: String?
     public var theme: ReaderTheme
     public var pageTurnMode: PageTurnMode
-    public var horizontalMargin: CGFloat
+    public var leftMargin: CGFloat
+    public var rightMargin: CGFloat
     public var topMargin: CGFloat
     public var bottomMargin: CGFloat
     public var isHapticEnabled: Bool
@@ -156,11 +167,15 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
     public var customBrightness: Double
     public var showHeader: Bool
     public var showFooter: Bool
+    public var showHeaderDivider: Bool
+    public var showFooterDivider: Bool
     public var showStatusBar: Bool
     public var tapToTurnPage: Bool
     public var leftHandMode: Bool
     public var volumeKeyPageTurn: Bool
+    public var autoPageMode: AutoPageMode
     public var autoPageIntervalSeconds: Double
+    public var autoScrollSpeed: Double
     public var chineseConversion: ChineseConversionMode
     public var enableIPadDualPage: Bool
     public var enableReplaceRule: Bool
@@ -169,6 +184,15 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
     public var lastLightTheme: ReaderTheme
     public var lastDarkTheme: ReaderTheme
     public var tapZoneConfig: TapZoneConfig
+
+    /// 兼容旧接口的水平边距便捷属性（同步读写左右边距）
+    public var horizontalMargin: CGFloat {
+        get { (leftMargin + rightMargin) / 2 }
+        set {
+            leftMargin = newValue
+            rightMargin = newValue
+        }
+    }
 
     public init(
         fontSize: CGFloat = 19.0,
@@ -183,7 +207,8 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         customFontDisplayName: String? = nil,
         theme: ReaderTheme = .paper,
         pageTurnMode: PageTurnMode = .cover,
-        horizontalMargin: CGFloat = 18.0,
+        leftMargin: CGFloat = 18.0,
+        rightMargin: CGFloat = 18.0,
         topMargin: CGFloat = 50.0,
         bottomMargin: CGFloat = 34.0,
         isHapticEnabled: Bool = true,
@@ -192,11 +217,15 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         customBrightness: Double = 0.6,
         showHeader: Bool = true,
         showFooter: Bool = true,
+        showHeaderDivider: Bool = false,
+        showFooterDivider: Bool = false,
         showStatusBar: Bool = false,
         tapToTurnPage: Bool = true,
         leftHandMode: Bool = false,
         volumeKeyPageTurn: Bool = true,
+        autoPageMode: AutoPageMode = .paged,
         autoPageIntervalSeconds: Double = 8.0,
+        autoScrollSpeed: Double = 45.0,
         chineseConversion: ChineseConversionMode = .none,
         enableIPadDualPage: Bool = true,
         enableReplaceRule: Bool = true,
@@ -217,7 +246,8 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         self.customFontDisplayName = customFontDisplayName
         self.theme = theme
         self.pageTurnMode = pageTurnMode
-        self.horizontalMargin = horizontalMargin
+        self.leftMargin = leftMargin
+        self.rightMargin = rightMargin
         self.topMargin = topMargin
         self.bottomMargin = bottomMargin
         self.isHapticEnabled = isHapticEnabled
@@ -226,11 +256,15 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         self.customBrightness = customBrightness
         self.showHeader = showHeader
         self.showFooter = showFooter
+        self.showHeaderDivider = showHeaderDivider
+        self.showFooterDivider = showFooterDivider
         self.showStatusBar = showStatusBar
         self.tapToTurnPage = tapToTurnPage
         self.leftHandMode = leftHandMode
         self.volumeKeyPageTurn = volumeKeyPageTurn
+        self.autoPageMode = autoPageMode
         self.autoPageIntervalSeconds = autoPageIntervalSeconds
+        self.autoScrollSpeed = autoScrollSpeed
         self.chineseConversion = chineseConversion
         self.enableIPadDualPage = enableIPadDualPage
         self.enableReplaceRule = enableReplaceRule
@@ -239,6 +273,19 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         self.lastLightTheme = lastLightTheme
         self.lastDarkTheme = lastDarkTheme
         self.tapZoneConfig = tapZoneConfig
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case fontSize, lineSpacing, paragraphSpacing, letterSpacing, paragraphIndent
+        case isTextJustified, isBoldFont, fontFamily, customFontName, customFontDisplayName
+        case theme, pageTurnMode, leftMargin, rightMargin, horizontalMargin, topMargin, bottomMargin
+        case isHapticEnabled, keepScreenOn, followSystemBrightness, customBrightness
+        case showHeader, showFooter, showHeaderDivider, showFooterDivider, showStatusBar
+        case tapToTurnPage, leftHandMode, volumeKeyPageTurn
+        case autoPageMode, autoPageIntervalSeconds, autoScrollSpeed
+        case chineseConversion, enableIPadDualPage
+        case enableReplaceRule, removeSameTitle, reSegment
+        case lastLightTheme, lastDarkTheme, tapZoneConfig
     }
 
     public init(from decoder: Decoder) throws {
@@ -262,8 +309,13 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
         self.theme = try container.decodeIfPresent(ReaderTheme.self, forKey: .theme) ?? defaults.theme
         self.pageTurnMode = try container.decodeIfPresent(PageTurnMode.self, forKey: .pageTurnMode)
             ?? defaults.pageTurnMode
-        self.horizontalMargin = try container.decodeIfPresent(CGFloat.self, forKey: .horizontalMargin)
-            ?? defaults.horizontalMargin
+        let legacyHorizontal = try container.decodeIfPresent(CGFloat.self, forKey: .horizontalMargin)
+        self.leftMargin = try container.decodeIfPresent(CGFloat.self, forKey: .leftMargin)
+            ?? legacyHorizontal
+            ?? defaults.leftMargin
+        self.rightMargin = try container.decodeIfPresent(CGFloat.self, forKey: .rightMargin)
+            ?? legacyHorizontal
+            ?? defaults.rightMargin
         self.topMargin = try container.decodeIfPresent(CGFloat.self, forKey: .topMargin) ?? defaults.topMargin
         self.bottomMargin = try container.decodeIfPresent(CGFloat.self, forKey: .bottomMargin) ?? defaults.bottomMargin
         self.isHapticEnabled = try container.decodeIfPresent(Bool.self, forKey: .isHapticEnabled)
@@ -275,13 +327,21 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
             ?? defaults.customBrightness
         self.showHeader = try container.decodeIfPresent(Bool.self, forKey: .showHeader) ?? defaults.showHeader
         self.showFooter = try container.decodeIfPresent(Bool.self, forKey: .showFooter) ?? defaults.showFooter
+        self.showHeaderDivider = try container.decodeIfPresent(Bool.self, forKey: .showHeaderDivider)
+            ?? defaults.showHeaderDivider
+        self.showFooterDivider = try container.decodeIfPresent(Bool.self, forKey: .showFooterDivider)
+            ?? defaults.showFooterDivider
         self.showStatusBar = try container.decodeIfPresent(Bool.self, forKey: .showStatusBar) ?? defaults.showStatusBar
         self.tapToTurnPage = try container.decodeIfPresent(Bool.self, forKey: .tapToTurnPage) ?? defaults.tapToTurnPage
         self.leftHandMode = try container.decodeIfPresent(Bool.self, forKey: .leftHandMode) ?? defaults.leftHandMode
         self.volumeKeyPageTurn = try container.decodeIfPresent(Bool.self, forKey: .volumeKeyPageTurn)
             ?? defaults.volumeKeyPageTurn
+        self.autoPageMode = try container.decodeIfPresent(AutoPageMode.self, forKey: .autoPageMode)
+            ?? defaults.autoPageMode
         self.autoPageIntervalSeconds = try container.decodeIfPresent(Double.self, forKey: .autoPageIntervalSeconds)
             ?? defaults.autoPageIntervalSeconds
+        self.autoScrollSpeed = try container.decodeIfPresent(Double.self, forKey: .autoScrollSpeed)
+            ?? defaults.autoScrollSpeed
         self.chineseConversion = try container.decodeIfPresent(ChineseConversionMode.self, forKey: .chineseConversion)
             ?? defaults.chineseConversion
         self.enableIPadDualPage = try container.decodeIfPresent(Bool.self, forKey: .enableIPadDualPage)
@@ -298,6 +358,49 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
             ?? defaults.lastDarkTheme
         let decodedTapZone = try container.decodeIfPresent(TapZoneConfig.self, forKey: .tapZoneConfig)
         self.tapZoneConfig = decodedTapZone ?? (self.leftHandMode ? .leftHanded : .standard)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(fontSize, forKey: .fontSize)
+        try container.encode(lineSpacing, forKey: .lineSpacing)
+        try container.encode(paragraphSpacing, forKey: .paragraphSpacing)
+        try container.encode(letterSpacing, forKey: .letterSpacing)
+        try container.encode(paragraphIndent, forKey: .paragraphIndent)
+        try container.encode(isTextJustified, forKey: .isTextJustified)
+        try container.encode(isBoldFont, forKey: .isBoldFont)
+        try container.encode(fontFamily, forKey: .fontFamily)
+        try container.encodeIfPresent(customFontName, forKey: .customFontName)
+        try container.encodeIfPresent(customFontDisplayName, forKey: .customFontDisplayName)
+        try container.encode(theme, forKey: .theme)
+        try container.encode(pageTurnMode, forKey: .pageTurnMode)
+        try container.encode(leftMargin, forKey: .leftMargin)
+        try container.encode(rightMargin, forKey: .rightMargin)
+        try container.encode(topMargin, forKey: .topMargin)
+        try container.encode(bottomMargin, forKey: .bottomMargin)
+        try container.encode(isHapticEnabled, forKey: .isHapticEnabled)
+        try container.encode(keepScreenOn, forKey: .keepScreenOn)
+        try container.encode(followSystemBrightness, forKey: .followSystemBrightness)
+        try container.encode(customBrightness, forKey: .customBrightness)
+        try container.encode(showHeader, forKey: .showHeader)
+        try container.encode(showFooter, forKey: .showFooter)
+        try container.encode(showHeaderDivider, forKey: .showHeaderDivider)
+        try container.encode(showFooterDivider, forKey: .showFooterDivider)
+        try container.encode(showStatusBar, forKey: .showStatusBar)
+        try container.encode(tapToTurnPage, forKey: .tapToTurnPage)
+        try container.encode(leftHandMode, forKey: .leftHandMode)
+        try container.encode(volumeKeyPageTurn, forKey: .volumeKeyPageTurn)
+        try container.encode(autoPageMode, forKey: .autoPageMode)
+        try container.encode(autoPageIntervalSeconds, forKey: .autoPageIntervalSeconds)
+        try container.encode(autoScrollSpeed, forKey: .autoScrollSpeed)
+        try container.encode(chineseConversion, forKey: .chineseConversion)
+        try container.encode(enableIPadDualPage, forKey: .enableIPadDualPage)
+        try container.encode(enableReplaceRule, forKey: .enableReplaceRule)
+        try container.encode(removeSameTitle, forKey: .removeSameTitle)
+        try container.encode(reSegment, forKey: .reSegment)
+        try container.encode(lastLightTheme, forKey: .lastLightTheme)
+        try container.encode(lastDarkTheme, forKey: .lastDarkTheme)
+        try container.encode(tapZoneConfig, forKey: .tapZoneConfig)
     }
 
     public static let defaultConfig = ReaderConfig()
@@ -359,11 +462,14 @@ public struct ReaderConfig: Equatable, Codable, Sendable {
             isBoldFont != other.isBoldFont ||
             fontFamily != other.fontFamily ||
             customFontName != other.customFontName ||
-            horizontalMargin != other.horizontalMargin ||
+            leftMargin != other.leftMargin ||
+            rightMargin != other.rightMargin ||
             topMargin != other.topMargin ||
             bottomMargin != other.bottomMargin ||
             showHeader != other.showHeader ||
             showFooter != other.showFooter ||
+            showHeaderDivider != other.showHeaderDivider ||
+            showFooterDivider != other.showFooterDivider ||
             chineseConversion != other.chineseConversion ||
             enableIPadDualPage != other.enableIPadDualPage ||
             enableReplaceRule != other.enableReplaceRule ||

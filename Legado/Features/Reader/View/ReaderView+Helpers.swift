@@ -5,22 +5,54 @@ import UIKit
 
 extension ReaderView {
     var autoPageFloatingBar: some View {
-        VStack {
+        let config = viewModel.state.config
+        let isScrollMode = config.autoPageMode == .smoothScroll || config.pageTurnMode == .scroll
+
+        return VStack {
             Spacer()
-            HStack(spacing: 12) {
-                Image(systemName: "play.circle.fill")
-                    .foregroundStyle(Color.accentColor)
-                Text("自动翻页 \(Int(viewModel.state.config.autoPageIntervalSeconds))秒")
+            HStack(spacing: 10) {
+                Button {
+                    var updated = config
+                    updated.autoPageMode = isScrollMode ? .paged : .smoothScroll
+                    viewModel.send(.updateConfig(updated))
+                } label: {
+                    Label(
+                        isScrollMode ? "上下滚动" : "定时翻页",
+                        systemImage: isScrollMode ? "arrow.up.and.down.text.horizontal" : "play.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+
+                Divider()
+                    .frame(height: 14)
+
+                Text(
+                    isScrollMode
+                        ? "速度 \(Int(config.autoScrollSpeed))"
+                        : "\(Int(config.autoPageIntervalSeconds))秒/页")
                     .font(.caption.weight(.medium).monospacedDigit())
 
                 Button {
-                    viewModel.send(.setAutoPageInterval(viewModel.state.config.autoPageIntervalSeconds - 1))
+                    if isScrollMode {
+                        var updated = config
+                        updated.autoScrollSpeed = max(updated.autoScrollSpeed - 10, 15)
+                        viewModel.send(.updateConfig(updated))
+                    } else {
+                        viewModel.send(.setAutoPageInterval(config.autoPageIntervalSeconds - 1))
+                    }
                 } label: {
                     Image(systemName: "minus.circle")
                 }
 
                 Button {
-                    viewModel.send(.setAutoPageInterval(viewModel.state.config.autoPageIntervalSeconds + 1))
+                    if isScrollMode {
+                        var updated = config
+                        updated.autoScrollSpeed = min(updated.autoScrollSpeed + 10, 140)
+                        viewModel.send(.updateConfig(updated))
+                    } else {
+                        viewModel.send(.setAutoPageInterval(config.autoPageIntervalSeconds + 1))
+                    }
                 } label: {
                     Image(systemName: "plus.circle")
                 }

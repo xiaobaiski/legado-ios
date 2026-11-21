@@ -44,10 +44,9 @@ public struct ReaderSettingsSheet: View {
         NavigationStack {
             Form {
                 interactionSection
+                autoPageSection
                 purifyAndChapterSection
                 localFontsSection
-                autoPageSection
-                typographyDetailSection
                 displaySection
                 resetSection
             }
@@ -203,33 +202,60 @@ private extension ReaderSettingsSheet {
     var autoPageSection: some View {
         Section {
             Toggle(
-                "自动翻页",
+                "开启自动翻页",
                 isOn: Binding(
                     get: { isAutoPaging },
                     set: { _ in onToggleAutoPage() }))
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("翻页间隔")
-                    Spacer()
-                    Text("\(Int(config.autoPageIntervalSeconds)) 秒/页")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+            Picker("自动翻页方式", selection: binding(\.autoPageMode)) {
+                ForEach(AutoPageMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
                 }
-                Slider(
-                    value: Binding(
-                        get: { config.autoPageIntervalSeconds },
-                        set: { onSetAutoPageInterval($0) }),
-                    in: 3 ... 30,
-                    step: 1)
-                    .tint(.accentColor)
+            }
+
+            if config.autoPageMode == .smoothScroll {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("上下滚动速度")
+                        Spacer()
+                        Text("\(Int(config.autoScrollSpeed)) pt/秒")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(
+                        value: Binding(
+                            get: { config.autoScrollSpeed },
+                            set: { val in update { $0.autoScrollSpeed = val } }),
+                        in: 15 ... 140,
+                        step: 5)
+                        .tint(.accentColor)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("翻页间隔")
+                        Spacer()
+                        Text("\(Int(config.autoPageIntervalSeconds)) 秒/页")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(
+                        value: Binding(
+                            get: { config.autoPageIntervalSeconds },
+                            set: { onSetAutoPageInterval($0) }),
+                        in: 3 ... 30,
+                        step: 1)
+                        .tint(.accentColor)
+                }
             }
         } header: {
             Label("自动阅读", systemImage: "play.circle")
+        } footer: {
+            Text("「上下滚动」采用丝滑匀速滚屏并自动跨章，手指触摸屏幕时自动暂停、松手恢复。")
         }
     }
 
-    var typographyDetailSection: some View {
+    var displaySection: some View {
         Section {
             Picker("繁简转换", selection: binding(\.chineseConversion)) {
                 ForEach(ChineseConversionMode.allCases) { mode in
@@ -237,49 +263,15 @@ private extension ReaderSettingsSheet {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("顶部边距")
-                    Spacer()
-                    Text("\(Int(config.topMargin)) pt")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                Slider(
-                    value: Binding(
-                        get: { Double(config.topMargin) },
-                        set: { val in update { $0.topMargin = CGFloat(val) } }),
-                    in: 16 ... 80,
-                    step: 2)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("底部边距")
-                    Spacer()
-                    Text("\(Int(config.bottomMargin)) pt")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                Slider(
-                    value: Binding(
-                        get: { Double(config.bottomMargin) },
-                        set: { val in update { $0.bottomMargin = CGFloat(val) } }),
-                    in: 12 ... 72,
-                    step: 2)
-            }
-        } header: {
-            Label("文本与边距细节", systemImage: "text.alignleft")
-        }
-    }
-
-    var displaySection: some View {
-        Section {
             Toggle("显示页眉（章节标题与时间）", isOn: binding(\.showHeader))
             Toggle("显示页脚（页码、总进度与电量）", isOn: binding(\.showFooter))
+            Toggle("显示页眉分隔线", isOn: binding(\.showHeaderDivider))
+            Toggle("显示页脚分隔线", isOn: binding(\.showFooterDivider))
             Toggle("阅读时显示系统状态栏", isOn: binding(\.showStatusBar))
         } header: {
-            Label("页眉与页脚", systemImage: "rectangle.topthird.inset.filled")
+            Label("页眉、页脚与文字显示", systemImage: "rectangle.topthird.inset.filled")
+        } footer: {
+            Text("上、下、左、右边距可在阅读器底部「排版 -> 边距」面板中实时拖动预览。")
         }
     }
 

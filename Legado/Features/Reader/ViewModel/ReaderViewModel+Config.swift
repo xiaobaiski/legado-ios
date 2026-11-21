@@ -6,7 +6,11 @@ extension ReaderViewModel {
     func handleExtendedConfigIntent(_ intent: ReaderIntent) {
         switch intent {
         case let .updateConfig(newConfig):
+            let prevMode = state.config.autoPageMode
             applyNewConfig(newConfig)
+            if state.isAutoPaging && prevMode != newConfig.autoPageMode {
+                restartAutoPageTimer()
+            }
 
         case .resetConfig:
             let defaults = ReaderConfigStore.reset()
@@ -132,13 +136,23 @@ extension ReaderViewModel {
                 $0.isMoreSettingsVisible = false
             }
             restartAutoPageTimer()
-            emitEffect(.showToast("已开启自动翻页（每 \(Int(state.config.autoPageIntervalSeconds)) 秒）"))
+            let usesSmoothScroll = state.config.autoPageMode == .smoothScroll
+                || state.config.pageTurnMode == .scroll
+            let msg = usesSmoothScroll
+                ? "已开启上下滚动自动翻页（速度 \(Int(state.config.autoScrollSpeed))）"
+                : "已开启定时自动翻页（每 \(Int(state.config.autoPageIntervalSeconds)) 秒）"
+            emitEffect(.showToast(msg))
         }
         emitHapticIfEnabled()
     }
 
     func restartAutoPageTimer() {
         autoPageTask?.cancel()
+        autoPageTask = nil
+        // 上下滚动模式由 AutoScrollReaderView 内部 CADisplayLink 60/120Hz 驱动，无需定时翻页任务
+        if state.config.autoPageMode == .smoothScroll || state.config.pageTurnMode == .scroll {
+            return
+        }
         autoPageTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }

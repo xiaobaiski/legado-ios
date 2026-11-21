@@ -4,6 +4,7 @@ import SwiftUI
 public struct ReaderTypographyPanel: View {
     private enum PanelTab: String, CaseIterable, Identifiable {
         case layout = "排版"
+        case margin = "边距"
         case appearance = "外观"
 
         var id: String {
@@ -23,6 +24,7 @@ public struct ReaderTypographyPanel: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedTab: PanelTab = .layout
+    @State private var lockHorizontalMargins = false
 
     public init(
         config: ReaderConfig,
@@ -55,9 +57,14 @@ public struct ReaderTypographyPanel: View {
             .pickerStyle(.segmented)
 
             ScrollView(showsIndicators: false) {
-                if selectedTab == .layout {
+                switch selectedTab {
+                case .layout:
                     layoutControlsSection
-                } else {
+
+                case .margin:
+                    marginControlsSection
+
+                case .appearance:
                     appearanceControlsSection
                 }
             }
@@ -235,16 +242,112 @@ private extension ReaderTypographyPanel {
                     set: { newValue in update { $0.letterSpacing = CGFloat(newValue) } }),
                 range: -1 ... 6,
                 step: 0.5)
+        }
+    }
+
+    var marginControlsSection: some View {
+        VStack(spacing: 10) {
+            sliderRow(
+                title: "上边距",
+                labelWidth: 44,
+                valueText: "\(Int(config.topMargin))",
+                value: Binding(
+                    get: { Double(config.topMargin) },
+                    set: { newValue in update { $0.topMargin = CGFloat(newValue) } }),
+                range: 0 ... 100,
+                step: 2)
 
             sliderRow(
-                title: "边距",
-                valueText: "\(Int(config.horizontalMargin))",
+                title: "下边距",
+                labelWidth: 44,
+                valueText: "\(Int(config.bottomMargin))",
                 value: Binding(
-                    get: { Double(config.horizontalMargin) },
-                    set: { newValue in update { $0.horizontalMargin = CGFloat(newValue) } }),
-                range: 8 ... 40,
+                    get: { Double(config.bottomMargin) },
+                    set: { newValue in update { $0.bottomMargin = CGFloat(newValue) } }),
+                range: 0 ... 100,
                 step: 2)
+
+            sliderRow(
+                title: "左边距",
+                labelWidth: 44,
+                valueText: "\(Int(config.leftMargin))",
+                value: Binding(
+                    get: { Double(config.leftMargin) },
+                    set: { newValue in
+                        update {
+                            $0.leftMargin = CGFloat(newValue)
+                            if lockHorizontalMargins {
+                                $0.rightMargin = CGFloat(newValue)
+                            }
+                        }
+                    }),
+                range: 0 ... 120,
+                step: 2)
+
+            sliderRow(
+                title: "右边距",
+                labelWidth: 44,
+                valueText: "\(Int(config.rightMargin))",
+                value: Binding(
+                    get: { Double(config.rightMargin) },
+                    set: { newValue in
+                        update {
+                            $0.rightMargin = CGFloat(newValue)
+                            if lockHorizontalMargins {
+                                $0.leftMargin = CGFloat(newValue)
+                            }
+                        }
+                    }),
+                range: 0 ... 120,
+                step: 2)
+
+            marginQuickToggles
         }
+        .padding(.vertical, 2)
+    }
+
+    var marginQuickToggles: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                marginToggleChip(
+                    title: "联动左右",
+                    icon: lockHorizontalMargins ? "link" : "link.badge.plus",
+                    isOn: lockHorizontalMargins) {
+                        lockHorizontalMargins.toggle()
+                    }
+
+                marginToggleChip(title: "页眉", icon: "rectangle.topthird.inset.filled", isOn: config.showHeader) {
+                    update { $0.showHeader.toggle() }
+                }
+
+                marginToggleChip(title: "页脚", icon: "rectangle.bottomthird.inset.filled", isOn: config.showFooter) {
+                    update { $0.showFooter.toggle() }
+                }
+
+                let hasDivider = config.showHeaderDivider || config.showFooterDivider
+                marginToggleChip(title: "分隔线", icon: "minus", isOn: hasDivider) {
+                    let next = !hasDivider
+                    update {
+                        $0.showHeaderDivider = next
+                        $0.showFooterDivider = next
+                    }
+                }
+            }
+        }
+    }
+
+    func marginToggleChip(title: String, icon: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(isOn ? .semibold : .regular))
+                .foregroundStyle(isOn ? Color.accentColor : Color.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(isOn ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.10)))
+        }
+        .buttonStyle(.plain)
     }
 
     var indentAndAlignmentRow: some View {
@@ -330,6 +433,7 @@ private extension ReaderTypographyPanel {
 
     func sliderRow(
         title: String,
+        labelWidth: CGFloat = 34,
         valueText: String,
         value: Binding<Double>,
         range: ClosedRange<Double>,
@@ -338,7 +442,7 @@ private extension ReaderTypographyPanel {
             Text(title)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
-                .frame(width: 34, alignment: .leading)
+                .frame(width: labelWidth, alignment: .leading)
 
             Slider(value: value, in: range, step: step)
                 .tint(.accentColor)

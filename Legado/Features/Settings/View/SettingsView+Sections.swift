@@ -34,6 +34,12 @@ extension SettingsView {
             Toggle("音量键翻页", isOn: readerBinding(\.volumeKeyPageTurn))
             Toggle("iPad 大屏双页分栏", isOn: readerBinding(\.enableIPadDualPage))
 
+            Picker("自动翻页方式", selection: readerBinding(\.autoPageMode)) {
+                ForEach(AutoPageMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+
             Picker("繁简转换", selection: readerBinding(\.chineseConversion)) {
                 ForEach(ChineseConversionMode.allCases) { mode in
                     Text(mode.rawValue).tag(mode)

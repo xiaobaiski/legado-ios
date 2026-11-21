@@ -18,6 +18,8 @@ extension ReaderView {
                 .onTapGesture {
                     viewModel.send(.toggleHUD)
                 }
+        } else if viewModel.state.isAutoPaging && viewModel.state.config.autoPageMode == .smoothScroll {
+            smoothScrollContent(autoScroll: true)
         } else {
             switch viewModel.state.config.pageTurnMode {
             case .curl:
@@ -30,15 +32,45 @@ extension ReaderView {
                 slideContent(width: width)
 
             case .scroll:
-                scrollContent
+                smoothScrollContent(autoScroll: viewModel.state.isAutoPaging)
             }
+        }
+    }
+
+    func smoothScrollContent(autoScroll: Bool) -> some View {
+        let config = viewModel.state.config
+        let isPaused = viewModel.state.isHUDVisible
+            || viewModel.state.isMoreSettingsVisible
+            || viewModel.state.isTocSheetVisible
+            || isTTSSpeaking
+        let chapterTitle = viewModel.state.currentChapter?.title ?? ""
+
+        return ZStack(alignment: .bottom) {
+            AutoScrollReaderView(
+                chapterIndex: viewModel.state.currentChapterIndex,
+                chapterTitle: chapterTitle,
+                contentText: viewModel.state.currentChapterText,
+                config: config,
+                highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil,
+                isAutoScrolling: autoScroll,
+                isPaused: isPaused,
+                onTapCenter: {
+                    viewModel.send(.toggleHUD)
+                },
+                onReachedBottom: {
+                    if viewModel.state.currentChapterIndex + 1 < viewModel.state.chapters.count {
+                        viewModel.send(.loadChapter(viewModel.state.currentChapterIndex + 1))
+                    } else if viewModel.state.isAutoPaging {
+                        viewModel.send(.toggleAutoPage)
+                    }
+                })
+                .ignoresSafeArea()
         }
     }
 
     func curlContent(width: CGFloat) -> some View {
         let config = viewModel.state.config
         let isDual = config.isDualPageActive(for: viewModel.state.screenBounds)
-        let maxSingleWidth: CGFloat? = width >= 760 ? 680 : nil
 
         return PageCurlReaderView(
             pages: viewModel.state.pages,
@@ -48,7 +80,7 @@ extension ReaderView {
             config: config,
             highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil,
             isDualPage: isDual,
-            maxSingleWidth: maxSingleWidth,
+            maxSingleWidth: nil,
             onPageChanged: { newIndex in
                 viewModel.send(.jumpToPage(newIndex))
             },
@@ -67,7 +99,6 @@ extension ReaderView {
 
     func pagedContent(width: CGFloat, animated: Bool) -> some View {
         let isDual = viewModel.state.config.isDualPageActive(for: viewModel.state.screenBounds)
-        let maxSingleWidth: CGFloat? = width >= 760 ? 680 : nil
         let alignedLeftIndex = isDual
             ? (viewModel.state.currentPageIndex - viewModel.state.currentPageIndex % 2)
             : viewModel.state.currentPageIndex
@@ -94,7 +125,7 @@ extension ReaderView {
                     totalChapters: viewModel.state.chapters.count,
                     config: viewModel.state.config,
                     highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil,
-                    maxContentWidth: maxSingleWidth)
+                    maxContentWidth: nil)
                     .id("\(page.chapterIndex)_\(page.pageIndex)")
                     .transition(animated ? .opacity : .identity)
             }
@@ -121,7 +152,6 @@ extension ReaderView {
 
     func slideContent(width: CGFloat) -> some View {
         let isDual = viewModel.state.config.isDualPageActive(for: viewModel.state.screenBounds)
-        let maxSingleWidth: CGFloat? = width >= 760 ? 680 : nil
         let spreadIndices = stride(from: 0, to: viewModel.state.pages.count, by: 2).map { $0 }
 
         return ZStack {
@@ -156,7 +186,7 @@ extension ReaderView {
                                 totalChapters: viewModel.state.chapters.count,
                                 config: viewModel.state.config,
                                 highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil,
-                                maxContentWidth: maxSingleWidth)
+                                maxContentWidth: nil)
                                 .tag(page.pageIndex)
                         }
                     }
@@ -170,88 +200,6 @@ extension ReaderView {
                     viewModel.send(.toggleHUD)
                 }
         }
-    }
-
-    var scrollContent: some View {
-        let config = viewModel.state.config
-        let paragraphs = viewModel.state.currentChapterText
-            .components(separatedBy: .newlines)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        let maxWidth: CGFloat? = viewModel.state.screenBounds.width >= 760 ? 700 : nil
-
-        return ScrollView {
-            LazyVStack(alignment: .leading, spacing: config.paragraphSpacing) {
-                if let chapter = viewModel.state.currentChapter {
-                    Text(config.chineseConversion.convert(chapter.title))
-                        .font(config.resolvedSwiftUIFont(size: config.fontSize + 4, isBold: true))
-                        .foregroundStyle(config.theme.textColor)
-                        .padding(.bottom, 8)
-                }
-
-                ForEach(Array(paragraphs.enumerated()), id: \.offset) { _, paragraph in
-                    Text(renderedScrollText(paragraph))
-                        .font(config.resolvedSwiftUIFont())
-                        .tracking(config.letterSpacing)
-                        .lineSpacing(config.lineSpacing)
-                        .foregroundStyle(config.theme.textColor)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                scrollChapterFooter
-                    .padding(.top, 24)
-            }
-            .frame(maxWidth: maxWidth ?? .infinity)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, config.horizontalMargin)
-            .padding(.top, config.topMargin)
-            .padding(.bottom, config.bottomMargin + 28)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            viewModel.send(.toggleHUD)
-        }
-    }
-
-    private var scrollChapterFooter: some View {
-        HStack(spacing: 12) {
-            Button {
-                viewModel.send(.loadChapter(viewModel.state.currentChapterIndex - 1))
-            } label: {
-                Label("上一章", systemImage: "chevron.left")
-                    .font(.subheadline.weight(.medium))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(.ultraThinMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .disabled(viewModel.state.currentChapterIndex <= 0)
-
-            Button {
-                viewModel.send(.loadChapter(viewModel.state.currentChapterIndex + 1))
-            } label: {
-                HStack(spacing: 4) {
-                    Text("下一章")
-                    Image(systemName: "chevron.right")
-                }
-                .font(.subheadline.weight(.medium))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .disabled(viewModel.state.currentChapterIndex + 1 >= viewModel.state.chapters.count)
-        }
-        .foregroundStyle(viewModel.state.config.theme.textColor)
-    }
-
-    private func renderedScrollText(_ content: String) -> AttributedString {
-        var attr = AttributedString(content)
-        if ttsPlayer.state != .idle, !ttsPlayer.currentSentence.isEmpty,
-           let range = attr.range(of: ttsPlayer.currentSentence) {
-            attr[range].backgroundColor = Color.accentColor.opacity(0.18)
-            attr[range].foregroundColor = .accentColor
-        }
-        return attr
     }
 
     func tapGestureOverlay(width: CGFloat) -> some View {

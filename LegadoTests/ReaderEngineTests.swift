@@ -282,21 +282,43 @@ struct ReaderEngineTests {
         config.enableIPadDualPage = true
 
         #expect(!config.isDualPageActive(for: iPhoneBounds))
-        // iPad 竖屏采用居中单页舒适行宽，横屏自动启用双页并排
+        // iPad 竖屏采用单页、横屏自动启用双页并排
         #expect(!config.isDualPageActive(for: iPadPortraitBounds))
         #expect(config.isDualPageActive(for: iPadBounds))
 
-        let portraitSingleRect = engine.contentRenderRect(for: iPadPortraitBounds, config: config)
-        #expect(portraitSingleRect.width <= 680)
+        // 验证独立左边距、右边距在 iPad 竖屏和横屏均严格即时生效（无隐藏宽度上限拦截）
+        config.leftMargin = 20
+        config.rightMargin = 40
+        let portraitRect = engine.contentRenderRect(for: iPadPortraitBounds, config: config)
+        #expect(portraitRect.width == iPadPortraitBounds.width - 60)
 
-        // iPad 双页单栏宽度应严格小于半屏
+        // iPad 双页单栏宽度应严格等于 (宽 - 32中缝) / 2 - leftMargin - rightMargin
         let dualRect = engine.contentRenderRect(for: iPadBounds, config: config)
-        #expect(dualRect.width < iPadBounds.width / 2)
+        #expect(dualRect.width == (iPadBounds.width - 32) / 2 - 60)
 
-        // iPad 单页模式下内容宽度受最大舒适行宽限制 (<= 680pt)
         config.enableIPadDualPage = false
         let singleWideRect = engine.contentRenderRect(for: iPadBounds, config: config)
-        #expect(singleWideRect.width <= 680)
+        #expect(singleWideRect.width == iPadBounds.width - 60)
+
+        // 验证自动翻页上下滚动模式与旧版 horizontalMargin 迁移兼容
+        let legacyJson = Data("{\"horizontalMargin\": 26}".utf8)
+        if let migrated = try? JSONDecoder().decode(ReaderConfig.self, from: legacyJson) {
+            #expect(migrated.leftMargin == 26)
+            #expect(migrated.rightMargin == 26)
+        } else {
+            Issue.record("旧版 horizontalMargin 反序列化迁移失败")
+        }
+        config.autoPageMode = .smoothScroll
+        config.autoScrollSpeed = 75
+        if let encoded = try? JSONEncoder().encode(config),
+           let decoded = try? JSONDecoder().decode(ReaderConfig.self, from: encoded) {
+            #expect(decoded.autoPageMode == .smoothScroll)
+            #expect(decoded.autoScrollSpeed == 75)
+            #expect(decoded.leftMargin == 20)
+            #expect(decoded.rightMargin == 40)
+        } else {
+            Issue.record("AutoPageMode 与左右边距编解码失败")
+        }
 
         // 验证 LocalFontManager 对非法格式的校验
         let tempFontsDir = FileManager.default.temporaryDirectory
