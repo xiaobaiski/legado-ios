@@ -29,7 +29,9 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         self.saveBookGroupUseCase = saveBookGroupUseCase
         self.deleteBookGroupUseCase = deleteBookGroupUseCase
         self.importLocalBookUseCase = importLocalBookUseCase
-        super.init(initialState: BookshelfState())
+        let savedSort = UserDefaults.standard.string(forKey: BookshelfSortOrder.storageKey)
+            .flatMap(BookshelfSortOrder.init(rawValue:)) ?? .recent
+        super.init(initialState: BookshelfState(sortOrder: savedSort))
 
         send(.onAppear)
     }
@@ -52,6 +54,14 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         case .toggleLayoutMode:
             updateState { $0.layoutMode = ($0.layoutMode == .grid ? .list : .grid) }
             emitEffect(.hapticFeedback)
+
+        case let .selectSortOrder(order):
+            UserDefaults.standard.set(order.rawValue, forKey: BookshelfSortOrder.storageKey)
+            updateState { $0.sortOrder = order }
+            emitEffect(.hapticFeedback)
+
+        case let .updateBookMetadata(bookUrl, name, author):
+            performUpdateBookMetadata(bookUrl: bookUrl, name: name, author: author)
 
         case .didSelectBook, .openBookDetail, .removeBook:
             handleBookActionIntent(intent)
@@ -287,6 +297,25 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
             try? await deleteBookGroupUseCase?.execute(id: id)
             self.loadData()
             self.emitEffect(.showToast("已删除分组"))
+            self.emitEffect(.hapticFeedback)
+        }
+    }
+
+    private func performUpdateBookMetadata(bookUrl: String, name: String, author: String) {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty,
+              let book = state.books.first(where: { $0.bookUrl == bookUrl }),
+              let saveBookToShelfUseCase else { return }
+
+        let trimmedAuthor = author.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            var updated = book
+            updated.name = trimmedName
+            updated.author = trimmedAuthor.isEmpty ? "本地导入" : trimmedAuthor
+            try? await saveBookToShelfUseCase.execute(updated)
+            let books = (try? await getBookshelfUseCase.execute()) ?? []
+            self.updateState { $0.books = books }
+            self.emitEffect(.showToast("已更新《\(trimmedName)》信息"))
             self.emitEffect(.hapticFeedback)
         }
     }

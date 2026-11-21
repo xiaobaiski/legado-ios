@@ -13,6 +13,9 @@ public struct BookshelfView: View {
     @State private var isShowingAddGroupAlert = false
     @State private var isShowingFileImporter = false
     @State private var newGroupName = ""
+    @State private var editingBook: Book?
+    @State private var editBookName = ""
+    @State private var editBookAuthor = ""
 
     public init(viewModel: BookshelfViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -97,6 +100,24 @@ public struct BookshelfView: View {
                     newGroupName = ""
                 }
             }
+            .alert(
+                "编辑书籍信息",
+                isPresented: Binding(
+                    get: { editingBook != nil },
+                    set: { if !$0 { editingBook = nil } })) {
+                TextField("书名", text: $editBookName)
+                TextField("作者", text: $editBookAuthor)
+                Button("取消", role: .cancel) { editingBook = nil }
+                Button("保存") {
+                    if let target = editingBook {
+                        viewModel.send(.updateBookMetadata(
+                            bookUrl: target.bookUrl,
+                            name: editBookName,
+                            author: editBookAuthor))
+                    }
+                    editingBook = nil
+                }
+            }
             .sheet(isPresented: $isShowingFileImporter) {
                 DocumentPickerView(
                     allowedContentTypes: Self.localBookContentTypes,
@@ -120,11 +141,31 @@ public struct BookshelfView: View {
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
-            Button {
-                viewModel.send(.toggleLayoutMode)
-            } label: {
-                Image(systemName: viewModel.state.layoutMode == .grid ? "list.bullet" : "square.grid.2x2")
-                    .symbolRenderingMode(.hierarchical)
+            HStack(spacing: 12) {
+                Button {
+                    viewModel.send(.toggleLayoutMode)
+                } label: {
+                    Image(systemName: viewModel.state.layoutMode == .grid ? "list.bullet" : "square.grid.2x2")
+                        .symbolRenderingMode(.hierarchical)
+                }
+
+                Menu {
+                    ForEach(BookshelfSortOrder.allCases) { order in
+                        Button {
+                            viewModel.send(.selectSortOrder(order))
+                        } label: {
+                            if viewModel.state.sortOrder == order {
+                                Label(order.rawValue, systemImage: "checkmark")
+                            } else {
+                                Text(order.rawValue)
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .accessibilityLabel("排序方式")
             }
         }
 
@@ -224,6 +265,11 @@ public struct BookshelfView: View {
                         allGroups: viewModel.state.groups,
                         onTap: { viewModel.send(.didSelectBook(book)) },
                         onShowDetail: { viewModel.send(.openBookDetail(book)) },
+                        onEditMetadata: {
+                            editingBook = book
+                            editBookName = book.name
+                            editBookAuthor = book.author
+                        },
                         onRemove: { viewModel.send(.removeBook(bookUrl: book.bookUrl)) },
                         onMoveGroup: { viewModel.send(.moveBookToGroup(bookUrl: book.bookUrl, groupName: $0)) })
                 }
@@ -246,6 +292,11 @@ public struct BookshelfView: View {
                     allGroups: viewModel.state.groups,
                     onTap: { viewModel.send(.didSelectBook(book)) },
                     onShowDetail: { viewModel.send(.openBookDetail(book)) },
+                    onEditMetadata: {
+                        editingBook = book
+                        editBookName = book.name
+                        editBookAuthor = book.author
+                    },
                     onRemove: { viewModel.send(.removeBook(bookUrl: book.bookUrl)) },
                     onMoveGroup: { viewModel.send(.moveBookToGroup(bookUrl: book.bookUrl, groupName: $0)) })
             }

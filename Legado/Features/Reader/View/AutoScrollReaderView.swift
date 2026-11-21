@@ -147,14 +147,14 @@ public struct AutoScrollReaderView: UIViewRepresentable {
                 return
             }
 
-            let dt = min(max(link.timestamp - lastTimestamp, 0), 0.05)
+            let deltaTime = min(max(link.timestamp - lastTimestamp, 0), 0.05)
             lastTimestamp = link.timestamp
 
             let maxOffsetY = max(textView.contentSize.height - textView.bounds.height, 0)
             let currentY = textView.contentOffset.y
 
             if currentY >= maxOffsetY - 1 {
-                bottomDwellAccumulator += dt
+                bottomDwellAccumulator += deltaTime
                 if !reachedBottomTriggered && bottomDwellAccumulator >= 0.8 {
                     reachedBottomTriggered = true
                     parent.onReachedBottom()
@@ -165,7 +165,7 @@ public struct AutoScrollReaderView: UIViewRepresentable {
             bottomDwellAccumulator = 0
             reachedBottomTriggered = false
             let speed = CGFloat(max(parent.config.autoScrollSpeed, 10))
-            let nextY = min(currentY + speed * CGFloat(dt), maxOffsetY)
+            let nextY = min(currentY + speed * CGFloat(deltaTime), maxOffsetY)
             textView.contentOffset = CGPoint(x: 0, y: nextY)
         }
     }

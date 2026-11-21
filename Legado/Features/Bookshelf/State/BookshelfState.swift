@@ -6,6 +6,19 @@ public enum BookshelfLayoutMode: String, CaseIterable, Codable, Sendable {
     case list = "列表"
 }
 
+/// 书架排序方式
+public enum BookshelfSortOrder: String, CaseIterable, Identifiable, Codable, Sendable {
+    case recent = "最近阅读"
+    case title = "书名排序"
+    case progress = "阅读进度"
+
+    public static let storageKey = "legado_bookshelf_sort_order"
+
+    public var id: String {
+        rawValue
+    }
+}
+
 /// 书架模块单一不可变状态
 public struct BookshelfState: ViewState, Equatable {
     public var isLoading: Bool
@@ -14,6 +27,7 @@ public struct BookshelfState: ViewState, Equatable {
     public var groups: [String]
     public var customGroups: [BookGroup]
     public var layoutMode: BookshelfLayoutMode
+    public var sortOrder: BookshelfSortOrder
     public var isBatchMode: Bool
     public var selectedBookUrls: Set<String>
     public var isRefreshingUpdates: Bool
@@ -28,6 +42,7 @@ public struct BookshelfState: ViewState, Equatable {
         groups: [String] = ["全部", "在读", "未读", "完结"],
         customGroups: [BookGroup] = [],
         layoutMode: BookshelfLayoutMode = .grid,
+        sortOrder: BookshelfSortOrder = .recent,
         isBatchMode: Bool = false,
         selectedBookUrls: Set<String> = [],
         isRefreshingUpdates: Bool = false,
@@ -40,6 +55,7 @@ public struct BookshelfState: ViewState, Equatable {
         self.groups = groups
         self.customGroups = customGroups
         self.layoutMode = layoutMode
+        self.sortOrder = sortOrder
         self.isBatchMode = isBatchMode
         self.selectedBookUrls = selectedBookUrls
         self.isRefreshingUpdates = isRefreshingUpdates
@@ -48,7 +64,7 @@ public struct BookshelfState: ViewState, Equatable {
         self.searchText = searchText
     }
 
-    /// 根据当前分组和搜索关键词过滤后的书籍列表
+    /// 根据当前分组、搜索关键词与排序方式过滤排序后的书籍列表
     public var filteredBooks: [Book] {
         var list = books
 
@@ -69,6 +85,24 @@ public struct BookshelfState: ViewState, Equatable {
             }
         }
 
+        switch sortOrder {
+        case .recent:
+            list.sort { $0.durChapterTime > $1.durChapterTime }
+
+        case .title:
+            list.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+
+        case .progress:
+            list.sort { Self.progressRatio($0) > Self.progressRatio($1) }
+        }
+
         return list
+    }
+
+    private static func progressRatio(_ book: Book) -> Double {
+        guard book.totalChapterNum > 0 else {
+            return book.durChapterIndex > 0 ? 0.01 : 0
+        }
+        return Double(book.durChapterIndex + (book.durChapterIndex > 0 ? 1 : 0)) / Double(book.totalChapterNum)
     }
 }

@@ -9,6 +9,7 @@ public struct BookshelfBookCardView: View {
     public let allGroups: [String]
     public let onTap: () -> Void
     public let onShowDetail: () -> Void
+    public let onEditMetadata: () -> Void
     public let onRemove: () -> Void
     public let onMoveGroup: (String?) -> Void
 
@@ -20,6 +21,7 @@ public struct BookshelfBookCardView: View {
         allGroups: [String],
         onTap: @escaping () -> Void,
         onShowDetail: @escaping () -> Void,
+        onEditMetadata: @escaping () -> Void = {},
         onRemove: @escaping () -> Void,
         onMoveGroup: @escaping (String?) -> Void) {
         self.book = book
@@ -29,6 +31,7 @@ public struct BookshelfBookCardView: View {
         self.allGroups = allGroups
         self.onTap = onTap
         self.onShowDetail = onShowDetail
+        self.onEditMetadata = onEditMetadata
         self.onRemove = onRemove
         self.onMoveGroup = onMoveGroup
     }
@@ -54,6 +57,10 @@ public struct BookshelfBookCardView: View {
             if !isBatchMode {
                 Button(action: onShowDetail) {
                     Label("查看详情与目录", systemImage: "info.circle")
+                }
+
+                Button(action: onEditMetadata) {
+                    Label("编辑书名与作者", systemImage: "pencil")
                 }
 
                 Menu("移动至分组") {

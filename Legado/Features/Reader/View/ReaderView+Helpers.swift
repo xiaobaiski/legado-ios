@@ -74,6 +74,16 @@ extension ReaderView {
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
+    func flushReadingSession() {
+        guard let start = readingSessionStart else { return }
+        readingSessionStart = nil
+        let elapsed = Date().timeIntervalSince(start)
+        ReadRecordStore.shared.recordSession(
+            bookName: viewModel.state.book.name,
+            bookAuthor: viewModel.state.book.author,
+            durationSeconds: elapsed)
+    }
+
     func handleHardwareKeyPress(_ press: KeyPress) -> KeyPress.Result {
         switch press.key {
         case .leftArrow, .upArrow:

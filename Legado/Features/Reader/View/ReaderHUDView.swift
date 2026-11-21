@@ -26,6 +26,7 @@ public struct ReaderHUDView: View {
     let onSelectCustomFont: (ImportedFont) -> Void
     let onOpenFontImporter: () -> Void
     let onToggleNightMode: () -> Void
+    let onOpenTextAction: () -> Void
     let onResetConfig: () -> Void
     let onOpenMoreSettings: () -> Void
     let onToggleAutoPage: () -> Void
@@ -58,6 +59,7 @@ public struct ReaderHUDView: View {
         onSelectCustomFont: @escaping (ImportedFont) -> Void = { _ in },
         onOpenFontImporter: @escaping () -> Void = {},
         onToggleNightMode: @escaping () -> Void = {},
+        onOpenTextAction: @escaping () -> Void = {},
         onResetConfig: @escaping () -> Void = {},
         onOpenMoreSettings: @escaping () -> Void = {},
         onToggleAutoPage: @escaping () -> Void = {},
@@ -88,6 +90,7 @@ public struct ReaderHUDView: View {
         self.onSelectCustomFont = onSelectCustomFont
         self.onOpenFontImporter = onOpenFontImporter
         self.onToggleNightMode = onToggleNightMode
+        self.onOpenTextAction = onOpenTextAction
         self.onResetConfig = onResetConfig
         self.onOpenMoreSettings = onOpenMoreSettings
         self.onToggleAutoPage = onToggleAutoPage
@@ -153,6 +156,8 @@ public struct ReaderHUDView: View {
                     systemName: config.theme.isDark ? "sun.max.fill" : "moon.fill",
                     foreground: config.theme.isDark ? .yellow : .primary,
                     action: onToggleNightMode)
+
+                circleIconButton(systemName: "text.quote", action: onOpenTextAction)
 
                 circleIconButton(systemName: "magnifyingglass", action: onOpenSearch)
 

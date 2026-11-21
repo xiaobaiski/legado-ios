@@ -215,6 +215,11 @@ extension ReaderView {
                             let yRatio = min(max(value.location.y / safeHeight, 0), 1)
                             handleTapAt(xRatio: xRatio, yRatio: yRatio)
                         })
+                .onLongPressGesture(minimumDuration: 0.55) {
+                    if !viewModel.state.isHUDVisible {
+                        isTextActionPresented = true
+                    }
+                }
         }
     }
 

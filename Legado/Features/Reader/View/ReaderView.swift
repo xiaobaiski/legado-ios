@@ -4,6 +4,7 @@ import UIKit
 /// 沉浸式阅读器主视图 (纯声明式渲染 View = f(State))
 public struct ReaderView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject var environment: AppEnvironment
     @StateObject var viewModel: ReaderViewModel
     @ObservedObject var ttsPlayer: TTSPlayer = .shared
@@ -21,6 +22,8 @@ public struct ReaderView: View {
     @State var originalBrightness: CGFloat?
     @State var isFontPickerPresented = false
     @State var isFontChooserPresented = false
+    @State var isTextActionPresented = false
+    @State var readingSessionStart: Date?
     @State var volumeHandler = VolumeButtonHandler()
 
     public init(viewModel: ReaderViewModel) {
@@ -74,16 +77,27 @@ public struct ReaderView: View {
                 }
             }
             .onAppear {
+                readingSessionStart = Date()
                 applySystemDisplaySettings()
                 updateVolumeButtonBinding()
             }
             .onDisappear {
+                flushReadingSession()
                 cacheDownloadTask?.cancel()
                 cacheDownloadTask = nil
                 viewModel.stopAutoPageTimer()
                 volumeHandler.stop()
                 restoreSystemDisplaySettings()
                 TTSPlayer.shared.stop()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    if readingSessionStart == nil {
+                        readingSessionStart = Date()
+                    }
+                } else {
+                    flushReadingSession()
+                }
             }
             .onChange(of: viewModel.state.config) { _, _ in
                 applySystemDisplaySettings()
@@ -163,6 +177,24 @@ public struct ReaderView: View {
                 },
                 onCancel: { isFontPickerPresented = false })
                 .ignoresSafeArea()
+        }
+        .sheet(isPresented: $isTextActionPresented) {
+            PageTextActionSheet(
+                pageText: viewModel.state.currentPage?.contentText ?? viewModel.state.currentChapterText,
+                chapterTitle: viewModel.state.currentChapter?.title ?? "",
+                bookName: viewModel.state.book.name,
+                onAddBookmarkWithNote: { excerpt, note in
+                    viewModel.send(.addBookmark(
+                        chapterIndex: viewModel.state.currentChapterIndex,
+                        chapterPos: viewModel.state.currentPage?.textRange.location ?? 0,
+                        chapterTitle: viewModel.state.currentChapter?.title ?? "",
+                        bookText: excerpt,
+                        note: note))
+                },
+                onQuickPurifyRuleSaved: {
+                    viewModel.send(.repaginate)
+                })
+                .preferredColorScheme(readerColorScheme)
         }
         .sheet(isPresented: $isChangeSourcePresented) {
             ChangeSourceSheet(
@@ -313,6 +345,10 @@ public struct ReaderView: View {
                 var updated = viewModel.state.config
                 updated.toggleNightMode()
                 viewModel.send(.updateConfig(updated))
+            },
+            onOpenTextAction: {
+                viewModel.send(.hideHUD)
+                isTextActionPresented = true
             },
             onResetConfig: { viewModel.send(.resetConfig) },
             onOpenMoreSettings: { viewModel.send(.openMoreSettings) },

@@ -193,4 +193,54 @@ struct LegadoRulesAndLayoutFixTests {
         #expect(merged[0].title.contains("第一章 初遇"))
         #expect(!merged[0].content.isEmpty)
     }
+
+    @Test("ReadRecordStore Tracks Today & Total Reading Duration Accurately")
+    func readRecordStoreTracking() {
+        let tempUrl = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_read_records_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tempUrl) }
+
+        let store = ReadRecordStore(storageUrl: tempUrl)
+        let now = Date()
+        store.recordSession(bookName: "诡秘之主", bookAuthor: "乌贼", durationSeconds: 180, date: now)
+        store.recordSession(bookName: "诡秘之主", bookAuthor: "乌贼", durationSeconds: 120, date: now)
+        store.recordSession(bookName: "星辰大海", bookAuthor: "测试", durationSeconds: 600, date: now)
+        // 不足 2 秒的瞬间切出应被忽略
+        store.recordSession(bookName: "忽略", bookAuthor: "无", durationSeconds: 1, date: now)
+
+        #expect(store.todayReadSeconds(now: now) == 900)
+        #expect(store.totalReadSeconds() == 900)
+        let sorted = store.allRecordsSorted()
+        #expect(sorted.count == 2)
+        #expect(sorted[0].bookName == "星辰大海")
+        #expect(sorted[1].readTimeSeconds == 300)
+        #expect(ReadRecordStore.formatDuration(3900) == "1 小时 5 分钟")
+    }
+
+    @Test("BookshelfState Sorting by Recent, Title and Reading Progress")
+    func bookshelfSortingModes() {
+        let bookA = Book(
+            bookUrl: "local://a",
+            name: "B书名",
+            author: "作者A",
+            durChapterIndex: 5,
+            durChapterTime: 2000,
+            totalChapterNum: 10)
+        let bookB = Book(
+            bookUrl: "local://b",
+            name: "A书名",
+            author: "作者B",
+            durChapterIndex: 9,
+            durChapterTime: 1000,
+            totalChapterNum: 10)
+
+        var state = BookshelfState(books: [bookA, bookB], sortOrder: .recent)
+        #expect(state.filteredBooks.first?.bookUrl == "local://a")
+
+        state.sortOrder = .title
+        #expect(state.filteredBooks.first?.bookUrl == "local://b")
+
+        state.sortOrder = .progress
+        #expect(state.filteredBooks.first?.bookUrl == "local://b")
+    }
 }

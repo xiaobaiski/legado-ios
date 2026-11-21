@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 章节目录与书签抽屉组件 (基于 iOS 原生 Sheet Detents + 超薄液态材质)
+/// 章节目录与书签抽屉组件 (精准自动聚焦当前章节 + 定位/顶底/正倒序快捷工具栏)
 public struct BookTocSheet: View {
     public enum Tab: String, CaseIterable, Identifiable {
         case toc = "目录"
@@ -23,6 +23,8 @@ public struct BookTocSheet: View {
     let onDeleteBookmark: (Bookmark) -> Void
 
     @State private var selectedTab: Tab = .toc
+    @State private var scrollRequestID = UUID()
+    @State private var scrollTargetIndex: Int?
     @Environment(\.dismiss) private var dismiss
 
     public init(
@@ -90,7 +92,7 @@ public struct BookTocSheet: View {
                 }
             }
         }
-        .presentationDetents([.fraction(0.45), .medium, .large])
+        .presentationDetents([.fraction(0.55), .medium, .large])
     }
 
     private var tabSegmentedControl: some View {
@@ -116,80 +118,131 @@ public struct BookTocSheet: View {
     }
 
     private var tocToolbar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Text("共 \(chapters.count) 章")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
             Spacer()
 
-            Button {
-                onToggleReverse()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.up.arrow.down")
-                        .font(.caption2)
-                    Text(isReverse ? "倒序" : "正序")
-                        .font(.caption.bold())
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(.ultraThinMaterial)
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule().stroke(.white.opacity(0.15), lineWidth: 0.5))
+            toolbarPill(title: "定位", icon: "scope") {
+                scrollTargetIndex = durChapterIndex
+                scrollRequestID = UUID()
             }
-            .tint(.primary)
+
+            toolbarPill(title: "顶", icon: "arrow.up.to.line") {
+                if let first = displayedChapters.first {
+                    scrollTargetIndex = first.index
+                    scrollRequestID = UUID()
+                }
+            }
+
+            toolbarPill(title: "底", icon: "arrow.down.to.line") {
+                if let last = displayedChapters.last {
+                    scrollTargetIndex = last.index
+                    scrollRequestID = UUID()
+                }
+            }
+
+            toolbarPill(title: isReverse ? "倒序" : "正序", icon: "arrow.up.arrow.down") {
+                onToggleReverse()
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
     }
 
+    private func toolbarPill(title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.caption2)
+                Text(title)
+                    .font(.caption.weight(.medium))
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(.ultraThinMaterial)
+            .clipShape(Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).stroke(Color.primary.opacity(0.12), lineWidth: 0.5))
+        }
+        .tint(.primary)
+    }
+
     private var tocList: some View {
         ScrollViewReader { proxy in
-            List(displayedChapters) { chapter in
-                chapterRow(chapter)
-                    .id(chapter.index)
-                    .listRowBackground(Color.clear)
+            List {
+                ForEach(displayedChapters, id: \.index) { chapter in
+                    chapterRow(chapter)
+                        .id(chapter.index)
+                        .listRowBackground(
+                            chapter.index == durChapterIndex
+                                ? Color.accentColor.opacity(0.10)
+                                : Color.clear)
+                }
             }
             .listStyle(.plain)
-            .onAppear {
-                if durChapterIndex >= 0 && durChapterIndex < chapters.count {
-                    proxy.scrollTo(durChapterIndex, anchor: .center)
+            .task(id: selectedTab) {
+                guard selectedTab == .toc else { return }
+                await scrollToChapter(durChapterIndex, with: proxy, animated: false)
+            }
+            .onChange(of: scrollRequestID) { _, _ in
+                guard let target = scrollTargetIndex else { return }
+                Task { @MainActor in
+                    await scrollToChapter(target, with: proxy, animated: true)
                 }
             }
         }
     }
 
+    @MainActor
+    private func scrollToChapter(
+        _ index: Int,
+        with proxy: ScrollViewProxy,
+        animated: Bool) async {
+        guard displayedChapters.contains(where: { $0.index == index }) else { return }
+        // 等待 Sheet 内的 List 完成首帧行布局后再滚动，确保长目录也能精准定位到当前章节
+        await Task.yield()
+        try? await Task.sleep(nanoseconds: animated ? 10_000_000 : 60_000_000)
+        if animated {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                proxy.scrollTo(index, anchor: .center)
+            }
+        } else {
+            proxy.scrollTo(index, anchor: .center)
+        }
+    }
+
     private func chapterRow(_ chapter: Chapter) -> some View {
-        Button {
+        let isCurrent = chapter.index == durChapterIndex
+        return Button {
             onSelectChapter(chapter)
         } label: {
             HStack(spacing: 10) {
                 Text("\(chapter.index + 1).")
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(width: 38, alignment: .leading)
+                    .foregroundStyle(isCurrent ? Color.accentColor : Color.secondary)
+                    .frame(width: 40, alignment: .leading)
 
                 Text(chapter.title)
-                    .font(.body)
-                    .foregroundStyle(
-                        chapter.index == durChapterIndex ? Color.accentColor : Color.primary)
+                    .font(isCurrent ? .body.weight(.semibold) : .body)
+                    .foregroundStyle(isCurrent ? Color.accentColor : Color.primary)
                     .lineLimit(1)
 
                 Spacer()
 
-                if chapter.index == durChapterIndex {
+                if isCurrent {
                     Text("当前")
                         .font(.caption2.bold())
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, 7)
                         .padding(.vertical, 2)
-                        .background(Color.accentColor.opacity(0.15))
+                        .background(Color.accentColor.opacity(0.16))
                         .foregroundStyle(Color.accentColor)
-                        .clipShape(Capsule())
+                        .clipShape(Capsule(style: .continuous))
                 }
             }
             .padding(.vertical, 4)
+            .contentShape(Rectangle())
         }
     }
 
@@ -199,7 +252,7 @@ public struct BookTocSheet: View {
             ContentUnavailableView(
                 "暂无书签",
                 systemImage: "bookmark",
-                description: Text("阅读时轻触右上角书签按钮即可添加"))
+                description: Text("阅读时轻触右上角书签按钮或长按正文添加批注书签"))
         } else {
             List {
                 ForEach(bookmarks) { bookmark in
@@ -250,7 +303,7 @@ public struct BookTocSheet: View {
                         Text(bookmark.content)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .lineLimit(2)
                     }
                 }
             }

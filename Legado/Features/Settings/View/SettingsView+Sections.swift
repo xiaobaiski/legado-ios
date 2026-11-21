@@ -5,6 +5,18 @@ import SwiftUI
 extension SettingsView {
     var readingPreferencesSection: some View {
         Section {
+            NavigationLink {
+                ReadingStatsView()
+            } label: {
+                HStack {
+                    Label("阅读统计与时长记录", systemImage: "chart.bar.xaxis")
+                    Spacer()
+                    Text("今日 \(ReadRecordStore.formatDuration(ReadRecordStore.shared.todayReadSeconds()))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Picker("全局外观模式", selection: appearanceBinding) {
                 ForEach(AppAppearanceMode.allCases) { mode in
                     Text(mode.rawValue).tag(mode)

@@ -12,6 +12,10 @@ public enum BookshelfIntent: ViewIntent, Equatable {
     case selectGroup(String)
     /// 切换布局模式 (宫格 / 列表)
     case toggleLayoutMode
+    /// 切换书架排序方式 (最近阅读 / 书名 / 进度)
+    case selectSortOrder(BookshelfSortOrder)
+    /// 编辑书籍书名与作者信息
+    case updateBookMetadata(bookUrl: String, name: String, author: String)
     /// 选中某本书进行阅读
     case didSelectBook(Book)
     /// 查看书籍详情
