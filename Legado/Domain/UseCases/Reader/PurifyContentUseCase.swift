@@ -146,11 +146,18 @@ public final class PurifyContentUseCase: @unchecked Sendable {
             : "(?:[\\s\\p{P}]|\(NSRegularExpression.escapedPattern(for: bookName)))*"
         let pattern = "^\(prefixGroup)\(escapedTitle)[\\t\\p{Zs}]*(?:\\n\\s*|$)"
 
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+        let cacheKey = "dup:\(pattern)" as NSString
+        let compiledRegex: NSRegularExpression
+        if let cached = regexCache.object(forKey: cacheKey) {
+            compiledRegex = cached
+        } else if let created = try? NSRegularExpression(pattern: pattern, options: []) {
+            regexCache.setObject(created, forKey: cacheKey)
+            compiledRegex = created
+        } else {
             return content
         }
         let fullRange = NSRange(location: 0, length: (content as NSString).length)
-        if let match = regex.firstMatch(in: content, options: [], range: fullRange),
+        if let match = compiledRegex.firstMatch(in: content, options: [], range: fullRange),
            match.range.location == 0 {
             return (content as NSString).substring(from: match.range.length)
         }
@@ -159,76 +166,37 @@ public final class PurifyContentUseCase: @unchecked Sendable {
 
     /// 智能段落重排（对标 Legado Android `ContentHelp.reSegment`：黏合误断行 + 规范对话引号分段）
     public func smartReSegment(_ content: String, chapterTitle: String) -> String {
-        let sentenceEnders = CharacterSet(charactersIn: "。？！?!~…")
-        let closingQuotes = CharacterSet(charactersIn: "”\"』」’")
-
-        var normalized = content
-            .replacingOccurrences(of: "&quot;", with: "“")
-            .replacingOccurrences(of: "[:：]['\"‘”“]+", with: "：“", options: .regularExpression)
-            .replacingOccurrences(of: "[\"”“]+\\s*[\"”“][\\s\"”“]*", with: "”\n“", options: .regularExpression)
+        var normalized = content.replacingOccurrences(of: "&quot;", with: "“")
+        normalized = ReSegmentRules.applyPrePass(to: normalized)
 
         let rawLines = normalized.components(separatedBy: .newlines)
         var mergedLines: [String] = []
+        mergedLines.reserveCapacity(rawLines.count / 2 + 1)
         var buffer = ""
+        let trimmedChapterTitle = chapterTitle.trimmingCharacters(in: .whitespaces)
 
         for rawLine in rawLines {
-            let cleaned = rawLine
-                .trimmingCharacters(in: CharacterSet(charactersIn: " \t\u{3000}\u{00A0}"))
+            let cleaned = rawLine.trimmingCharacters(in: ReSegmentRules.trimCharset)
             guard !cleaned.isEmpty else { continue }
-            if mergedLines.isEmpty && buffer.isEmpty && cleaned == chapterTitle.trimmingCharacters(in: .whitespaces) {
+            if mergedLines.isEmpty && buffer.isEmpty && cleaned == trimmedChapterTitle {
                 continue
             }
 
             if buffer.isEmpty {
                 buffer = cleaned
+            } else if ReSegmentRules.lineEndsSentence(buffer) {
+                mergedLines.append(buffer)
+                buffer = cleaned
             } else {
-                let endsParagraph = Self.lineEndsSentence(
-                    buffer,
-                    sentenceEnders: sentenceEnders,
-                    closingQuotes: closingQuotes)
-                if endsParagraph {
-                    mergedLines.append(buffer)
-                    buffer = cleaned
-                } else {
-                    buffer += cleaned
-                }
+                buffer += cleaned
             }
         }
         if !buffer.isEmpty {
             mergedLines.append(buffer)
         }
 
-        normalized = mergedLines.joined(separator: "\n")
-            .replacingOccurrences(
-                of: "[\"”“]+(？|。|！|\\?|!|~)[\"”“]+",
-                with: "”$1\n“",
-                options: .regularExpression)
-            .replacingOccurrences(
-                of: "[\"”“]+(？|。|！|\\?|!|~)([^\"”“\\n])",
-                with: "”$1\n$2",
-                options: .regularExpression)
-            .replacingOccurrences(of: "([问说喊唱叫骂道着答])[。\\.]", with: "$1。\n", options: .regularExpression)
-            .replacingOccurrences(of: "[:：][”“\"\\s]+", with: "：“", options: .regularExpression)
-            .replacingOccurrences(of: "\\n{2,}", with: "\n", options: .regularExpression)
-
+        normalized = ReSegmentRules.applyPostPass(to: mergedLines.joined(separator: "\n"))
         return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private static func lineEndsSentence(
-        _ line: String,
-        sentenceEnders: CharacterSet,
-        closingQuotes: CharacterSet) -> Bool {
-        guard let lastScalar = line.unicodeScalars.last else { return true }
-        if sentenceEnders.contains(lastScalar) {
-            return true
-        }
-        if closingQuotes.contains(lastScalar) {
-            let scalars = Array(line.unicodeScalars)
-            if scalars.count >= 2 && sentenceEnders.contains(scalars[scalars.count - 2]) {
-                return true
-            }
-        }
-        return false
     }
 
     private func applyRules(
@@ -283,5 +251,58 @@ public final class PurifyContentUseCase: @unchecked Sendable {
         }
         regexCache.setObject(compiled, forKey: key)
         return compiled
+    }
+}
+
+/// 预编译智能分段正则规则集（进程级复用，避免每章重复编译正与分配临时标量数组）
+private enum ReSegmentRules {
+    static let trimCharset = CharacterSet(charactersIn: " \t\u{3000}\u{00A0}")
+    static let sentenceEnders = CharacterSet(charactersIn: "。？！?!~…")
+    static let closingQuotes = CharacterSet(charactersIn: "”\"』」’")
+
+    private static let quoteColon = try? NSRegularExpression(pattern: "[:：]['\"‘”“]+")
+    private static let quoteNewline = try? NSRegularExpression(pattern: "[\"”“]+\\s*[\"”“][\\s\"”“]*")
+    private static let quotePunctQuote = try? NSRegularExpression(pattern: "[\"”“]+(？|。|！|\\?|!|~)[\"”“]+")
+    private static let quotePunctText = try? NSRegularExpression(pattern: "[\"”“]+(？|。|！|\\?|!|~)([^\"”“\\n])")
+    private static let dialogueBreak = try? NSRegularExpression(pattern: "([问说喊唱叫骂道着答])[。\\.]")
+    private static let colonSpaces = try? NSRegularExpression(pattern: "[:：][”“\"\\s]+")
+    private static let multiNewline = try? NSRegularExpression(pattern: "\\n{2,}")
+
+    static func applyPrePass(to text: String) -> String {
+        var result = replace(quoteColon, in: text, template: "：“")
+        result = replace(quoteNewline, in: result, template: "”\n“")
+        return result
+    }
+
+    static func applyPostPass(to text: String) -> String {
+        var result = replace(quotePunctQuote, in: text, template: "”$1\n“")
+        result = replace(quotePunctText, in: result, template: "”$1\n$2")
+        result = replace(dialogueBreak, in: result, template: "$1。\n")
+        result = replace(colonSpaces, in: result, template: "：“")
+        return replace(multiNewline, in: result, template: "\n")
+    }
+
+    static func lineEndsSentence(_ line: String) -> Bool {
+        let scalars = line.unicodeScalars
+        guard !scalars.isEmpty else { return true }
+        let lastIndex = scalars.index(before: scalars.endIndex)
+        let lastScalar = scalars[lastIndex]
+        if sentenceEnders.contains(lastScalar) {
+            return true
+        }
+        if closingQuotes.contains(lastScalar), lastIndex > scalars.startIndex {
+            let previousIndex = scalars.index(before: lastIndex)
+            return sentenceEnders.contains(scalars[previousIndex])
+        }
+        return false
+    }
+
+    private static func replace(
+        _ regex: NSRegularExpression?,
+        in text: String,
+        template: String) -> String {
+        guard let regex else { return text }
+        let fullRange = NSRange(location: 0, length: (text as NSString).length)
+        return regex.stringByReplacingMatches(in: text, options: [], range: fullRange, withTemplate: template)
     }
 }

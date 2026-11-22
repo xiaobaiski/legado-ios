@@ -7,6 +7,7 @@ public struct WebDAVConfig: Codable, Equatable, Sendable {
     public var password: String
     public var remoteDirectory: String
     public var allowInsecureCertificate: Bool
+    public var syncOptions: WebDAVSyncOptions
 
     enum CodingKeys: String, CodingKey {
         case serverUrl
@@ -14,6 +15,7 @@ public struct WebDAVConfig: Codable, Equatable, Sendable {
         case password
         case remoteDirectory
         case allowInsecureCertificate
+        case syncOptions
     }
 
     public init(
@@ -21,12 +23,14 @@ public struct WebDAVConfig: Codable, Equatable, Sendable {
         username: String = "",
         password: String = "",
         remoteDirectory: String = "/Legado/",
-        allowInsecureCertificate: Bool = false) {
+        allowInsecureCertificate: Bool = false,
+        syncOptions: WebDAVSyncOptions = .defaultSelection) {
         self.serverUrl = serverUrl
         self.username = username
         self.password = password
         self.remoteDirectory = remoteDirectory
         self.allowInsecureCertificate = allowInsecureCertificate
+        self.syncOptions = syncOptions
     }
 
     public init(from decoder: Decoder) throws {
@@ -38,6 +42,9 @@ public struct WebDAVConfig: Codable, Equatable, Sendable {
         allowInsecureCertificate = try container.decodeIfPresent(
             Bool.self,
             forKey: .allowInsecureCertificate) ?? false
+        syncOptions = try container.decodeIfPresent(
+            WebDAVSyncOptions.self,
+            forKey: .syncOptions) ?? .defaultSelection
     }
 
     public var trimmedServerUrl: String {
@@ -277,89 +284,23 @@ public final class WebDAVClient: Sendable {
 
     /// 逐级确保远程备份目录存在
     public func createDirectoryIfNeeded(config: WebDAVConfig) async throws {
-        guard config.isValid else { throw WebDAVError.invalidConfig }
-        let segments = Self.remotePathSegments(from: config.remoteDirectory)
-        guard !segments.isEmpty else { return }
-
-        for count in 1 ... segments.count {
-            let partial = Array(segments.prefix(count))
-            guard let url = Self.buildUrl(base: config.serverUrl, pathSegments: partial, isDirectory: true) else {
-                throw WebDAVError.badUrl
-            }
-            let request = makeRequest(url: url, method: "MKCOL", config: config)
-            let (_, httpResponse) = try await performRequest(request, config: config)
-            let code = httpResponse.statusCode
-
-            if code == 401 {
-                throw WebDAVError.unauthorized
-            }
-            if code == 403 {
-                throw WebDAVError.forbidden
-            }
-        }
+        try await createDirectoryIfNeeded(subdirectories: [], config: config)
     }
 
     // MARK: - 文件上传 (PUT) 与下载 (GET)
 
     /// 上传备份数据包至远程 WebDAV 路径
     public func upload(data: Data, filename: String, config: WebDAVConfig) async throws {
-        guard config.isValid else { throw WebDAVError.invalidConfig }
-        try await createDirectoryIfNeeded(config: config)
-
-        let segments = Self.remotePathSegments(from: config.remoteDirectory) + [filename]
-        guard let targetUrl = Self.buildUrl(base: config.serverUrl, pathSegments: segments, isDirectory: false) else {
-            throw WebDAVError.badUrl
-        }
-
-        let request = makeRequest(
-            url: targetUrl,
-            method: "PUT",
-            config: config,
-            headers: ["Content-Type": "application/json; charset=utf-8"],
-            body: data)
-        let (_, httpResponse) = try await performRequest(request, config: config)
-
-        switch httpResponse.statusCode {
-        case 200 ... 204, 207:
-            return
-
-        case 401:
-            throw WebDAVError.unauthorized
-
-        case 403:
-            throw WebDAVError.forbidden
-
-        default:
-            throw WebDAVError.serverError(statusCode: httpResponse.statusCode, message: "文件上传失败")
-        }
+        try await upload(
+            data: data,
+            subdirectories: [],
+            filename: filename,
+            contentType: "application/json; charset=utf-8",
+            config: config)
     }
 
     /// 从远程 WebDAV 服务器下载指定文件
     public func download(filename: String, config: WebDAVConfig) async throws -> Data {
-        guard config.isValid else { throw WebDAVError.invalidConfig }
-        let segments = Self.remotePathSegments(from: config.remoteDirectory) + [filename]
-        guard let targetUrl = Self.buildUrl(base: config.serverUrl, pathSegments: segments, isDirectory: false) else {
-            throw WebDAVError.badUrl
-        }
-
-        let request = makeRequest(url: targetUrl, method: "GET", config: config)
-        let (data, httpResponse) = try await performRequest(request, config: config)
-
-        switch httpResponse.statusCode {
-        case 200 ... 206:
-            return data
-
-        case 401:
-            throw WebDAVError.unauthorized
-
-        case 403:
-            throw WebDAVError.forbidden
-
-        case 404:
-            throw WebDAVError.notFound
-
-        default:
-            throw WebDAVError.serverError(statusCode: httpResponse.statusCode, message: "文件下载失败")
-        }
+        try await download(subdirectories: [], filename: filename, config: config)
     }
 }

@@ -37,7 +37,7 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
     override public func send(_ intent: SettingsIntent) {
         switch intent {
         case .updateWebDAVServer, .updateWebDAVUsername, .updateWebDAVPassword,
-             .updateWebDAVDirectory, .updateWebDAVAllowInsecureCert:
+             .updateWebDAVDirectory, .updateWebDAVAllowInsecureCert, .updateWebDAVSyncOptions:
             handleConfigIntent(intent)
 
         case .testWebDAVConnection, .backupToWebDAV, .restoreFromWebDAV:
@@ -68,6 +68,9 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
 
         case let .updateWebDAVAllowInsecureCert(allowed):
             mutateWebDAVConfig { $0.allowInsecureCertificate = allowed }
+
+        case let .updateWebDAVSyncOptions(options):
+            mutateWebDAVConfig { $0.syncOptions = options }
 
         default:
             break
@@ -248,13 +251,16 @@ private extension SettingsViewModel {
     }
 
     func runBackup() {
+        let options = state.webDAVConfig.syncOptions
+        guard validateSyncOptions(options) else { return }
+
         runWebDAVTask(
             setBusy: { $0.isBackingUp = $1 },
             failurePrefix: "备份失败",
-            operation: { config in
-                let summary = try await self.backupUseCase.execute(config: config)
-                let sizeKB = max(summary.dataSizeBytes / 1024, 1)
-                let msg = "已备份 \(summary.bookCount) 本书与 \(summary.ruleCount) 条规则 (\(sizeKB) KB)"
+            operation: { [weak self] config in
+                guard let self else { return }
+                let summary = try await self.backupUseCase.execute(config: config, options: options)
+                let msg = Self.formatSyncSummary(summary, options: options, isRestore: false)
                 self.updateState {
                     $0.lastBackupSummary = summary
                     $0.errorMessage = nil
@@ -265,19 +271,64 @@ private extension SettingsViewModel {
     }
 
     func runRestore() {
+        let options = state.webDAVConfig.syncOptions
+        guard validateSyncOptions(options) else { return }
+
         runWebDAVTask(
             setBusy: { $0.isRestoring = $1 },
             failurePrefix: "还原失败",
-            operation: { config in
-                let summary = try await self.restoreUseCase.execute(config: config)
-                let msg = "已恢复 \(summary.bookCount) 本书、\(summary.ruleCount) 条规则与阅读配置"
+            operation: { [weak self] config in
+                guard let self else { return }
+                let summary = try await self.restoreUseCase.execute(config: config, options: options)
+                let msg = Self.formatSyncSummary(summary, options: options, isRestore: true)
                 self.updateState {
+                    $0.lastBackupSummary = summary
                     $0.errorMessage = nil
                     $0.successMessage = "云端还原成功：\(msg)"
                 }
-                self.send(.refreshReaderConfig)
+                if options.syncRules {
+                    self.send(.refreshReaderConfig)
+                }
                 self.emitEffect(.showToast(msg))
             })
+    }
+
+    private func validateSyncOptions(_ options: WebDAVSyncOptions) -> Bool {
+        guard options.hasAnySelection else {
+            let msg = "请至少选择一项需要同步的内容"
+            updateState {
+                $0.errorMessage = msg
+                $0.successMessage = nil
+            }
+            emitEffect(.showToast(msg))
+            return false
+        }
+        return true
+    }
+
+    private static func formatSyncSummary(
+        _ summary: WebDAVBackupSummary,
+        options: WebDAVSyncOptions,
+        isRestore: Bool) -> String {
+        var parts: [String] = []
+        if options.syncProgress {
+            parts.append("\(summary.bookCount) 本书进度")
+            if summary.bookmarkCount > 0 {
+                parts.append("\(summary.bookmarkCount) 条书签")
+            }
+        }
+        if options.syncRules {
+            parts.append("\(summary.ruleCount) 条规则与排版")
+        }
+        if options.syncBookFiles {
+            parts.append("\(summary.bookFileCount) 本本地书籍文件")
+        }
+        let sizeKB = max(summary.dataSizeBytes / 1024, 1)
+        var text = parts.joined(separator: "、") + " (\(sizeKB) KB)"
+        if isRestore, summary.skippedBookCount > 0 {
+            text += "；已跳过 \(summary.skippedBookCount) 本缺失文件的本地书籍"
+        }
+        return text
     }
 
     func runWebDAVTask(
@@ -301,12 +352,14 @@ private extension SettingsViewModel {
         }
         let config = state.webDAVConfig
 
-        Task {
+        Task { [weak self] in
             do {
                 try await operation(config)
+                guard let self else { return }
                 self.updateState { setBusy(&$0, false) }
                 self.emitEffect(.hapticFeedback)
             } catch {
+                guard let self else { return }
                 self.updateState {
                     setBusy(&$0, false)
                     $0.successMessage = nil

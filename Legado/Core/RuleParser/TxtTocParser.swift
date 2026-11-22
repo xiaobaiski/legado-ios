@@ -29,8 +29,8 @@ public enum TxtTocParser {
             .filter { $0.enable && $0.isValid }
         guard !candidateRules.isEmpty else { return nil }
 
-        // 取前 512KB 采样评估匹配度（与 Legado Android `TextFile.bufferSize = 512000` 一致）
-        let sample = text.count > 260_000 ? String(text.prefix(260_000)) : text
+        // 取前 260K 字符采样评估匹配度（O(260k) 有界切片，避免对整本小说做 O(N) count 扫描）
+        let sample = String(text.prefix(260_000))
         let nsSample = sample as NSString
         let fullRange = NSRange(location: 0, length: nsSample.length)
 
@@ -110,50 +110,54 @@ public enum TxtTocParser {
     }
 
     private static func splitByRegex(text: String, regex: NSRegularExpression) -> [ParsedTxtChapter] {
-        let lines = text.components(separatedBy: .newlines)
+        let nsText = text as NSString
+        let fullRange = NSRange(location: 0, length: nsText.length)
+        let matches = regex.matches(in: text, options: [], range: fullRange)
+        guard !matches.isEmpty else { return [] }
+
         var chapters: [ParsedTxtChapter] = []
+        chapters.reserveCapacity(matches.count)
 
         var currentTitle: String?
-        var currentLines: [String] = []
+        var contentStart = 0
+        var lastLineLocation = -1
         var chapterIndex = 0
 
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty {
-                currentLines.append("")
-                continue
+        for match in matches {
+            let safeLoc = min(match.range.location, max(nsText.length - 1, 0))
+            let safeLen = min(match.range.length, max(nsText.length - safeLoc, 0))
+            let lineRange = nsText.lineRange(for: NSRange(location: safeLoc, length: safeLen))
+            guard lineRange.location != lastLineLocation else { continue }
+
+            let title = nsText.substring(with: lineRange).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty else { continue }
+            lastLineLocation = lineRange.location
+
+            let bodyLen = max(lineRange.location - contentStart, 0)
+            let body = bodyLen > 0
+                ? nsText.substring(with: NSRange(location: contentStart, length: bodyLen))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                : ""
+
+            if let prevTitle = currentTitle {
+                chapters.append(ParsedTxtChapter(title: prevTitle, content: body, index: chapterIndex))
+                chapterIndex += 1
+            } else if !body.isEmpty {
+                chapters.append(ParsedTxtChapter(title: "前言", content: body, index: chapterIndex))
+                chapterIndex += 1
             }
 
-            let range = NSRange(location: 0, length: line.utf16.count)
-            let isMatch = regex.firstMatch(in: line, options: [], range: range) != nil
-
-            if isMatch {
-                if let title = currentTitle {
-                    let content = currentLines
-                        .joined(separator: "\n")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    chapters.append(ParsedTxtChapter(title: title, content: content, index: chapterIndex))
-                    chapterIndex += 1
-                } else if !currentLines.isEmpty {
-                    let prefaceContent = currentLines
-                        .joined(separator: "\n")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !prefaceContent.isEmpty {
-                        chapters.append(ParsedTxtChapter(title: "前言", content: prefaceContent, index: chapterIndex))
-                        chapterIndex += 1
-                    }
-                }
-
-                currentTitle = trimmed
-                currentLines = []
-            } else {
-                currentLines.append(line)
-            }
+            currentTitle = title
+            contentStart = lineRange.location + lineRange.length
         }
 
         if let title = currentTitle {
-            let content = currentLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            chapters.append(ParsedTxtChapter(title: title, content: content, index: chapterIndex))
+            let tailLen = max(nsText.length - contentStart, 0)
+            let tail = tailLen > 0
+                ? nsText.substring(with: NSRange(location: contentStart, length: tailLen))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                : ""
+            chapters.append(ParsedTxtChapter(title: title, content: tail, index: chapterIndex))
         }
         return chapters
     }

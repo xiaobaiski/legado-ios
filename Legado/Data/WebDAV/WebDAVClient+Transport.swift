@@ -1,8 +1,105 @@
 import Foundation
 
-// MARK: - WebDAV 请求执行、重定向保活与错误诊断扩展
+// MARK: - WebDAV 请求执行、子目录传输、重定向保活与错误诊断扩展
 
 extension WebDAVClient {
+    /// 检查并逐级创建远程目录与可选子目录
+    public func createDirectoryIfNeeded(subdirectories: [String], config: WebDAVConfig) async throws {
+        guard config.isValid else { throw WebDAVError.invalidConfig }
+        let cleanSubdirs = subdirectories.filter { !$0.isEmpty }
+        let segments = Self.remotePathSegments(from: config.remoteDirectory) + cleanSubdirs
+        guard !segments.isEmpty else { return }
+
+        for count in 1 ... segments.count {
+            let partial = Array(segments.prefix(count))
+            guard let url = Self.buildUrl(base: config.serverUrl, pathSegments: partial, isDirectory: true) else {
+                throw WebDAVError.badUrl
+            }
+            let request = makeRequest(url: url, method: "MKCOL", config: config)
+            let (_, httpResponse) = try await performRequest(request, config: config)
+            let code = httpResponse.statusCode
+
+            if code == 401 {
+                throw WebDAVError.unauthorized
+            }
+            if code == 403 {
+                throw WebDAVError.forbidden
+            }
+        }
+    }
+
+    /// 上传数据至指定子目录下的远程文件
+    public func upload(
+        data: Data,
+        subdirectories: [String],
+        filename: String,
+        contentType: String = "application/octet-stream",
+        config: WebDAVConfig) async throws {
+        guard config.isValid else { throw WebDAVError.invalidConfig }
+        let cleanSubdirs = subdirectories.filter { !$0.isEmpty }
+        try await createDirectoryIfNeeded(subdirectories: cleanSubdirs, config: config)
+
+        let segments = Self.remotePathSegments(from: config.remoteDirectory) + cleanSubdirs + [filename]
+        guard let targetUrl = Self.buildUrl(base: config.serverUrl, pathSegments: segments, isDirectory: false) else {
+            throw WebDAVError.badUrl
+        }
+
+        let request = makeRequest(
+            url: targetUrl,
+            method: "PUT",
+            config: config,
+            headers: ["Content-Type": contentType],
+            body: data)
+        let (_, httpResponse) = try await performRequest(request, config: config)
+
+        switch httpResponse.statusCode {
+        case 200 ... 204, 207:
+            return
+
+        case 401:
+            throw WebDAVError.unauthorized
+
+        case 403:
+            throw WebDAVError.forbidden
+
+        default:
+            throw WebDAVError.serverError(statusCode: httpResponse.statusCode, message: "文件上传失败")
+        }
+    }
+
+    /// 从指定子目录下载远程文件
+    public func download(
+        subdirectories: [String],
+        filename: String,
+        config: WebDAVConfig) async throws -> Data {
+        guard config.isValid else { throw WebDAVError.invalidConfig }
+        let cleanSubdirs = subdirectories.filter { !$0.isEmpty }
+        let segments = Self.remotePathSegments(from: config.remoteDirectory) + cleanSubdirs + [filename]
+        guard let targetUrl = Self.buildUrl(base: config.serverUrl, pathSegments: segments, isDirectory: false) else {
+            throw WebDAVError.badUrl
+        }
+
+        let request = makeRequest(url: targetUrl, method: "GET", config: config)
+        let (data, httpResponse) = try await performRequest(request, config: config)
+
+        switch httpResponse.statusCode {
+        case 200 ... 206:
+            return data
+
+        case 401:
+            throw WebDAVError.unauthorized
+
+        case 403:
+            throw WebDAVError.forbidden
+
+        case 404:
+            throw WebDAVError.notFound
+
+        default:
+            throw WebDAVError.serverError(statusCode: httpResponse.statusCode, message: "文件下载失败")
+        }
+    }
+
     func makeRequest(
         url: URL,
         method: String,
@@ -31,7 +128,7 @@ extension WebDAVClient {
         } else {
             let configuration = URLSessionConfiguration.ephemeral
             configuration.timeoutIntervalForRequest = 25
-            configuration.timeoutIntervalForResource = 60
+            configuration.timeoutIntervalForResource = 120
             let delegate = WebDAVSessionDelegate(config: config)
             session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
             ownsSession = true
@@ -63,7 +160,7 @@ extension WebDAVClient {
                 request.setValue("Basic \(base64)", forHTTPHeaderField: "Authorization")
             }
         }
-        request.setValue("Legado-iOS/1.0.1", forHTTPHeaderField: "User-Agent")
+        request.setValue("Legado-iOS/1.1.1", forHTTPHeaderField: "User-Agent")
     }
 
     static func mapNetworkError(_ error: Error, url: URL?) -> WebDAVError {
@@ -145,7 +242,7 @@ private final class WebDAVSessionDelegate: NSObject, URLSessionTaskDelegate, @un
         _: URLSession,
         task _: URLSessionTask,
         didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         let method = challenge.protectionSpace.authenticationMethod
         if method == NSURLAuthenticationMethodServerTrust {
             if config.allowInsecureCertificate,

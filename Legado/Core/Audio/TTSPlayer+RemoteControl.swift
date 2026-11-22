@@ -161,18 +161,29 @@ extension TTSPlayer {
             info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(currentSentenceIndex)
         }
 
-        // 绘制锁屏高保真液态卡片艺术封面
-        let artworkImage = generateLockScreenArtwork(
-            title: currentBookTitle.isEmpty ? "Legado" : currentBookTitle,
-            subtitle: currentChapterTitle)
-        info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: artworkImage.size) { _ in
-            artworkImage
+        // 按 (书名|章节名) 缓存锁屏插画，避免每朗读一句都重绘 512x512 位图
+        let artTitle = currentBookTitle.isEmpty ? "Legado" : currentBookTitle
+        let artKey = "\(artTitle)|\(currentChapterTitle)"
+        let artwork: MPMediaItemArtwork
+        if artKey == cachedArtworkKey, let existingArtwork = cachedArtwork {
+            artwork = existingArtwork
+        } else {
+            let artworkImage = generateLockScreenArtwork(title: artTitle, subtitle: currentChapterTitle)
+            let created = MPMediaItemArtwork(boundsSize: artworkImage.size) { _ in
+                artworkImage
+            }
+            cachedArtworkKey = artKey
+            cachedArtwork = created
+            artwork = created
         }
+        info[MPMediaItemPropertyArtwork] = artwork
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     func clearNowPlayingInfo() {
+        cachedArtwork = nil
+        cachedArtworkKey = ""
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 

@@ -60,9 +60,14 @@ public struct AutoScrollReaderView: UIViewRepresentable {
         weak var textView: UITextView?
         var lastChapterIndex = -1
         private var lastRenderSignature = ""
-        private var displayLink: CADisplayLink?
+        nonisolated(unsafe) private var displayLink: CADisplayLink?
         private var lastTimestamp: CFTimeInterval = 0
         private var reachedBottomTriggered = false
+
+        deinit {
+            displayLink?.invalidate()
+            displayLink = nil
+        }
         private var bottomDwellAccumulator: CFTimeInterval = 0
 
         init(parent: AutoScrollReaderView) {
@@ -111,7 +116,8 @@ public struct AutoScrollReaderView: UIViewRepresentable {
         private func startDisplayLink() {
             guard displayLink == nil else { return }
             lastTimestamp = 0
-            let link = CADisplayLink(target: self, selector: #selector(stepScroll(_:)))
+            let proxy = WeakDisplayLinkProxy(target: self)
+            let link = CADisplayLink(target: proxy, selector: #selector(WeakDisplayLinkProxy.handleTick(_:)))
             link.add(to: .main, forMode: .common)
             displayLink = link
         }
@@ -122,20 +128,20 @@ public struct AutoScrollReaderView: UIViewRepresentable {
             lastTimestamp = 0
         }
 
-        @objc private func stepScroll(_ link: CADisplayLink) {
+        fileprivate func stepScrollTick(timestamp: CFTimeInterval) {
             guard let textView, parent.isAutoScrolling, !parent.isPaused else { return }
             if textView.isTracking || textView.isDragging || textView.isDecelerating {
-                lastTimestamp = link.timestamp
+                lastTimestamp = timestamp
                 return
             }
 
             if lastTimestamp == 0 {
-                lastTimestamp = link.timestamp
+                lastTimestamp = timestamp
                 return
             }
 
-            let deltaTime = min(max(link.timestamp - lastTimestamp, 0), 0.05)
-            lastTimestamp = link.timestamp
+            let deltaTime = min(max(timestamp - lastTimestamp, 0), 0.05)
+            lastTimestamp = timestamp
 
             let maxOffsetY = max(textView.contentSize.height - textView.bounds.height, 0)
             let currentY = textView.contentOffset.y
@@ -154,6 +160,26 @@ public struct AutoScrollReaderView: UIViewRepresentable {
             let speed = CGFloat(max(parent.config.autoScrollSpeed, 10))
             let nextY = min(currentY + speed * CGFloat(deltaTime), maxOffsetY)
             textView.contentOffset = CGPoint(x: 0, y: nextY)
+        }
+    }
+}
+
+/// 弱引用 CADisplayLink 代理：彻底打破 CADisplayLink -> Coordinator 强引用环
+private final class WeakDisplayLinkProxy: NSObject, @unchecked Sendable {
+    weak var target: AutoScrollReaderView.Coordinator?
+
+    init(target: AutoScrollReaderView.Coordinator) {
+        self.target = target
+    }
+
+    @objc func handleTick(_ link: CADisplayLink) {
+        let timestamp = link.timestamp
+        guard let target else {
+            link.invalidate()
+            return
+        }
+        MainActor.assumeIsolated {
+            target.stepScrollTick(timestamp: timestamp)
         }
     }
 }

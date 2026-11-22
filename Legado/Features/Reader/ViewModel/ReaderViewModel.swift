@@ -11,10 +11,18 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
     let getBookmarksUseCase: GetBookmarksUseCase?
     let saveBookmarkUseCase: SaveBookmarkUseCase?
     let deleteBookmarkUseCase: DeleteBookmarkUseCase?
-    var autoPageTask: Task<Void, Never>?
-    private var loadChapterTask: Task<Void, Never>?
-    private var repaginateTask: Task<Void, Never>?
+    nonisolated(unsafe) var autoPageTask: Task<Void, Never>?
+    nonisolated(unsafe) private var loadChapterTask: Task<Void, Never>?
+    nonisolated(unsafe) private var repaginateTask: Task<Void, Never>?
+    nonisolated(unsafe) private var loadTocTask: Task<Void, Never>?
     private let initialOffsetToRestore: Int?
+
+    deinit {
+        autoPageTask?.cancel()
+        loadChapterTask?.cancel()
+        repaginateTask?.cancel()
+        loadTocTask?.cancel()
+    }
 
     public init(
         book: Book,
@@ -52,26 +60,45 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
     }
 
     private func loadTocAndStartReading() {
-        Task {
-            let local = (try? await bookRepository.getChapters(for: state.book.bookUrl)) ?? []
+        loadTocTask?.cancel()
+        loadTocTask = Task { [weak self] in
+            guard let self else { return }
+            let book = self.state.book
+            let local = (try? await self.bookRepository.getChapters(for: book.bookUrl)) ?? []
+            guard !Task.isCancelled else { return }
+
             if !local.isEmpty {
                 self.updateState { state in
                     state.chapters = local
                 }
                 self.loadChapterContent(
-                    chapterIndex: state.currentChapterIndex,
+                    chapterIndex: self.state.currentChapterIndex,
                     targetPageIndex: 0,
-                    targetOffset: initialOffsetToRestore)
+                    targetOffset: self.initialOffsetToRestore)
                 return
             }
 
-            var toc = (try? await getBookTocUseCase.execute(book: state.book)) ?? []
+            var toc = (try? await self.getBookTocUseCase.execute(book: book)) ?? []
+            guard !Task.isCancelled else { return }
+
+            if toc.isEmpty, book.isLocalFile {
+                let message = "本机未找到该本地书籍的正文文件，请在本机重新导入或开启 WebDAV「本地书籍文件」同步恢复"
+                self.updateState { state in
+                    state.isLoading = false
+                    state.chapters = []
+                    state.pages = []
+                    state.toastMessage = message
+                }
+                self.emitEffect(.showToast(message))
+                return
+            }
+
             if toc.isEmpty {
                 toc = [
                     Chapter(
-                        url: state.book.bookUrl,
-                        title: state.book.durChapterTitle ?? "第一章 宿命之始",
-                        bookUrl: state.book.bookUrl,
+                        url: book.bookUrl,
+                        title: book.durChapterTitle ?? "第一章 宿命之始",
+                        bookUrl: book.bookUrl,
                         index: 0),
                 ]
             }
@@ -79,9 +106,9 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
                 state.chapters = toc
             }
             self.loadChapterContent(
-                chapterIndex: state.currentChapterIndex,
+                chapterIndex: self.state.currentChapterIndex,
                 targetPageIndex: 0,
-                targetOffset: initialOffsetToRestore)
+                targetOffset: self.initialOffsetToRestore)
         }
     }
 
@@ -228,12 +255,17 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
             $0.currentChapterIndex = chapterIndex
         }
 
-        loadChapterTask = Task {
+        loadChapterTask = Task { [weak self] in
+            guard let self else { return }
             do {
-                let content = try await getChapterContentUseCase.execute(
+                let content = try await self.getChapterContentUseCase.execute(
                     chapter: chapter,
                     origin: bookOrigin)
                 guard !Task.isCancelled else { return }
+
+                if self.handleMissingLocalChapterIfNeeded(chapter: chapter, content: content) {
+                    return
+                }
 
                 let pages = await Task.detached(priority: .userInitiated) {
                     engine.paginate(
@@ -262,8 +294,8 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
 
                 self.saveReadingProgress()
 
-                if chapterIndex + 1 < state.chapters.count {
-                    let nextChapter = state.chapters[chapterIndex + 1]
+                if chapterIndex + 1 < self.state.chapters.count {
+                    let nextChapter = self.state.chapters[chapterIndex + 1]
                     self.getChapterContentUseCase.preload(chapter: nextChapter, origin: bookOrigin)
                 }
             } catch {
@@ -275,6 +307,23 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
                 self.emitEffect(.showToast("章节加载失败: \(error.localizedDescription)"))
             }
         }
+    }
+
+    private func handleMissingLocalChapterIfNeeded(chapter: Chapter, content: String) -> Bool {
+        guard state.book.isLocalFile,
+              content.isEmpty,
+              !chapter.isVolume,
+              !getChapterContentUseCase.isChapterCached(bookUrl: chapter.bookUrl, index: chapter.index) else {
+            return false
+        }
+        let message = "本机缺失章节正文文件，请在本机重新导入或通过 WebDAV「本地书籍文件」同步恢复"
+        updateState { state in
+            state.isLoading = false
+            state.pages = []
+            state.toastMessage = message
+        }
+        emitEffect(.showToast(message))
+        return true
     }
 
     private func handleNextPage() {
@@ -325,8 +374,9 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         let layoutBounds = state.screenBounds.width > 50 ? state.screenBounds : defaultBounds
         let engine = textLayoutEngine
 
-        repaginateTask = Task {
-            guard let content = try? await getChapterContentUseCase.execute(
+        repaginateTask = Task { [weak self] in
+            guard let self else { return }
+            guard let content = try? await self.getChapterContentUseCase.execute(
                 chapter: chapter,
                 origin: bookOrigin),
                   !Task.isCancelled else {

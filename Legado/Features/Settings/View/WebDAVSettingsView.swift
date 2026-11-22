@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// WebDAV 云备份同步独立配置页（按需点击测试/备份/还原时才触发网络或本地网络权限）
+/// WebDAV 云备份同步独立配置页（支持按需连接与选择性同步）
 public struct WebDAVSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
 
@@ -11,6 +11,7 @@ public struct WebDAVSettingsView: View {
     public var body: some View {
         Form {
             credentialsSection
+            syncContentSection
             actionsAndStatusSection
         }
         .navigationTitle("WebDAV 云备份同步")
@@ -55,6 +56,30 @@ public struct WebDAVSettingsView: View {
         }
     }
 
+    private var syncContentSection: some View {
+        let options = viewModel.state.webDAVConfig.syncOptions
+        return Section {
+            Toggle(isOn: syncOptionBinding(\.syncProgress)) {
+                Label("阅读进度、书架与书签", systemImage: "bookmark.circle")
+            }
+            Toggle(isOn: syncOptionBinding(\.syncRules)) {
+                Label("净化规则、目录规则与排版", systemImage: "wand.and.stars")
+            }
+            Toggle(isOn: syncOptionBinding(\.syncBookFiles)) {
+                Label("本地书籍文件（正文与封面）", systemImage: "books.vertical")
+            }
+        } header: {
+            Text("同步内容选择")
+        } footer: {
+            if !options.hasAnySelection {
+                Text("请至少勾选一项需要同步的内容。")
+                    .foregroundStyle(.red)
+            } else {
+                Text("单独备份某一项时会自动保留云端其它已备份内容；还原未勾选本地书籍文件时，将自动跳过本机尚无正文的本地书以避免产生打不开的空书。")
+            }
+        }
+    }
+
     private var actionsAndStatusSection: some View {
         Section {
             Button {
@@ -78,12 +103,13 @@ public struct WebDAVSettingsView: View {
         } header: {
             Text("连接验证与同步操作")
         } footer: {
-            Text("自动无损同步书架阅读进度、替换净化规则、TXT 目录规则、阅读统计与排版偏好。连接局域网设备时系统将按需询问「本地网络」权限。")
+            Text("连接局域网 WebDAV 设备时，系统仅在发起请求时按需询问「本地网络」权限。")
         }
     }
 
     private var actionButtonsRow: some View {
-        HStack(spacing: 12) {
+        let noSelection = !viewModel.state.webDAVConfig.syncOptions.hasAnySelection
+        return HStack(spacing: 12) {
             Button {
                 viewModel.send(.backupToWebDAV)
             } label: {
@@ -97,11 +123,11 @@ public struct WebDAVSettingsView: View {
                 }
                 .font(.footnote.weight(.semibold))
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(Color.accentColor.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.vertical, 6)
             }
-            .disabled(viewModel.state.isBackingUp)
+            .buttonStyle(.borderedProminent)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .disabled(viewModel.state.isBackingUp || viewModel.state.isRestoring || noSelection)
 
             Button {
                 viewModel.send(.restoreFromWebDAV)
@@ -116,13 +142,12 @@ public struct WebDAVSettingsView: View {
                 }
                 .font(.footnote.weight(.semibold))
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(Color.primary.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.vertical, 6)
             }
-            .disabled(viewModel.state.isRestoring)
+            .buttonStyle(.bordered)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .disabled(viewModel.state.isRestoring || viewModel.state.isBackingUp || noSelection)
         }
-        .buttonStyle(.plain)
         .padding(.vertical, 4)
     }
 
@@ -135,6 +160,7 @@ public struct WebDAVSettingsView: View {
                 Text(success)
                     .font(.caption)
                     .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
 
@@ -151,9 +177,20 @@ public struct WebDAVSettingsView: View {
 
         if let summary = viewModel.state.lastBackupSummary {
             let sizeKB = max(summary.dataSizeBytes / 1024, 1)
-            Text("最近备份：\(summary.bookCount) 本书、\(summary.ruleCount) 条规则 (\(sizeKB) KB)")
+            let fileInfo = summary.bookFileCount > 0 ? "、\(summary.bookFileCount) 本文件" : ""
+            Text("最近同步：\(summary.bookCount) 本书、\(summary.ruleCount) 条规则\(fileInfo) (\(sizeKB) KB)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func syncOptionBinding(_ keyPath: WritableKeyPath<WebDAVSyncOptions, Bool>) -> Binding<Bool> {
+        Binding(
+            get: { viewModel.state.webDAVConfig.syncOptions[keyPath: keyPath] },
+            set: { newValue in
+                var updated = viewModel.state.webDAVConfig.syncOptions
+                updated[keyPath: keyPath] = newValue
+                viewModel.send(.updateWebDAVSyncOptions(updated))
+            })
     }
 }

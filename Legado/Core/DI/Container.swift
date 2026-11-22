@@ -33,6 +33,18 @@ public extension Container {
         }.shared
     }
 
+    /// 书签持久化仓库
+    var bookmarkRepository: Factory<BookmarkRepository> {
+        self { @MainActor in
+            BookmarkRepositoryImpl(modelContainer: self.modelContainerProvider().container)
+        }.shared
+    }
+
+    /// 章节缓存与本地书籍存储仓库
+    var bookCacheRepository: Factory<BookCacheRepository> {
+        self { BookCacheRepositoryImpl() }.shared
+    }
+
     // MARK: - 引擎与核心解析服务
 
     /// 书源搜索执行服务
@@ -198,7 +210,9 @@ public extension Container {
         self { @MainActor in
             BackupToWebDAVUseCase(
                 bookRepository: self.bookRepository(),
-                sourceRepository: self.bookSourceRepository())
+                sourceRepository: self.bookSourceRepository(),
+                bookmarkRepository: self.bookmarkRepository(),
+                bookCacheRepository: self.bookCacheRepository())
         }.shared
     }
 
@@ -207,7 +221,9 @@ public extension Container {
         self { @MainActor in
             RestoreFromWebDAVUseCase(
                 bookRepository: self.bookRepository(),
-                sourceRepository: self.bookSourceRepository())
+                sourceRepository: self.bookSourceRepository(),
+                bookmarkRepository: self.bookmarkRepository(),
+                bookCacheRepository: self.bookCacheRepository())
         }.shared
     }
 }

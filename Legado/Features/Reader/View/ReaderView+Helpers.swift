@@ -168,7 +168,8 @@ extension ReaderView {
     }
 
     func setupTTSCallbacks() {
-        ttsPlayer.onSentenceChanged = { _, sentence in
+        ttsPlayer.onSentenceChanged = { [weak viewModel] _, sentence in
+            guard let viewModel else { return }
             if let targetPageIndex = viewModel.state.pages.firstIndex(where: { $0.contentText.contains(sentence) }),
                targetPageIndex != viewModel.state.currentPageIndex {
                 viewModel.send(.jumpToPage(targetPageIndex))

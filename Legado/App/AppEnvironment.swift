@@ -91,10 +91,14 @@ public final class AppEnvironment: ObservableObject {
         self.purifyContentUseCase = PurifyContentUseCase()
         self.backupToWebDAVUseCase = BackupToWebDAVUseCase(
             bookRepository: bookRepo,
-            sourceRepository: sourceRepo)
+            sourceRepository: sourceRepo,
+            bookmarkRepository: bookmarkRepo,
+            bookCacheRepository: cacheRepo)
         self.restoreFromWebDAVUseCase = RestoreFromWebDAVUseCase(
             bookRepository: bookRepo,
-            sourceRepository: sourceRepo)
+            sourceRepository: sourceRepo,
+            bookmarkRepository: bookmarkRepo,
+            bookCacheRepository: cacheRepo)
         self.changeBookSourceUseCase = ChangeBookSourceUseCase(
             sourceRepository: sourceRepo,
             bookRepository: bookRepo)

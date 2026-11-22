@@ -14,6 +14,8 @@ public final class GetChapterContentUseCase: @unchecked Sendable {
         self.sourceRepository = sourceRepository
         self.cacheRepository = cacheRepository
         self.contentParser = contentParser
+        memoryCache.countLimit = 24
+        memoryCache.totalCostLimit = 8 * 1024 * 1024
     }
 
     /// 获取章节正文内容，自动走三级缓存体系 (L1内存 -> L2磁盘 -> L3网络)
@@ -34,7 +36,10 @@ public final class GetChapterContentUseCase: @unchecked Sendable {
             bookUrl: chapter.bookUrl,
             index: chapter.index) {
             if !diskContent.isEmpty || isLocalBook {
-                memoryCache.setObject(diskContent as NSString, forKey: cacheKey)
+                memoryCache.setObject(
+                    diskContent as NSString,
+                    forKey: cacheKey,
+                    cost: max(diskContent.utf8.count, 1))
                 return diskContent
             }
         }
@@ -56,7 +61,7 @@ public final class GetChapterContentUseCase: @unchecked Sendable {
             baseUrl: origin)
 
         // 写入 L1 内存与 L2 磁盘缓存
-        memoryCache.setObject(content as NSString, forKey: cacheKey)
+        memoryCache.setObject(content as NSString, forKey: cacheKey, cost: max(content.utf8.count, 1))
         try? cacheRepository.saveChapterContent(bookUrl: chapter.bookUrl, index: chapter.index, content: content)
 
         return content
@@ -73,7 +78,7 @@ public final class GetChapterContentUseCase: @unchecked Sendable {
     public func saveChapterCache(content: String, bookUrl: String, index: Int) {
         try? cacheRepository.saveChapterContent(bookUrl: bookUrl, index: index, content: content)
         let cacheKey = "\(bookUrl)_\(index)" as NSString
-        memoryCache.setObject(content as NSString, forKey: cacheKey)
+        memoryCache.setObject(content as NSString, forKey: cacheKey, cost: max(content.utf8.count, 1))
     }
 
     /// 判断指定章节是否已缓存在磁盘

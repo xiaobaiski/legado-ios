@@ -2,6 +2,9 @@ import Foundation
 
 /// 书签数据持久化仓储协议
 public protocol BookmarkRepository: Sendable {
+    /// 获取全部书签（用于跨设备 WebDAV 同步）
+    func getAllBookmarks() async throws -> [Bookmark]
+
     /// 获取指定书籍的所有书签
     func getBookmarks(bookName: String, bookAuthor: String) async throws -> [Bookmark]
 

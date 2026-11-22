@@ -8,7 +8,7 @@ public final class BookSearchContentViewModel:
     private let chapters: [Chapter]
     private let getChapterContentUseCase: GetChapterContentUseCase
     private let searchUseCase: SearchBookContentUseCase
-    private var searchTask: Task<Void, Never>?
+    nonisolated(unsafe) private var searchTask: Task<Void, Never>?
 
     public init(
         book: Book,
@@ -20,6 +20,10 @@ public final class BookSearchContentViewModel:
         self.getChapterContentUseCase = getChapterContentUseCase
         self.searchUseCase = searchUseCase
         super.init(initialState: BookSearchContentState())
+    }
+
+    deinit {
+        searchTask?.cancel()
     }
 
     override public func send(_ intent: BookSearchContentIntent) {
@@ -57,9 +61,9 @@ public final class BookSearchContentViewModel:
             return
         }
 
-        searchTask = Task {
+        searchTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 300_000_000)
-            if Task.isCancelled {
+            guard let self, !Task.isCancelled else {
                 return
             }
             self.performSearch(trimmed)
@@ -73,12 +77,13 @@ public final class BookSearchContentViewModel:
             $0.matches = []
         }
 
-        searchTask = Task {
-            for await match in searchUseCase.search(
+        searchTask = Task { [weak self] in
+            guard let self else { return }
+            for await match in self.searchUseCase.search(
                 keyword: keyword,
-                book: book,
-                chapters: chapters,
-                getChapterContentUseCase: getChapterContentUseCase) {
+                book: self.book,
+                chapters: self.chapters,
+                getChapterContentUseCase: self.getChapterContentUseCase) {
                 if Task.isCancelled {
                     break
                 }

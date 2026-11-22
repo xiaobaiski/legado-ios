@@ -223,7 +223,7 @@ extension SettingsView {
             HStack {
                 Text("版本")
                 Spacer()
-                Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.0") (iOS 18+ 原生)")
+                Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.1") (iOS 18+ 原生)")
                     .foregroundStyle(.secondary)
             }
             HStack {

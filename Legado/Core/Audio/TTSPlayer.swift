@@ -70,6 +70,8 @@ public final class TTSPlayer: NSObject, ObservableObject {
     var sleepTimerTask: Task<Void, Never>?
     var wasPlayingBeforeInterruption = false
     var currentUtteranceVolume: Float = 1.0
+    var cachedArtworkKey = ""
+    var cachedArtwork: MPMediaItemArtwork?
 
     // 跨章节与进度联动回调
     public var onSentenceChanged: ((_ index: Int, _ sentence: String) -> Void)?

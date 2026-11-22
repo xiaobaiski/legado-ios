@@ -5,7 +5,7 @@ import UIKit
 /// 实体音量键翻页控制器（基于 AVAudioSession outputVolume KVO 与隐藏 MPVolumeView，支持不中断背景音乐）
 @MainActor
 public final class VolumeButtonHandler: NSObject {
-    private var observation: NSKeyValueObservation?
+    nonisolated(unsafe) private var observation: NSKeyValueObservation?
     private weak var hiddenVolumeView: MPVolumeView?
     private weak var volumeSlider: UISlider?
     private var baselineVolume: Float = 0.5
@@ -18,6 +18,11 @@ public final class VolumeButtonHandler: NSObject {
 
     override public init() {
         super.init()
+    }
+
+    deinit {
+        observation?.invalidate()
+        observation = nil
     }
 
     public func start(

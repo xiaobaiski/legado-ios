@@ -10,7 +10,10 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
     private let bookRepository: BookRepository
     private let batchDownloadChaptersUseCase: BatchDownloadChaptersUseCase?
     private let manageBookCacheUseCase: ManageBookCacheUseCase?
-    private var downloadTask: Task<Void, Never>?
+    nonisolated(unsafe) private var downloadTask: Task<Void, Never>?
+    nonisolated(unsafe) private var checkShelfTask: Task<Void, Never>?
+    nonisolated(unsafe) private var detailLoadTask: Task<Void, Never>?
+    nonisolated(unsafe) private var shelfToggleTask: Task<Void, Never>?
 
     public init(
         book: Book,
@@ -35,9 +38,19 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
         send(.loadDetail)
     }
 
+    deinit {
+        downloadTask?.cancel()
+        checkShelfTask?.cancel()
+        detailLoadTask?.cancel()
+        shelfToggleTask?.cancel()
+    }
+
     private func checkShelfStatus() {
-        Task {
-            let existing = try? await bookRepository.getBook(by: state.book.bookUrl)
+        checkShelfTask?.cancel()
+        checkShelfTask = Task { [weak self] in
+            guard let self else { return }
+            let existing = try? await self.bookRepository.getBook(by: self.state.book.bookUrl)
+            guard !Task.isCancelled else { return }
             let inShelf = existing != nil
             self.updateState { state in
                 state.isInBookshelf = inShelf
@@ -155,9 +168,9 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
                     book: state.book,
                     chapters: state.chapters,
                     option: option,
-                    concurrency: 3) { progress in
-                        Task { @MainActor in
-                            self.updateState { $0.downloadProgress = progress }
+                    concurrency: 3) { [weak self] progress in
+                        Task { @MainActor [weak self] in
+                            self?.updateState { $0.downloadProgress = progress }
                         }
                     }
                 self.refreshCacheStatus()
@@ -198,12 +211,15 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
     }
 
     private func loadBookDetailAndToc() {
+        detailLoadTask?.cancel()
         updateState { $0.isLoading = true }
 
-        Task {
+        detailLoadTask = Task { [weak self] in
+            guard let self else { return }
             do {
-                let updatedBook = try await getBookDetailUseCase.execute(book: state.book)
-                let toc = try await getBookTocUseCase.execute(book: updatedBook, forceRefresh: true)
+                let updatedBook = try await self.getBookDetailUseCase.execute(book: self.state.book)
+                let toc = try await self.getBookTocUseCase.execute(book: updatedBook, forceRefresh: true)
+                guard !Task.isCancelled else { return }
 
                 self.updateState { state in
                     state.isLoading = false
@@ -211,6 +227,7 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
                     state.chapters = toc
                 }
             } catch {
+                guard !Task.isCancelled else { return }
                 self.updateState { state in
                     state.isLoading = false
                     state.errorMessage = error.localizedDescription
@@ -221,24 +238,26 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
     }
 
     private func toggleShelf() {
-        Task {
+        shelfToggleTask?.cancel()
+        shelfToggleTask = Task { [weak self] in
+            guard let self else { return }
             do {
-                if state.isInBookshelf {
-                    try await removeBookFromShelfUseCase.execute(bookUrl: state.book.bookUrl)
-                    updateState { state in
+                if self.state.isInBookshelf {
+                    try await self.removeBookFromShelfUseCase.execute(bookUrl: self.state.book.bookUrl)
+                    self.updateState { state in
                         state.isInBookshelf = false
                     }
-                    emitEffect(.showToast("已从书架移除"))
+                    self.emitEffect(.showToast("已从书架移除"))
                 } else {
-                    try await saveBookToShelfUseCase.execute(state.book)
-                    updateState { state in
+                    try await self.saveBookToShelfUseCase.execute(self.state.book)
+                    self.updateState { state in
                         state.isInBookshelf = true
                     }
-                    emitEffect(.showToast("已成功加入书架"))
+                    self.emitEffect(.showToast("已成功加入书架"))
                 }
-                emitEffect(.hapticFeedback)
+                self.emitEffect(.hapticFeedback)
             } catch {
-                emitEffect(.showToast("操作失败: \(error.localizedDescription)"))
+                self.emitEffect(.showToast("操作失败: \(error.localizedDescription)"))
             }
         }
     }

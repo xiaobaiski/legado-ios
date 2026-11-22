@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.1] - 2026-11-22
+
+### Added
+- **WebDAV Selective Sync**: Added independent toggles (`WebDAVSyncOptions`) in `WebDAVSettingsView` for syncing **Reading Progress & Bookmarks**, **Purification/TOC Rules & Typography**, and **Local Book Files**. Partial backups download and preserve unchecked remote categories in `legado_backup.json`.
+- **Full Compressed Local Book File Sync**: Added `WebDAVLocalBookArchive` (Foundation zlib compression) storing chapters, `[Chapter]` TOC metadata, and local cover art under `books/<key>.legadobook` so local books transfer completely across devices.
+
+### Fixed
+- **WebDAV Ghost Book Prevention**: `RestoreFromWebDAVUseCase` matches books by exact `bookUrl` or normalized `(name, author)` and refuses to insert `local://` entries when local chapter files are absent (reporting skipped counts instead of leaving unopenable books on the bookshelf). `ReaderViewModel` also displays actionable recovery guidance if an existing local book lacks chapter files on disk.
+- **Memory Leaks & Swift 6 Concurrency Warnings**: Fixed `TTSPlayer.shared` strong callback retention on `ReaderViewModel` (`[weak viewModel]` + clearing callbacks on `onDisappear`), broke the `CADisplayLink <-> Coordinator` retain cycle via `WeakDisplayLinkProxy`, added `deinit` Task/KVO cancellation across `ReaderViewModel`, `BookDetailViewModel`, `BookSearchContentViewModel`, and `VolumeButtonHandler`, and eliminated `WebDAVSessionDelegate` / unit-test `UserDefaults` sendability warnings.
+
+### Performance
+- Bounded `GetChapterContentUseCase` L1 chapter `memoryCache` (`countLimit = 24`, `totalCostLimit = 8 MB`).
+- Precompiled static regexes and eliminated per-line scalar array copies in `PurifyContentUseCase.smartReSegment`; cached duplicate-title regex lookups.
+- Rewrote `TxtTocParser.splitByRegex` as single-pass full-text `NSRegularExpression` match range slicing and avoided O(N) whole-book `count` during rule selection.
+- Replaced per-call `DateFormatter` in `ReadRecordStore.dayKey(for:)` with `Calendar.current.dateComponents` and cached TTS lockscreen `MPMediaItemArtwork` per book/chapter.
+
 ## [1.1.0] - 2026-11-22
 
 ### Added & Improved

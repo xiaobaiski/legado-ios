@@ -4,6 +4,17 @@ import SwiftData
 /// 基于 SwiftData @ModelActor 的书签数据仓储实现
 @ModelActor
 public actor BookmarkRepositoryImpl: BookmarkRepository {
+    public func getAllBookmarks() throws -> [Bookmark] {
+        let descriptor = FetchDescriptor<BookmarkEntity>(
+            sortBy: [
+                SortDescriptor(\.bookName, order: .forward),
+                SortDescriptor(\.chapterIndex, order: .forward),
+                SortDescriptor(\.time, order: .reverse),
+            ])
+        let entities = try modelContext.fetch(descriptor)
+        return entities.map { $0.toDomain() }
+    }
+
     public func getBookmarks(bookName: String, bookAuthor: String) throws -> [Bookmark] {
         let predicate = #Predicate<BookmarkEntity> { entity in
             entity.bookName == bookName && entity.bookAuthor == bookAuthor

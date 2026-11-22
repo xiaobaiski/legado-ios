@@ -95,6 +95,10 @@ public struct ReaderView: View {
                 viewModel.stopAutoPageTimer()
                 volumeHandler.stop()
                 restoreSystemDisplaySettings()
+                TTSPlayer.shared.onSentenceChanged = nil
+                TTSPlayer.shared.onChapterFinished = nil
+                TTSPlayer.shared.onRequestNextChapter = nil
+                TTSPlayer.shared.onRequestNextChapterAsync = nil
                 TTSPlayer.shared.stop()
             }
             .onChange(of: scenePhase) { _, phase in
