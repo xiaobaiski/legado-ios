@@ -1203,6 +1203,7 @@ struct TTSAndWebDAVSyncTests {
     }
 
     @Test("TTSPlayer.splitIntoSentences uses cached regex deterministically")
+    @MainActor
     func ttsSplitIntoSentencesConsistency() {
         let sample = "第一句内容。\n第二句感叹！  \nThird sentence?  \n   \n"
         let first = TTSPlayer.splitIntoSentences(sample)
