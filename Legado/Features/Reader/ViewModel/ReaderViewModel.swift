@@ -246,7 +246,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
                     return
                 }
 
-                let pages = await Self.computePaginatedPages(
+                let input = ChapterPaginationInput(
                     engine: engine,
                     chapterTitle: chapter.title,
                     content: content,
@@ -255,6 +255,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
                     config: configSnapshot,
                     bookName: bookName,
                     bookOrigin: bookOrigin)
+                let pages = await Self.computePaginatedPages(input)
                 guard !Task.isCancelled else { return }
 
                 self.applyLoadedPages(

@@ -116,7 +116,15 @@ extension ReaderViewModel {
         let hasRealBounds = state.screenBounds.width > 50
         let defaultBounds = CGRect(x: 0, y: 0, width: 393, height: 852)
         let layoutBounds = hasRealBounds ? state.screenBounds : defaultBounds
-        let engine = textLayoutEngine
+        let input = ChapterPaginationInput(
+            engine: textLayoutEngine,
+            chapterTitle: chapter.title,
+            content: "",
+            chapterIndex: chapterIndex,
+            bounds: layoutBounds,
+            config: configSnapshot,
+            bookName: bookName,
+            bookOrigin: bookOrigin)
 
         repaginateTask = Task { [weak self] in
             guard let self else { return }
@@ -127,16 +135,7 @@ extension ReaderViewModel {
                 return
             }
 
-            let pages = await Task.detached(priority: .userInitiated) {
-                engine.paginate(
-                    chapterTitle: chapter.title,
-                    content: content,
-                    chapterIndex: chapterIndex,
-                    bounds: layoutBounds,
-                    config: configSnapshot,
-                    bookName: bookName,
-                    bookOrigin: bookOrigin)
-            }.value
+            let pages = await Self.computePaginatedPages(input.withContent(content))
             guard !Task.isCancelled else { return }
 
             let preservedPage = Self.pageIndex(forOffset: currentOffset, in: pages)
@@ -150,24 +149,16 @@ extension ReaderViewModel {
         }
     }
 
-    static func computePaginatedPages(
-        engine: TextLayoutEngine,
-        chapterTitle: String,
-        content: String,
-        chapterIndex: Int,
-        bounds: CGRect,
-        config: ReaderConfig,
-        bookName: String,
-        bookOrigin: String) async -> [ReaderPage] {
+    static func computePaginatedPages(_ input: ChapterPaginationInput) async -> [ReaderPage] {
         await Task.detached(priority: .userInitiated) {
-            engine.paginate(
-                chapterTitle: chapterTitle,
-                content: content,
-                chapterIndex: chapterIndex,
-                bounds: bounds,
-                config: config,
-                bookName: bookName,
-                bookOrigin: bookOrigin)
+            input.engine.paginate(
+                chapterTitle: input.chapterTitle,
+                content: input.content,
+                chapterIndex: input.chapterIndex,
+                bounds: input.bounds,
+                config: input.config,
+                bookName: input.bookName,
+                bookOrigin: input.bookOrigin)
         }.value
     }
 
@@ -263,5 +254,28 @@ extension ReaderViewModel {
         Task {
             try? await repository.saveBook(updated)
         }
+    }
+}
+
+struct ChapterPaginationInput: @unchecked Sendable {
+    let engine: TextLayoutEngine
+    let chapterTitle: String
+    let content: String
+    let chapterIndex: Int
+    let bounds: CGRect
+    let config: ReaderConfig
+    let bookName: String
+    let bookOrigin: String
+
+    func withContent(_ newContent: String) -> ChapterPaginationInput {
+        ChapterPaginationInput(
+            engine: engine,
+            chapterTitle: chapterTitle,
+            content: newContent,
+            chapterIndex: chapterIndex,
+            bounds: bounds,
+            config: config,
+            bookName: bookName,
+            bookOrigin: bookOrigin)
     }
 }

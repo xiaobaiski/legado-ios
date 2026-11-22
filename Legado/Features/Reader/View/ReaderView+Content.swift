@@ -236,15 +236,7 @@ extension ReaderView {
         }
 
         let config = viewModel.state.config
-        var action = config.tapZoneConfig.action(atXRatio: xRatio, yRatio: yRatio)
-
-        // 保底安全机制：若用户把九宫格全部设为非菜单动作，点击正中仍可呼出菜单避免卡死
-        if !config.tapZoneConfig.hasMenuZone,
-           xRatio >= 1.0 / 3.0, xRatio <= 2.0 / 3.0,
-           yRatio >= 1.0 / 3.0, yRatio <= 2.0 / 3.0 {
-            action = .toggleHUD
-        }
-
+        let action = resolveTapAction(xRatio: xRatio, yRatio: yRatio, config: config)
         if !config.tapToTurnPage && action != .toggleHUD {
             return
         }
@@ -260,18 +252,10 @@ extension ReaderView {
             viewModel.send(.toggleHUD)
 
         case .nextChapter:
-            if viewModel.state.currentChapterIndex + 1 < viewModel.state.chapters.count {
-                viewModel.send(.loadChapter(viewModel.state.currentChapterIndex + 1))
-            } else {
-                toastMessage = "已经是最后一章了"
-            }
+            navigateAdjacentChapter(delta: 1)
 
         case .prevChapter:
-            if viewModel.state.currentChapterIndex > 0 {
-                viewModel.send(.loadChapter(viewModel.state.currentChapterIndex - 1))
-            } else {
-                toastMessage = "已经是第一章了"
-            }
+            navigateAdjacentChapter(delta: -1)
 
         case .toggleNightMode:
             var updated = config
@@ -280,6 +264,26 @@ extension ReaderView {
 
         case .none:
             break
+        }
+    }
+
+    private func resolveTapAction(xRatio: CGFloat, yRatio: CGFloat, config: ReaderConfig) -> TapZoneAction {
+        let action = config.tapZoneConfig.action(atXRatio: xRatio, yRatio: yRatio)
+        // 保底安全机制：若用户把九宫格全部设为非菜单动作，点击正中仍可呼出菜单避免卡死
+        if !config.tapZoneConfig.hasMenuZone,
+           xRatio >= 1.0 / 3.0, xRatio <= 2.0 / 3.0,
+           yRatio >= 1.0 / 3.0, yRatio <= 2.0 / 3.0 {
+            return .toggleHUD
+        }
+        return action
+    }
+
+    private func navigateAdjacentChapter(delta: Int) {
+        let targetIndex = viewModel.state.currentChapterIndex + delta
+        if targetIndex >= 0, targetIndex < viewModel.state.chapters.count {
+            viewModel.send(.loadChapter(targetIndex))
+        } else {
+            toastMessage = delta > 0 ? "已经是最后一章了" : "已经是第一章了"
         }
     }
 }

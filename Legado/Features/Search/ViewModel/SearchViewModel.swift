@@ -83,28 +83,36 @@ public final class SearchViewModel: MVIViewModel<SearchState, SearchIntent, Sear
             emitEffect(.hapticFeedback)
 
         case let .toggleExpandGroup(groupId):
-            updateState { state in
-                if state.expandedGroupIds.contains(groupId) {
-                    state.expandedGroupIds.remove(groupId)
-                } else {
-                    state.expandedGroupIds.insert(groupId)
-                }
-            }
-            emitEffect(.hapticFeedback)
+            toggleExpandGroup(groupId)
 
         case let .addToBookshelf(result):
-            saveBookTask = Task { [weak self] in
-                guard let self else { return }
-                do {
-                    try await self.saveBookToShelfUseCase.execute(from: result)
-                    self.updateState { state in
-                        state.addedBookUrls.insert(result.bookUrl)
-                    }
-                    self.emitEffect(.showToast("《\(result.name)》已加入书架"))
-                    self.emitEffect(.hapticFeedback)
-                } catch {
-                    self.emitEffect(.showToast("加入书架失败: \(error.localizedDescription)"))
+            addToBookshelf(result)
+        }
+    }
+
+    private func toggleExpandGroup(_ groupId: String) {
+        updateState { state in
+            if state.expandedGroupIds.contains(groupId) {
+                state.expandedGroupIds.remove(groupId)
+            } else {
+                state.expandedGroupIds.insert(groupId)
+            }
+        }
+        emitEffect(.hapticFeedback)
+    }
+
+    private func addToBookshelf(_ result: SearchResult) {
+        saveBookTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.saveBookToShelfUseCase.execute(from: result)
+                self.updateState { state in
+                    state.addedBookUrls.insert(result.bookUrl)
                 }
+                self.emitEffect(.showToast("《\(result.name)》已加入书架"))
+                self.emitEffect(.hapticFeedback)
+            } catch {
+                self.emitEffect(.showToast("加入书架失败: \(error.localizedDescription)"))
             }
         }
     }

@@ -35,7 +35,7 @@ public final class SearchBookContentUseCase: Sendable {
                         continue
                     }
 
-                    let matches = extractMatches(
+                    let matches = Self.extractMatches(
                         keyword: cleanKeyword,
                         content: content,
                         chapter: chapter)
@@ -58,7 +58,7 @@ public final class SearchBookContentUseCase: Sendable {
         }
     }
 
-    private func extractMatches(
+    private static func extractMatches(
         keyword: String,
         content: String,
         chapter: Chapter) -> [BookSearchMatch] {

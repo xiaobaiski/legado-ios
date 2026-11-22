@@ -242,7 +242,7 @@ private final class WebDAVSessionDelegate: NSObject, URLSessionTaskDelegate, @un
         _: URLSession,
         task _: URLSessionTask,
         didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         let method = challenge.protectionSpace.authenticationMethod
         if method == NSURLAuthenticationMethodServerTrust {
             if config.allowInsecureCertificate,
