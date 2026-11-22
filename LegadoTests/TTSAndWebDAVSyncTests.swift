@@ -162,6 +162,7 @@ struct TTSAndWebDAVSyncTests {
             == "http://nas.local/webdav/")
         #expect(WebDAVClient.normalizeBaseUrl("  https://example.com/dav  ")?.absoluteString
             == "https://example.com/dav/")
+        #expect(WebDAVClient.normalizeBaseUrl("https://dav.jianguoyun.com/dav/小说备份") != nil)
         #expect(WebDAVClient.normalizeBaseUrl("   ") == nil)
 
         let emptyConfig = WebDAVConfig(serverUrl: "  ")

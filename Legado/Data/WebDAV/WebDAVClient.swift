@@ -129,7 +129,9 @@ public final class WebDAVClient: Sendable {
             trimmed = defaultScheme + trimmed
         }
 
-        guard var components = URLComponents(string: trimmed),
+        let encodedCandidate = trimmed.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed)
+        guard var components = URLComponents(string: trimmed)
+                ?? encodedCandidate.flatMap({ URLComponents(string: $0) }),
               let scheme = components.scheme?.lowercased(),
               scheme == "http" || scheme == "https",
               let host = components.host,
@@ -293,10 +295,6 @@ public final class WebDAVClient: Sendable {
             }
             if code == 403 {
                 throw WebDAVError.forbidden
-            }
-            let accepted = (200 ... 207).contains(code) || code == 301 || code == 405
-            if !accepted && count == segments.count {
-                throw WebDAVError.serverError(statusCode: code, message: "创建远程目录失败")
             }
         }
     }
