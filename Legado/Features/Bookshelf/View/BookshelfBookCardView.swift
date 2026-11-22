@@ -162,32 +162,31 @@ public struct BookshelfBookCardView: View {
         }
     }
 
-    private var placeholderCover: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color.accentColor.opacity(0.18), Color.accentColor.opacity(0.06)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing)
-            VStack(spacing: 6) {
-                Image(systemName: "book.closed")
-                    .font(.title2)
-                    .foregroundStyle(.tint)
-                Text(book.name)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .padding(.horizontal, 4)
-            }
+    private var formatBadge: String? {
+        if book.originName.localizedCaseInsensitiveContains("EPUB") {
+            return "EPUB"
         }
+        if book.isLocalFile {
+            return "TXT"
+        }
+        return nil
+    }
+
+    private var placeholderCover: some View {
+        BookDefaultCoverView(
+            title: book.name,
+            author: book.author,
+            formatBadge: formatBadge,
+            compact: false)
     }
 
     private func formatProgress(book: Book) -> String {
         if book.durChapterIndex == 0 {
-            return "未读"
+            return book.durChapterPos > 0 ? "在读" : "未读"
         }
         if book.totalChapterNum > 0 {
             let percent = Int((Double(book.durChapterIndex + 1) / Double(book.totalChapterNum)) * 100)
-            return "\(percent)%"
+            return "\(max(percent, 1))%"
         }
         return "第\(book.durChapterIndex + 1)章"
     }

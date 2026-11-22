@@ -16,6 +16,7 @@ public struct BookshelfView: View {
     @State private var editingBook: Book?
     @State private var editBookName = ""
     @State private var editBookAuthor = ""
+    @State private var bookPendingRemoval: Book?
 
     public init(viewModel: BookshelfViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -32,6 +33,15 @@ public struct BookshelfView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     groupSelectorSection
+
+                    if !viewModel.state.isBatchMode,
+                       viewModel.state.searchText.isEmpty,
+                       viewModel.state.selectedGroup == "全部",
+                       let recentBook = viewModel.state.recentReadingBook {
+                        BookshelfResumeBannerView(book: recentBook) {
+                            viewModel.send(.didSelectBook(recentBook))
+                        }
+                    }
 
                     if viewModel.state.filteredBooks.isEmpty && !viewModel.state.isLoading {
                         emptyStateView
@@ -116,6 +126,23 @@ public struct BookshelfView: View {
                             author: editBookAuthor))
                     }
                     editingBook = nil
+                }
+            }
+            .alert(
+                "移出书架",
+                isPresented: Binding(
+                    get: { bookPendingRemoval != nil },
+                    set: { if !$0 { bookPendingRemoval = nil } })) {
+                Button("取消", role: .cancel) { bookPendingRemoval = nil }
+                Button("确认移出", role: .destructive) {
+                    if let target = bookPendingRemoval {
+                        viewModel.send(.removeBook(bookUrl: target.bookUrl))
+                    }
+                    bookPendingRemoval = nil
+                }
+            } message: {
+                if let target = bookPendingRemoval {
+                    Text("确定将《\(target.name)》从书架移出吗？本地书籍的章节正文与封面缓存也会同步清理。")
                 }
             }
             .sheet(isPresented: $isShowingFileImporter) {
@@ -270,7 +297,7 @@ public struct BookshelfView: View {
                             editBookName = book.name
                             editBookAuthor = book.author
                         },
-                        onRemove: { viewModel.send(.removeBook(bookUrl: book.bookUrl)) },
+                        onRemove: { bookPendingRemoval = book },
                         onMoveGroup: { viewModel.send(.moveBookToGroup(bookUrl: book.bookUrl, groupName: $0)) })
                 }
             }
@@ -297,7 +324,7 @@ public struct BookshelfView: View {
                         editBookName = book.name
                         editBookAuthor = book.author
                     },
-                    onRemove: { viewModel.send(.removeBook(bookUrl: book.bookUrl)) },
+                    onRemove: { bookPendingRemoval = book },
                     onMoveGroup: { viewModel.send(.moveBookToGroup(bookUrl: book.bookUrl, groupName: $0)) })
             }
         }

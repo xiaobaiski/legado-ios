@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag name (e.g. v1.1.0)'
+        required: false
+        default: 'v1.1.0'
 
 jobs:
   release-ipa:
@@ -59,7 +65,7 @@ jobs:
 
       - name: Package Release IPA
         run: |
-          TAG_NAME="${GITHUB_REF_NAME}"
+          TAG_NAME="${{ github.event.inputs.tag_name || github.ref_name }}"
           VERSION="${TAG_NAME#v}"
           mkdir -p build/Payload
           cp -r build/Legado.xcarchive/Products/Applications/Legado.app build/Payload/
@@ -78,7 +84,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          export TAG_NAME="${GITHUB_REF_NAME}"
+          export TAG_NAME="${{ github.event.inputs.tag_name || github.ref_name }}"
           export VERSION="${TAG_NAME#v}"
           IPA_FILE="build/Legado-${VERSION}.ipa"
 

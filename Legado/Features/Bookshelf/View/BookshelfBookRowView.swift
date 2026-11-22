@@ -106,19 +106,18 @@ public struct BookshelfBookRowView: View {
     }
 
     private var placeholderCover: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color.accentColor.opacity(0.18), Color.accentColor.opacity(0.06)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing)
-            Image(systemName: "book.closed")
-                .font(.title2)
-                .foregroundStyle(.tint)
+        BookDefaultCoverView(title: book.name, author: book.author, compact: true)
+    }
+
+    private var progressFraction: Double? {
+        guard book.totalChapterNum > 0, book.durChapterIndex > 0 || book.durChapterPos > 0 else {
+            return nil
         }
+        return min(max(Double(book.durChapterIndex + 1) / Double(book.totalChapterNum), 0.03), 1.0)
     }
 
     private var bookDetails: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(book.name)
                     .font(.headline)
@@ -154,23 +153,35 @@ public struct BookshelfBookRowView: View {
             Text(book.author)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
 
-            if let latest = book.latestChapterTitle, !latest.isEmpty {
-                Text("最新: \(latest)")
+            if let durTitle = book.durChapterTitle, !durTitle.isEmpty,
+               (book.durChapterIndex > 0 || book.durChapterPos > 0) {
+                Text("读至: \(durTitle)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            } else if book.totalChapterNum > 0 {
+                Text("共 \(book.totalChapterNum) 章")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+            }
+
+            if let ratio = progressFraction {
+                ProgressView(value: ratio)
+                    .tint(.accentColor)
+                    .scaleEffect(x: 1, y: 0.65, anchor: .center)
             }
         }
     }
 
     private func formatProgress(book: Book) -> String {
         if book.durChapterIndex == 0 {
-            return "未读"
+            return book.durChapterPos > 0 ? "在读" : "未读"
         }
         if book.totalChapterNum > 0 {
             let percent = Int((Double(book.durChapterIndex + 1) / Double(book.totalChapterNum)) * 100)
-            return "\(percent)%"
+            return "\(max(percent, 1))%"
         }
         return "第\(book.durChapterIndex + 1)章"
     }

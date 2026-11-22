@@ -142,7 +142,7 @@ public struct ReaderHUDView: View {
         .preferredColorScheme(config.isEffectiveDark ? .dark : .light)
     }
 
-    // MARK: - 顶部导航条
+    // MARK: - 顶部导航条（精简右区，保障书名完整显示）
 
     private var topBar: some View {
         HStack {
@@ -159,27 +159,22 @@ public struct ReaderHUDView: View {
                         .lineLimit(1)
                 }
 
-                Spacer()
-
-                circleIconButton(
-                    systemName: config.isEffectiveDark ? "sun.max.fill" : "moon.fill",
-                    foreground: config.isEffectiveDark ? .yellow : .primary,
-                    action: onToggleNightMode)
-
-                circleIconButton(systemName: "text.quote", action: onOpenTextAction)
+                Spacer(minLength: 8)
 
                 circleIconButton(systemName: "magnifyingglass", action: onOpenSearch)
-
-                if !isLocalFile {
-                    circleIconButton(systemName: "arrow.down.circle", action: onOpenCache)
-                }
+                    .accessibilityLabel("搜索")
 
                 circleIconButton(
                     systemName: isBookmarked ? "bookmark.fill" : "bookmark",
                     foreground: isBookmarked ? Color.accentColor : .primary,
                     action: onToggleBookmark)
 
-                circleIconButton(systemName: "gearshape", action: onOpenMoreSettings)
+                if horizontalSizeClass == .regular {
+                    circleIconButton(systemName: "text.quote", action: onOpenTextAction)
+                    circleIconButton(systemName: "gearshape", action: onOpenMoreSettings)
+                }
+
+                moreMenuButton
             }
             .frame(maxWidth: horizontalSizeClass == .regular ? 860 : .infinity)
         }
@@ -192,6 +187,38 @@ public struct ReaderHUDView: View {
             Rectangle()
                 .fill(.white.opacity(0.15))
                 .frame(height: 0.5)
+        }
+    }
+
+    private var moreMenuButton: some View {
+        Menu {
+            Button(action: onOpenTextAction) {
+                Label("正文摘录与净化", systemImage: "text.quote")
+            }
+
+            Button(action: onToggleAutoPage) {
+                Label(
+                    isAutoPaging ? "停止自动翻页" : "开启自动翻页",
+                    systemImage: isAutoPaging ? "pause.circle.fill" : "play.circle")
+            }
+
+            if !isLocalFile {
+                Button(action: onOpenCache) {
+                    Label("离线章节缓存", systemImage: "arrow.down.circle")
+                }
+            }
+
+            Button(action: onOpenMoreSettings) {
+                Label("更多阅读设置", systemImage: "slider.horizontal.3")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 36, height: 36)
+                .background(.ultraThinMaterial)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: 0.5))
         }
     }
 
@@ -225,23 +252,23 @@ public struct ReaderHUDView: View {
         let progressPct = itemTotal > 1
             ? Double(clampedIndex) / Double(itemTotal - 1) * 100.0
             : 100.0
+        let isScrubbing = draggingChapterIndex != nil
 
-        return VStack(spacing: 12) {
-            if draggingChapterIndex != nil {
-                HStack(spacing: 8) {
-                    Text(previewTitle)
-                        .font(.caption.weight(.medium))
-                        .lineLimit(1)
-                    Spacer()
-                    Text("\(clampedIndex + 1)/\(max(itemTotal, 1)) · \(String(format: "%.1f%%", progressPct))")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(.thinMaterial)
-                .clipShape(Capsule(style: .continuous))
+        return VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Text(previewTitle)
+                    .font(.caption.weight(isScrubbing ? .semibold : .medium))
+                    .foregroundStyle(isScrubbing ? Color.accentColor : .primary)
+                    .lineLimit(1)
+                Spacer()
+                Text("\(clampedIndex + 1)/\(max(itemTotal, 1)) · \(String(format: "%.1f%%", progressPct))")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(isScrubbing ? Color.accentColor : .secondary)
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(isScrubbing ? Color.accentColor.opacity(0.10) : Color.primary.opacity(0.04))
+            .clipShape(Capsule(style: .continuous))
 
             HStack(spacing: 12) {
                 Button(action: onPreviousChapter) {
@@ -303,8 +330,12 @@ public struct ReaderHUDView: View {
                 systemImage: "textformat.size",
                 isActive: isConfigOpen,
                 action: onToggleConfig)
-            quickActionButton(title: "搜索", systemImage: "magnifyingglass", action: onOpenSearch)
             quickActionButton(title: "听书", systemImage: "headphones", action: onStartTTS)
+            quickActionButton(
+                title: config.isEffectiveDark ? "日间" : "夜间",
+                systemImage: config.isEffectiveDark ? "sun.max.fill" : "moon.fill",
+                isActive: config.isEffectiveDark,
+                action: onToggleNightMode)
             if isLocalFile {
                 quickActionButton(title: "设置", systemImage: "slider.horizontal.3", action: onOpenMoreSettings)
             } else {

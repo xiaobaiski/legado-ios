@@ -163,19 +163,6 @@ private extension ReaderTypographyPanel {
                     .background(Color.secondary.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
-
-            Button {
-                update { $0.isBoldFont.toggle() }
-            } label: {
-                Text("加粗")
-                    .font(.caption.weight(config.isBoldFont ? .bold : .regular))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(
-                        config.isBoldFont ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12))
-                    .foregroundStyle(config.isBoldFont ? Color.accentColor : Color.primary)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
         }
         .tint(.primary)
     }

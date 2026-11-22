@@ -115,17 +115,18 @@ extension AppEnvironment {
         let sampleBook = Book(
             bookUrl: "https://biquge.example.com/book/circle_of_inevitability",
             tocUrl: "https://biquge.example.com/book/circle_of_inevitability/toc",
-            origin: "https://biquge.example.com",
-            originName: "笔趣阁官方",
+            origin: "local",
+            originName: "内置试读",
             name: "宿命之环",
             author: "爱潜水的乌贼",
-            kind: "连载中 奇幻 序列途径",
-            coverUrl: "https://bookcover.yuewen.com/qdbimg/349573/1036370336/300.webp",
+            kind: "奇幻 试读",
+            coverUrl: nil,
             intro: "诡秘之主第二部。四旬节的前夜，微风轻拂的夜晚，卢米安站在崖顶，眺望着科尔杜村...",
-            latestChapterTitle: "第150章 最后的落幕",
+            latestChapterTitle: "第三章 恶作剧与神秘客",
             durChapterTitle: "第一章 宿命之始",
             durChapterIndex: 0,
-            wordCount: "285万字")
+            wordCount: "285万字",
+            totalChapterNum: 3)
         try? await bookRepository.saveBook(sampleBook)
 
         let chapters = [

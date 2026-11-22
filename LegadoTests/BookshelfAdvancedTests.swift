@@ -133,4 +133,64 @@ struct BookshelfAdvancedTests {
         #expect(updatedBook1?.groupName == "爱潜水的乌贼专区")
         #expect(!vm.state.isBatchMode) // 移动后退出批量模式
     }
+
+    @Test("Test First Chapter Reading Detection, Recent Book Banner and Local Refresh")
+    @MainActor
+    func bookshelfReadingProgressAndLayoutPersistence() async throws {
+        let suiteName = "test.bookshelf.layout.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let ch1Reading = Book(
+            bookUrl: "local://b1",
+            origin: "local",
+            name: "第一章在读",
+            author: "作者A",
+            durChapterIndex: 0,
+            durChapterPos: 120,
+            durChapterTime: 2000)
+        let unreadBook = Book(
+            bookUrl: "local://b2",
+            origin: "local",
+            name: "完全未读",
+            author: "作者B",
+            durChapterIndex: 0,
+            durChapterPos: 0,
+            durChapterTime: 1000)
+
+        var state = BookshelfState(books: [unreadBook, ch1Reading], selectedGroup: "在读")
+        #expect(state.filteredBooks.map(\.bookUrl) == ["local://b1"])
+        state.selectedGroup = "未读"
+        #expect(state.filteredBooks.map(\.bookUrl) == ["local://b2"])
+        #expect(state.recentReadingBook?.bookUrl == "local://b1")
+
+        let provider = ModelContainerProvider(inMemory: true)
+        let bookRepo = BookRepositoryImpl(modelContainer: provider.container)
+        try await bookRepo.saveBook(ch1Reading)
+
+        let vm1 = BookshelfViewModel(
+            getBookshelfUseCase: GetBookshelfUseCase(bookRepository: bookRepo),
+            removeBookFromShelfUseCase: RemoveBookFromShelfUseCase(bookRepository: bookRepo),
+            checkBookUpdatesUseCase: CheckBookUpdatesUseCase(
+                bookRepository: bookRepo,
+                sourceRepository: BookSourceRepositoryImpl(modelContainer: provider.container)),
+            layoutDefaults: defaults)
+        vm1.send(.toggleLayoutMode)
+        #expect(vm1.state.layoutMode == .list)
+
+        let vm2 = BookshelfViewModel(
+            getBookshelfUseCase: GetBookshelfUseCase(bookRepository: bookRepo),
+            removeBookFromShelfUseCase: RemoveBookFromShelfUseCase(bookRepository: bookRepo),
+            checkBookUpdatesUseCase: CheckBookUpdatesUseCase(
+                bookRepository: bookRepo,
+                sourceRepository: BookSourceRepositoryImpl(modelContainer: provider.container)),
+            layoutDefaults: defaults)
+        #expect(vm2.state.layoutMode == .list)
+
+        vm2.send(.refresh)
+        for _ in 0 ..< 20 where vm2.state.isRefreshingUpdates {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        #expect(!vm2.state.isRefreshingUpdates)
+    }
 }

@@ -1,16 +1,24 @@
 # Changelog
 
-## [1.0.1] - 2026-11-22
+## [1.1.0] - 2026-11-22
+
+### Added & Improved
+- **On-Demand Permissions Only**:
+  - Removed automatic remote sample source seeding, remote sample cover loading (`AsyncImage`), and network-based bookshelf pull-to-refresh for local libraries so app launch, browsing, and reading never trigger unwanted network or local-network prompts.
+  - `AVAudioSession` activation is deferred strictly until TTS playback starts/resumes and released cleanly on stop.
+- **Bookshelf, Reader & Settings UX**:
+  - Added a top "继续阅读" quick-resume banner on the bookshelf, 6-palette book-spine default covers (`BookDefaultCoverView`), remove confirmation alert, persistent grid/list layout toggle, and accurate first-chapter reading state (`在读` / `未读`).
+  - Decluttered the compact iPhone reader top bar into `搜索 | 书签 | ···` menu, added persistent reading progress summary above the HUD slider, reordered single-hand bottom bar actions (`目录 | 排版 | 听书 | 日夜间 | 设置`), and removed duplicate bold toggle in favor of 5-level font weights.
+  - Refactored WebDAV configuration into a dedicated `WebDAVSettingsView` subpage under a unified "云同步与存储" section.
 
 ### Fixed
 - **WebDAV Connectivity & Protocol Compatibility**:
-  - Declared `NSLocalNetworkUsageDescription` in `project.yml` & `Legado/Info.plist` so iOS permits connecting to LAN NAS / Alist / OpenList / Synology servers instead of failing with `-1004`.
-  - Added dedicated `URLSessionTaskDelegate` (`WebDAVSessionDelegate`) preserving HTTP method (`PROPFIND` / `MKCOL` / `PUT`), body, headers, and `Authorization` across HTTP redirects (`301/302/307/308`), supporting HTTP Basic & Digest challenges, and adding an opt-in `允许自签名证书 (局域网 NAS HTTPS)` toggle.
-  - Sent standard RFC 4918 `PROPFIND` XML body (`Content-Type: application/xml; charset=utf-8`), with automatic fallback to `Depth: 1`, `OPTIONS`, and target `remoteDirectory` probe.
-  - Normalized `davs://` -> `https://`, `dav://` -> `http://`, schemeless URLs, percent-encoded Chinese directory segments, and iterative multi-level `MKCOL` creation; added clear Chinese `URLError` diagnostics and inline error/success banners in `SettingsView`.
-- **Full Reader Backup & Restore**: `BackupToWebDAVUseCase` / `RestoreFromWebDAVUseCase` now back up and restore actual `ReplaceRuleStore`, `TxtTocRuleStore`, `ReadRecordStore`, and `ReaderConfigStore` alongside bookshelf progress.
-- **TTS Preferences & Audio Session**: Fixed Settings TTS speech rate slider mismatch (`0.5 ... 2.0x`), deferred `AVAudioSession` activation until playback starts (preventing background music ducking when opening Settings), applied purification/Chinese conversion on cross-chapter TTS, skipped empty volume headers, and guarded empty chapters.
-- **Local Book Storage & Progress Sync**: Migrated `local://` book chapters to persistent `Application Support/LegadoLocalBooks` (with transparent legacy fallback), excluded local books from online cache size calculations, refreshed local book reading progress when returning to `BookDetailView`, clamped out-of-range search/bookmark offsets near chapter ends, and bundled offline text for chapters 2–3 of the built-in sample book.
+  - Declared `NSLocalNetworkUsageDescription` in `project.yml` & `Legado/Info.plist` for on-demand LAN NAS / Alist / OpenList / Synology access.
+  - Added `WebDAVSessionDelegate` preserving HTTP method, body, headers, and `Authorization` across redirects, supporting HTTP Basic/Digest auth and an opt-in `允许自签名证书 (局域网 NAS HTTPS)` toggle.
+  - Sent standard RFC 4918 `PROPFIND` XML body with `Depth: 1` / `OPTIONS` / `remoteDirectory` fallback, normalized `dav://` / `davs://` / schemeless / non-ASCII URLs, iterative `MKCOL`, and actionable Chinese `URLError` diagnostics.
+- **Full Reader Backup, Storage & TTS Fixes**:
+  - `BackupToWebDAVUseCase` / `RestoreFromWebDAVUseCase` back up and restore actual `ReplaceRuleStore`, `TxtTocRuleStore`, `ReadRecordStore`, and `ReaderConfigStore`.
+  - Fixed Settings TTS speech-rate slider range (`0.5...2.0x`), cross-chapter TTS normalization & empty volume skipping, migrated `local://` book chapters to `Application Support/LegadoLocalBooks` with cache size isolation, refreshed local book reading progress on `BookDetailView` return, clamped near-end jump offsets, and bundled offline chapters 2–3 for the built-in sample book.
 
 ## [1.0.0] - 2026-11-21
 

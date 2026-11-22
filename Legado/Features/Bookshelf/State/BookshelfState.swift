@@ -4,6 +4,8 @@ import Foundation
 public enum BookshelfLayoutMode: String, CaseIterable, Codable, Sendable {
     case grid = "宫格"
     case list = "列表"
+
+    public static let storageKey = "legado_bookshelf_layout_mode"
 }
 
 /// 书架排序方式
@@ -64,14 +66,21 @@ public struct BookshelfState: ViewState, Equatable {
         self.searchText = searchText
     }
 
+    /// 最近一次打开阅读的书籍（用于书架顶部「继续阅读」快捷入口）
+    public var recentReadingBook: Book? {
+        books
+            .filter { $0.durChapterTime > 0 }
+            .max { $0.durChapterTime < $1.durChapterTime }
+    }
+
     /// 根据当前分组、搜索关键词与排序方式过滤排序后的书籍列表
     public var filteredBooks: [Book] {
         var list = books
 
         if selectedGroup == "在读" {
-            list = list.filter { $0.durChapterIndex > 0 }
+            list = list.filter { $0.durChapterIndex > 0 || $0.durChapterPos > 0 }
         } else if selectedGroup == "未读" {
-            list = list.filter { $0.durChapterIndex == 0 }
+            list = list.filter { $0.durChapterIndex == 0 && $0.durChapterPos == 0 }
         } else if selectedGroup == "完结" {
             list = list.filter { $0.kind?.contains("完结") == true }
         } else if selectedGroup != "全部" {
@@ -100,9 +109,10 @@ public struct BookshelfState: ViewState, Equatable {
     }
 
     private static func progressRatio(_ book: Book) -> Double {
+        let hasStarted = book.durChapterIndex > 0 || book.durChapterPos > 0
         guard book.totalChapterNum > 0 else {
-            return book.durChapterIndex > 0 ? 0.01 : 0
+            return hasStarted ? 0.01 : 0
         }
-        return Double(book.durChapterIndex + (book.durChapterIndex > 0 ? 1 : 0)) / Double(book.totalChapterNum)
+        return hasStarted ? Double(book.durChapterIndex + 1) / Double(book.totalChapterNum) : 0
     }
 }

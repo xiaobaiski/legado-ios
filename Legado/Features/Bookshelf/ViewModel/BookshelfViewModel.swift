@@ -11,6 +11,7 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
     private let saveBookGroupUseCase: SaveBookGroupUseCase?
     private let deleteBookGroupUseCase: DeleteBookGroupUseCase?
     let importLocalBookUseCase: ImportLocalBookUseCase?
+    private let layoutDefaults: UserDefaults?
 
     public init(
         getBookshelfUseCase: GetBookshelfUseCase,
@@ -20,7 +21,8 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         getBookGroupsUseCase: GetBookGroupsUseCase? = nil,
         saveBookGroupUseCase: SaveBookGroupUseCase? = nil,
         deleteBookGroupUseCase: DeleteBookGroupUseCase? = nil,
-        importLocalBookUseCase: ImportLocalBookUseCase? = nil) {
+        importLocalBookUseCase: ImportLocalBookUseCase? = nil,
+        layoutDefaults: UserDefaults? = nil) {
         self.getBookshelfUseCase = getBookshelfUseCase
         self.removeBookFromShelfUseCase = removeBookFromShelfUseCase
         self.checkBookUpdatesUseCase = checkBookUpdatesUseCase
@@ -29,9 +31,12 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         self.saveBookGroupUseCase = saveBookGroupUseCase
         self.deleteBookGroupUseCase = deleteBookGroupUseCase
         self.importLocalBookUseCase = importLocalBookUseCase
+        self.layoutDefaults = layoutDefaults
         let savedSort = UserDefaults.standard.string(forKey: BookshelfSortOrder.storageKey)
             .flatMap(BookshelfSortOrder.init(rawValue:)) ?? .recent
-        super.init(initialState: BookshelfState(sortOrder: savedSort))
+        let savedLayout = layoutDefaults?.string(forKey: BookshelfLayoutMode.storageKey)
+            .flatMap(BookshelfLayoutMode.init(rawValue:)) ?? .grid
+        super.init(initialState: BookshelfState(layoutMode: savedLayout, sortOrder: savedSort))
 
         send(.onAppear)
     }
@@ -52,7 +57,9 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
             emitEffect(.hapticFeedback)
 
         case .toggleLayoutMode:
-            updateState { $0.layoutMode = ($0.layoutMode == .grid ? .list : .grid) }
+            let nextLayout: BookshelfLayoutMode = (state.layoutMode == .grid ? .list : .grid)
+            layoutDefaults?.set(nextLayout.rawValue, forKey: BookshelfLayoutMode.storageKey)
+            updateState { $0.layoutMode = nextLayout }
             emitEffect(.hapticFeedback)
 
         case let .selectSortOrder(order):
@@ -186,6 +193,22 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
 
         Task {
             do {
+                let currentBooks = try await getBookshelfUseCase.execute()
+                if currentBooks.allSatisfy({ $0.isLocalFile || $0.origin == "local" }) {
+                    let customGroups = (try? await getBookGroupsUseCase?.execute()) ?? []
+                    let defaultGroups = ["全部", "在读", "未读", "完结"]
+                    self.updateState { state in
+                        state.isLoading = false
+                        state.isRefreshingUpdates = false
+                        state.books = currentBooks
+                        state.customGroups = customGroups
+                        state.groups = defaultGroups + customGroups.map(\.name)
+                    }
+                    self.emitEffect(.showToast("书架已刷新"))
+                    self.emitEffect(.hapticFeedback)
+                    return
+                }
+
                 let updatedCount = try await checkBookUpdatesUseCase.execute()
                 let books = try await getBookshelfUseCase.execute()
                 let updatedUrls = Set(books.filter { $0.latestChapterTime > $0.durChapterTime }.map(\.bookUrl))

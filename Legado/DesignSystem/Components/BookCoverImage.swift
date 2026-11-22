@@ -62,7 +62,7 @@ private final class LocalCoverImageCache: @unchecked Sendable {
     }
 }
 
-/// 书籍封面图片组件（同时支持本地 EPUB 封面 file:// 内存降采样缓存与网络图片 URL）
+/// 纯本地书籍封面图片组件（仅读取本地 file:// 缓存，绝不自动发起非必要网络请求）
 public struct BookCoverImage<Placeholder: View>: View {
     private let coverUrl: String?
     private let placeholder: () -> Placeholder
@@ -75,28 +75,122 @@ public struct BookCoverImage<Placeholder: View>: View {
     }
 
     public var body: some View {
-        if let coverUrl, let url = URL(string: coverUrl) {
-            if url.isFileURL {
-                if let uiImage = LocalCoverImageCache.shared.image(for: url) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    placeholder()
-                }
-            } else {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case let .success(image):
-                        image.resizable().scaledToFill()
-
-                    default:
-                        placeholder()
-                    }
-                }
-            }
+        if let coverUrl,
+           let url = URL(string: coverUrl),
+           url.isFileURL,
+           let uiImage = LocalCoverImageCache.shared.image(for: url) {
+            Image(uiImage: uiImage)
+                .resizable()
+                .scaledToFill()
         } else {
             placeholder()
         }
+    }
+}
+
+/// 典雅纸质书脊风格的差异化默认封面（按书名稳定映射低饱和度色板）
+public struct BookDefaultCoverView: View {
+    private let title: String
+    private let author: String
+    private let formatBadge: String?
+    private let compact: Bool
+
+    private static let palettes: [(Color, Color)] = [
+        (Color(red: 0.24, green: 0.34, blue: 0.45), Color(red: 0.14, green: 0.20, blue: 0.29)),
+        (Color(red: 0.24, green: 0.37, blue: 0.36), Color(red: 0.14, green: 0.23, blue: 0.22)),
+        (Color(red: 0.44, green: 0.36, blue: 0.31), Color(red: 0.28, green: 0.22, blue: 0.18)),
+        (Color(red: 0.36, green: 0.29, blue: 0.42), Color(red: 0.22, green: 0.17, blue: 0.27)),
+        (Color(red: 0.30, green: 0.38, blue: 0.28), Color(red: 0.18, green: 0.24, blue: 0.17)),
+        (Color(red: 0.48, green: 0.32, blue: 0.29), Color(red: 0.31, green: 0.19, blue: 0.17)),
+    ]
+
+    public init(
+        title: String,
+        author: String = "",
+        formatBadge: String? = nil,
+        compact: Bool = false) {
+        self.title = title
+        self.author = author
+        self.formatBadge = formatBadge
+        self.compact = compact
+    }
+
+    private var palette: (Color, Color) {
+        var hash: UInt32 = 2_166_136_261
+        for byte in title.utf8 {
+            hash ^= UInt32(byte)
+            hash = hash &* 16_777_619
+        }
+        return Self.palettes[Int(hash) % Self.palettes.count]
+    }
+
+    public var body: some View {
+        ZStack(alignment: .leading) {
+            LinearGradient(
+                colors: [palette.0, palette.1],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing)
+
+            // 模拟纸质书左侧书脊压痕
+            HStack(spacing: 0) {
+                Color.black.opacity(0.18)
+                    .frame(width: compact ? 3 : 5)
+                Color.white.opacity(0.14)
+                    .frame(width: 1)
+                Spacer(minLength: 0)
+            }
+
+            if compact {
+                Text(String(title.prefix(2)))
+                    .font(.system(size: 13, weight: .semibold, design: .serif))
+                    .foregroundStyle(Color.white.opacity(0.92))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.leading, 4)
+            } else {
+                fullCoverOverlay
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: compact ? 8 : 10, style: .continuous)
+                .stroke(Color.white.opacity(0.16), lineWidth: 0.5))
+    }
+
+    private var fullCoverOverlay: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Spacer()
+                if let formatBadge, !formatBadge.isEmpty {
+                    Text(formatBadge)
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.white.opacity(0.16))
+                        .clipShape(Capsule())
+                }
+            }
+
+            Spacer(minLength: 2)
+
+            Text(title)
+                .font(.system(size: 13, weight: .bold, design: .serif))
+                .foregroundStyle(.white)
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.28))
+                .frame(width: 18, height: 1)
+
+            if !author.isEmpty {
+                Text(author)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(1)
+            }
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 8)
+        .padding(.vertical, 8)
     }
 }

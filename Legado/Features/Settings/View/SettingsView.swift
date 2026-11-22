@@ -19,9 +19,8 @@ public struct SettingsView: View {
             Form {
                 readingPreferencesSection
                 localFontsSection
-                webDAVSection
+                cloudAndStorageSection
                 ttsSection
-                storageSection
                 purifySection
                 aboutSection
             }
@@ -119,141 +118,39 @@ public struct SettingsView: View {
     }
 }
 
-// MARK: - WebDAV 与 TTS 设置分区
+// MARK: - 云同步、存储与 TTS 分区
 
 private extension SettingsView {
-    var webDAVSection: some View {
+    var cloudAndStorageSection: some View {
         Section {
-            TextField("服务器地址 (如 https://dav.jianguoyun.com/dav/)", text: Binding(
-                get: { viewModel.state.webDAVConfig.serverUrl },
-                set: { viewModel.send(.updateWebDAVServer($0)) }))
-                .keyboardType(.URL)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-
-            TextField("账号 / 邮箱", text: Binding(
-                get: { viewModel.state.webDAVConfig.username },
-                set: { viewModel.send(.updateWebDAVUsername($0)) }))
-                .keyboardType(.emailAddress)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-
-            SecureField("密码 / 应用独立密码", text: Binding(
-                get: { viewModel.state.webDAVConfig.password },
-                set: { viewModel.send(.updateWebDAVPassword($0)) }))
-
-            TextField("远程存放目录 (如 /Legado/)", text: Binding(
-                get: { viewModel.state.webDAVConfig.remoteDirectory },
-                set: { viewModel.send(.updateWebDAVDirectory($0)) }))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-
-            Toggle(
-                "允许自签名证书 (局域网 NAS HTTPS)",
-                isOn: Binding(
-                    get: { viewModel.state.webDAVConfig.allowInsecureCertificate },
-                    set: { viewModel.send(.updateWebDAVAllowInsecureCert($0)) }))
-
-            Button {
-                viewModel.send(.testWebDAVConnection)
+            NavigationLink {
+                WebDAVSettingsView(viewModel: viewModel)
             } label: {
                 HStack {
-                    if viewModel.state.isTestingConnection {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                        Text("正在验证连接...")
-                    } else {
-                        Image(systemName: "network.badge.shield.half.filled")
-                        Text("测试服务器连接")
-                    }
+                    Label("WebDAV 云备份同步", systemImage: "icloud")
+                    Spacer()
+                    Text(viewModel.state.webDAVConfig.isValid ? "已配置" : "未配置")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .font(.subheadline.weight(.medium))
             }
-            .disabled(viewModel.state.isTestingConnection)
 
-            webDAVActionRow
-            webDAVStatusViews
-        } header: {
-            Label("WebDAV 云备份同步", systemImage: "icloud")
-        } footer: {
-            Text("支持坚果云、Alist / OpenList、群晖、Nextcloud 等 WebDAV 服务。首次连接局域网 NAS 请允许「本地网络」权限。")
-        }
-    }
-
-    var webDAVActionRow: some View {
-        HStack(spacing: 12) {
-            Button {
-                viewModel.send(.backupToWebDAV)
-            } label: {
-                HStack {
-                    if viewModel.state.isBackingUp {
-                        ProgressView().scaleEffect(0.8)
-                    } else {
-                        Image(systemName: "arrow.clockwise.icloud.fill")
-                    }
-                    Text("立即备份")
-                }
-                .font(.footnote.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(Color.accentColor.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .disabled(viewModel.state.isBackingUp)
-
-            Button {
-                viewModel.send(.restoreFromWebDAV)
-            } label: {
-                HStack {
-                    if viewModel.state.isRestoring {
-                        ProgressView().scaleEffect(0.8)
-                    } else {
-                        Image(systemName: "icloud.and.arrow.down.fill")
-                    }
-                    Text("从云端还原")
-                }
-                .font(.footnote.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(Color.primary.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .disabled(viewModel.state.isRestoring)
-        }
-        .buttonStyle(.plain)
-        .padding(.vertical, 4)
-    }
-
-    @ViewBuilder
-    var webDAVStatusViews: some View {
-        if let success = viewModel.state.successMessage, !success.isEmpty {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Text(success)
-                    .font(.caption)
-                    .foregroundStyle(.primary)
-            }
-        }
-
-        if let error = viewModel.state.errorMessage, !error.isEmpty {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-
-        if let summary = viewModel.state.lastBackupSummary {
-            let sizeKB = max(summary.dataSizeBytes / 1024, 1)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("最近备份：\(summary.bookCount) 本书、\(summary.ruleCount) 条规则 (\(sizeKB) KB)")
-                    .font(.caption2)
+            HStack {
+                Label("离线章节缓存", systemImage: "internaldrive")
+                Spacer()
+                Text(viewModel.state.formattedCacheSize)
                     .foregroundStyle(.secondary)
             }
+
+            Button(role: .destructive) {
+                isShowingClearAlert = true
+            } label: {
+                Label("清空所有离线章节正文", systemImage: "trash")
+            }
+        } header: {
+            Label("云同步与存储", systemImage: "icloud.and.arrow.up")
+        } footer: {
+            Text("仅在主动备份、还原或测试连接时访问网络；本地导入的 TXT / EPUB 电子书独立保存，清理缓存不会删除本地书籍。")
         }
     }
 

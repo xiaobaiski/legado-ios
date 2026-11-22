@@ -136,7 +136,6 @@ public final class AppEnvironment: ObservableObject {
 
     private func seedInitialDataIfNeeded() {
         Task {
-            await seedSampleSourcesIfNeeded()
             await seedSampleBookshelfIfNeeded()
         }
     }
@@ -172,7 +171,8 @@ public final class AppEnvironment: ObservableObject {
             getBookGroupsUseCase: getBookGroupsUseCase,
             saveBookGroupUseCase: saveBookGroupUseCase,
             deleteBookGroupUseCase: deleteBookGroupUseCase,
-            importLocalBookUseCase: importLocalBookUseCase)
+            importLocalBookUseCase: importLocalBookUseCase,
+            layoutDefaults: .standard)
     }
 
     /// 创建阅读器 ViewModel
