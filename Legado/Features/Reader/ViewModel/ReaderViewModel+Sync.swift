@@ -150,6 +150,23 @@ extension ReaderViewModel {
         }
     }
 
+    static func resolveTargetPageIndex(
+        targetOffset: Int?,
+        targetPageIndex: Int,
+        in pages: [ReaderPage]) -> Int {
+        if let offset = targetOffset {
+            return pageIndex(forOffset: offset, in: pages)
+        }
+        return min(max(targetPageIndex, 0), max(pages.count - 1, 0))
+    }
+
+    func preloadNextChapterIfAvailable(after chapterIndex: Int, origin: String) {
+        if chapterIndex + 1 < state.chapters.count {
+            let nextChapter = state.chapters[chapterIndex + 1]
+            getChapterContentUseCase.preload(chapter: nextChapter, origin: origin)
+        }
+    }
+
     static func pageIndex(forOffset offset: Int, in pages: [ReaderPage]) -> Int {
         guard !pages.isEmpty else { return 0 }
         if let exact = pages.firstIndex(where: { page in

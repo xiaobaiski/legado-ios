@@ -101,10 +101,13 @@ public final class AppEnvironment: ObservableObject {
             sourceRepository: sourceRepo,
             bookmarkRepository: bookmarkRepo,
             bookCacheRepository: cacheRepo)
+        let realtimeConfigProvider: @Sendable () -> WebDAVConfig? = inMemory
+            ? { nil }
+            : { WebDAVConfigStore.loadSavedIfConfigured() }
         self.webDAVRealtimeSyncService = WebDAVRealtimeSyncService(
             bookRepository: bookRepo,
             backupUseCase: self.backupToWebDAVUseCase,
-            configProvider: inMemory ? { nil } : { WebDAVConfigStore.loadSavedIfConfigured() })
+            configProvider: realtimeConfigProvider)
         self.changeBookSourceUseCase = ChangeBookSourceUseCase(
             sourceRepository: sourceRepo,
             bookRepository: bookRepo)

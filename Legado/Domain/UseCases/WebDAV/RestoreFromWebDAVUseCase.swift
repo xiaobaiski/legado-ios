@@ -72,13 +72,15 @@ public final class RestoreFromWebDAVUseCase: @unchecked Sendable {
             ? await fetchRemoteProgressItems(config: config)
             : []
 
-        return try await applyRestore(
-            bundle: bundle,
+        let payload = DownloadedRestorePayload(
             archives: archives,
             remoteProgressItems: remoteProgressItems,
             totalBytes: totalDownloadedBytes,
-            options: options,
             initialSkippedCount: failedFileCount)
+        return try await applyRestore(
+            bundle: bundle,
+            payload: payload,
+            options: options)
     }
 
     /// 从备份 JSON 二进制数据恢复至本地存储（便捷测试与本地还原入口）
@@ -86,13 +88,15 @@ public final class RestoreFromWebDAVUseCase: @unchecked Sendable {
         from bundleData: Data,
         options: WebDAVSyncOptions = .defaultSelection) async throws -> WebDAVBackupSummary {
         let bundle = try decodeBundle(from: bundleData)
-        return try await applyRestore(
-            bundle: bundle,
+        let payload = DownloadedRestorePayload(
             archives: [],
             remoteProgressItems: [],
             totalBytes: bundleData.count,
-            options: options,
             initialSkippedCount: 0)
+        return try await applyRestore(
+            bundle: bundle,
+            payload: payload,
+            options: options)
     }
 }
 
@@ -118,17 +122,14 @@ private extension RestoreFromWebDAVUseCase {
 
     func applyRestore(
         bundle: WebDAVBackupBundle,
-        archives: [WebDAVLocalBookArchive],
-        remoteProgressItems: [WebDAVBookProgress],
-        totalBytes: Int,
-        options: WebDAVSyncOptions,
-        initialSkippedCount: Int) async throws -> WebDAVBackupSummary {
+        payload: DownloadedRestorePayload,
+        options: WebDAVSyncOptions) async throws -> WebDAVBackupSummary {
         var localBooks = try await bookRepository.getBookshelf()
         var restoredBookFileCount = 0
         var handledArchiveUrls = Set<String>()
 
         if options.syncBookFiles {
-            for archive in archives {
+            for archive in payload.archives {
                 let targetUrl = try await restoreBookArchive(
                     archive,
                     localBooks: &localBooks,
@@ -138,22 +139,26 @@ private extension RestoreFromWebDAVUseCase {
             }
         }
 
-        var progressResult = ProgressRestoreResult(books: 0, sources: 0, bookmarks: 0, skipped: initialSkippedCount)
+        var progressResult = ProgressRestoreResult(
+            books: 0,
+            sources: 0,
+            bookmarks: 0,
+            skipped: payload.initialSkippedCount)
         if options.syncProgress {
             progressResult = try await restoreProgressAndMetadata(
                 bundle: bundle,
-                remoteProgressItems: remoteProgressItems,
+                remoteProgressItems: payload.remoteProgressItems,
                 localBooks: &localBooks,
                 handledArchiveUrls: handledArchiveUrls)
         }
 
         let restoredRuleCount = options.syncRules ? restoreRulesAndConfig(bundle: bundle) : 0
-        let totalSkipped = initialSkippedCount + (options.syncProgress ? progressResult.skipped : 0)
+        let totalSkipped = payload.initialSkippedCount + (options.syncProgress ? progressResult.skipped : 0)
 
         return WebDAVBackupSummary(
             bookCount: options.syncProgress ? progressResult.books : 0,
             sourceCount: options.syncProgress ? progressResult.sources : 0,
-            dataSizeBytes: totalBytes,
+            dataSizeBytes: payload.totalBytes,
             backupDate: bundle.backupTime,
             ruleCount: restoredRuleCount,
             bookmarkCount: options.syncProgress ? progressResult.bookmarks : 0,
@@ -399,4 +404,11 @@ private struct BookSyncResult {
     var syncedUrls: Set<String>
     let skipped: Int
     let skippedUrls: Set<String>
+}
+
+private struct DownloadedRestorePayload {
+    let archives: [WebDAVLocalBookArchive]
+    let remoteProgressItems: [WebDAVBookProgress]
+    let totalBytes: Int
+    let initialSkippedCount: Int
 }

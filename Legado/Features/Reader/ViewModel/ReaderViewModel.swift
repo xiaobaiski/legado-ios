@@ -256,30 +256,24 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
                 }.value
                 guard !Task.isCancelled else { return }
 
-                let safePageIndex: Int
-                if let offset = targetOffset {
-                    safePageIndex = Self.pageIndex(forOffset: offset, in: pages)
-                } else {
-                    safePageIndex = min(max(targetPageIndex, 0), max(pages.count - 1, 0))
-                }
+                let safePageIndex = Self.resolveTargetPageIndex(
+                    targetOffset: targetOffset,
+                    targetPageIndex: targetPageIndex,
+                    in: pages)
 
                 self.updateState { state in
                     state.isLoading = false
                     state.pages = pages
                     state.currentPageIndex = safePageIndex
                 }
-                if self.state.screenBounds.width > 50 {
+                if hasRealBounds {
                     self.pendingRestoreOffset = nil
                 }
 
                 if persistProgress {
                     self.saveReadingProgress()
                 }
-
-                if chapterIndex + 1 < self.state.chapters.count {
-                    let nextChapter = self.state.chapters[chapterIndex + 1]
-                    self.getChapterContentUseCase.preload(chapter: nextChapter, origin: bookOrigin)
-                }
+                self.preloadNextChapterIfAvailable(after: chapterIndex, origin: bookOrigin)
             } catch {
                 guard !Task.isCancelled else { return }
                 self.updateState { state in
