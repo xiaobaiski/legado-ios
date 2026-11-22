@@ -236,7 +236,7 @@ private extension RestoreFromWebDAVUseCase {
     func restoreProgressAndMetadata(
         bundle: WebDAVBackupBundle,
         localBooks: inout [Book],
-        handledArchiveUrls: Set<String>) async throws -> (books: Int, sources: Int, bookmarks: Int, skipped: Int) {
+        handledArchiveUrls: Set<String>) async throws -> ProgressRestoreResult {
         if !bundle.sources.isEmpty {
             try await sourceRepository.saveSources(bundle.sources)
         }
@@ -255,13 +255,17 @@ private extension RestoreFromWebDAVUseCase {
             localBooks: localBooks,
             skippedUrls: syncResult.skippedUrls)
 
-        return (syncResult.synced, bundle.sources.count, bookmarkCount, syncResult.skipped)
+        return ProgressRestoreResult(
+            books: syncResult.synced,
+            sources: bundle.sources.count,
+            bookmarks: bookmarkCount,
+            skipped: syncResult.skipped)
     }
 
     func syncRemoteBooks(
         _ remoteBooks: [Book],
         localBooks: inout [Book],
-        handledArchiveUrls: Set<String>) async throws -> (synced: Int, skipped: Int, skippedUrls: Set<String>) {
+        handledArchiveUrls: Set<String>) async throws -> BookSyncResult {
         var syncedBooks = 0
         var skippedBooks = 0
         var skippedUrls = Set<String>()
@@ -295,7 +299,7 @@ private extension RestoreFromWebDAVUseCase {
             localBooks.append(remoteBook)
             syncedBooks += 1
         }
-        return (syncedBooks, skippedBooks, skippedUrls)
+        return BookSyncResult(synced: syncedBooks, skipped: skippedBooks, skippedUrls: skippedUrls)
     }
 
     func restoreBookmarks(
@@ -340,4 +344,17 @@ private extension RestoreFromWebDAVUseCase {
         }
         return bundle.replaceRules.count + (bundle.txtTocRules?.count ?? 0)
     }
+}
+
+private struct ProgressRestoreResult {
+    let books: Int
+    let sources: Int
+    let bookmarks: Int
+    let skipped: Int
+}
+
+private struct BookSyncResult {
+    let synced: Int
+    let skipped: Int
+    let skippedUrls: Set<String>
 }
