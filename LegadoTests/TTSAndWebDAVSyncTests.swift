@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreGraphics
 import Foundation
 @testable import Legado
 import SwiftData
@@ -733,11 +734,393 @@ struct TTSAndWebDAVSyncTests {
         #expect(chapters[1].content.contains("青萍之末"))
         #expect(chapters[2].title == "第2章 风雪夜归人")
     }
+
+    @Test("Test Manual WebDAV Restore Overrides Freshly Imported Unread Book Progress")
+    func webDAVManualRestoreOverridesNewlyImportedBookTimestamp() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WebDAVRestoreOverride_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let drive = MockWebDAVVirtualDrive()
+        let host = "mock-override-\(UUID().uuidString.lowercased()).local"
+        MockWebDAVURLProtocol.register(host: host) { request in
+            try drive.handle(request)
+        }
+        defer { MockWebDAVURLProtocol.unregister(host: host) }
+
+        let client = WebDAVClient(urlSession: MockWebDAVURLProtocol.makeSession())
+        let config = WebDAVConfig(serverUrl: "https://\(host)/dav/")
+
+        // 设备 A 较早阅读到第 20 章偏移 1520
+        let providerA = ModelContainerProvider(inMemory: true)
+        let bookRepoA = BookRepositoryImpl(modelContainer: providerA.container)
+        let sourceRepoA = BookSourceRepositoryImpl(modelContainer: providerA.container)
+        let cacheRepoA = BookCacheRepositoryImpl(baseDirectory: tempDir.appendingPathComponent("cacheA"))
+
+        try await bookRepoA.saveBook(Book(
+            bookUrl: "local://device-a-book",
+            origin: "local",
+            originName: "本地书籍",
+            name: "凡人修仙传",
+            author: "忘语",
+            durChapterTitle: "第二十章 小试牛刀",
+            durChapterIndex: 19,
+            durChapterPos: 1520,
+            durChapterTime: 1000))
+        try cacheRepoA.saveChapterContent(bookUrl: "local://device-a-book", index: 19, content: "第二十章正文")
+
+        let backupA = BackupToWebDAVUseCase(
+            bookRepository: bookRepoA,
+            sourceRepository: sourceRepoA,
+            bookCacheRepository: cacheRepoA,
+            webDAVClient: client,
+            replaceRuleStore: ReplaceRuleStore(storageUrl: tempDir.appendingPathComponent("r_a.json")),
+            txtTocRuleStore: TxtTocRuleStore(storageUrl: tempDir.appendingPathComponent("t_a.json")),
+            readRecordStore: ReadRecordStore(storageUrl: tempDir.appendingPathComponent("rec_a.json")),
+            readerConfigExporter: { nil })
+        _ = try await backupA.execute(config: config, options: .all)
+
+        // 设备 B 稍后导入同名本地书但未翻阅（即便是较新导入时间戳，也不应阻断还原进度）
+        let providerB = ModelContainerProvider(inMemory: true)
+        let bookRepoB = BookRepositoryImpl(modelContainer: providerB.container)
+        let sourceRepoB = BookSourceRepositoryImpl(modelContainer: providerB.container)
+        let cacheRepoB = BookCacheRepositoryImpl(baseDirectory: tempDir.appendingPathComponent("cacheB"))
+
+        try await bookRepoB.saveBook(Book(
+            bookUrl: "local://device-b-book",
+            origin: "local",
+            originName: "本地书籍",
+            name: "凡人修仙传",
+            author: "本地导入",
+            durChapterTitle: "第一章",
+            durChapterIndex: 0,
+            durChapterPos: 0,
+            durChapterTime: 9000))
+        try cacheRepoB.saveChapterContent(bookUrl: "local://device-b-book", index: 0, content: "第一章正文")
+
+        let restoreB = RestoreFromWebDAVUseCase(
+            bookRepository: bookRepoB,
+            sourceRepository: sourceRepoB,
+            bookCacheRepository: cacheRepoB,
+            webDAVClient: client,
+            replaceRuleStore: ReplaceRuleStore(storageUrl: tempDir.appendingPathComponent("r_b.json")),
+            txtTocRuleStore: TxtTocRuleStore(storageUrl: tempDir.appendingPathComponent("t_b.json")),
+            readRecordStore: ReadRecordStore(storageUrl: tempDir.appendingPathComponent("rec_b.json")),
+            readerConfigImporter: { _ in })
+        _ = try await restoreB.execute(config: config, options: .all)
+
+        let updatedB = try await bookRepoB.getBook(by: "local://device-b-book")
+        #expect(updatedB?.durChapterIndex == 19)
+        #expect(updatedB?.durChapterPos == 1520)
+        #expect(updatedB?.durChapterTitle == "第二十章 小试牛刀")
+    }
+
+    @Test("Test Restore Applies Newer Bundle or Realtime Progress Over Older Archive")
+    func webDAVRestoreMergesNewerProgressOverOlderBookArchive() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WebDAVArchiveMerge_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let drive = MockWebDAVVirtualDrive()
+        let host = "mock-merge-\(UUID().uuidString.lowercased()).local"
+        MockWebDAVURLProtocol.register(host: host) { request in
+            try drive.handle(request)
+        }
+        defer { MockWebDAVURLProtocol.unregister(host: host) }
+
+        let client = WebDAVClient(urlSession: MockWebDAVURLProtocol.makeSession())
+        let config = WebDAVConfig(serverUrl: "https://\(host)/dav/")
+
+        let providerA = ModelContainerProvider(inMemory: true)
+        let bookRepoA = BookRepositoryImpl(modelContainer: providerA.container)
+        let sourceRepoA = BookSourceRepositoryImpl(modelContainer: providerA.container)
+        let cacheRepoA = BookCacheRepositoryImpl(baseDirectory: tempDir.appendingPathComponent("cacheA"))
+
+        let bookUrl = "local://merge-archive-book"
+        try await bookRepoA.saveBook(Book(
+            bookUrl: bookUrl,
+            origin: "local",
+            originName: "本地书籍",
+            name: "遮天",
+            author: "辰东",
+            durChapterTitle: "第二章 星空古路",
+            durChapterIndex: 1,
+            durChapterPos: 10,
+            durChapterTime: 1000))
+        let chaptersA = (0 ..< 6).map { idx in
+            Chapter(url: "\(bookUrl)#\(idx)", title: "第\(idx + 1)章", bookUrl: bookUrl, index: idx, isCached: true)
+        }
+        try await bookRepoA.saveChapters(chaptersA, for: bookUrl)
+        for idx in 0 ..< 6 {
+            try cacheRepoA.saveChapterContent(bookUrl: bookUrl, index: idx, content: "章节正文内容 \(idx)")
+        }
+
+        let backupA = BackupToWebDAVUseCase(
+            bookRepository: bookRepoA,
+            sourceRepository: sourceRepoA,
+            bookCacheRepository: cacheRepoA,
+            webDAVClient: client,
+            replaceRuleStore: ReplaceRuleStore(storageUrl: tempDir.appendingPathComponent("r_a.json")),
+            txtTocRuleStore: TxtTocRuleStore(storageUrl: tempDir.appendingPathComponent("t_a.json")),
+            readRecordStore: ReadRecordStore(storageUrl: tempDir.appendingPathComponent("rec_a.json")),
+            readerConfigExporter: { nil })
+        // 1. 先完整上传（.legadobook 归档停留在第 2 章）
+        _ = try await backupA.execute(config: config, options: .all)
+
+        // 2. 后续仅同步了更新后的进度（第 5 章偏移 888），并未重新上传 .legadobook 压缩包
+        try await bookRepoA.saveBook(Book(
+            bookUrl: bookUrl,
+            origin: "local",
+            originName: "本地书籍",
+            name: "遮天",
+            author: "辰东",
+            durChapterTitle: "第5章",
+            durChapterIndex: 4,
+            durChapterPos: 888,
+            durChapterTime: 5000))
+        let progressOnly = WebDAVSyncOptions(syncProgress: true, syncRules: false, syncBookFiles: false)
+        _ = try await backupA.execute(config: config, options: progressOnly)
+
+        // 3. 设备 B 勾选完整恢复，最终进度必须是更新的第 5 章偏移 888，而不是旧压缩包的第 2 章
+        let providerB = ModelContainerProvider(inMemory: true)
+        let bookRepoB = BookRepositoryImpl(modelContainer: providerB.container)
+        let sourceRepoB = BookSourceRepositoryImpl(modelContainer: providerB.container)
+        let cacheRepoB = BookCacheRepositoryImpl(baseDirectory: tempDir.appendingPathComponent("cacheB"))
+
+        let restoreB = RestoreFromWebDAVUseCase(
+            bookRepository: bookRepoB,
+            sourceRepository: sourceRepoB,
+            bookCacheRepository: cacheRepoB,
+            webDAVClient: client,
+            replaceRuleStore: ReplaceRuleStore(storageUrl: tempDir.appendingPathComponent("r_b.json")),
+            txtTocRuleStore: TxtTocRuleStore(storageUrl: tempDir.appendingPathComponent("t_b.json")),
+            readRecordStore: ReadRecordStore(storageUrl: tempDir.appendingPathComponent("rec_b.json")),
+            readerConfigImporter: { _ in })
+        _ = try await restoreB.execute(config: config, options: .all)
+
+        let restoredBook = try await bookRepoB.getBook(by: bookUrl)
+        #expect(restoredBook?.durChapterIndex == 4)
+        #expect(restoredBook?.durChapterPos == 888)
+    }
+
+    @Test("Test ReaderViewModel Restores Fresh Persisted Progress Across Bounds Updates")
+    @MainActor
+    func readerViewModelRestoresPersistedProgressAcrossScreenBoundsUpdates() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ReaderRestoreVM_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let provider = ModelContainerProvider(inMemory: true)
+        let bookRepo = BookRepositoryImpl(modelContainer: provider.container)
+        let sourceRepo = BookSourceRepositoryImpl(modelContainer: provider.container)
+        let cacheRepo = BookCacheRepositoryImpl(baseDirectory: tempDir)
+
+        let bookUrl = "local://vm-restore-book"
+        let longBody = Array(repeating: "天地玄黄，宇宙洪荒，日月盈昃，辰宿列张。", count: 140).joined(separator: "\n")
+        let chapters = [
+            Chapter(url: "\(bookUrl)#0", title: "第一章 启程", bookUrl: bookUrl, index: 0, isCached: true),
+            Chapter(url: "\(bookUrl)#1", title: "第二章 深空", bookUrl: bookUrl, index: 1, isCached: true),
+        ]
+        try await bookRepo.saveChapters(chapters, for: bookUrl)
+        try cacheRepo.saveChapterContent(bookUrl: bookUrl, index: 0, content: "第一章短正文。")
+        try cacheRepo.saveChapterContent(bookUrl: bookUrl, index: 1, content: longBody)
+
+        let persistedBook = Book(
+            bookUrl: bookUrl,
+            origin: "local",
+            originName: "本地书籍",
+            name: "星海漫游",
+            author: "作者",
+            durChapterTitle: "第二章 深空",
+            durChapterIndex: 1,
+            durChapterPos: 950,
+            durChapterTime: 8888,
+            totalChapterNum: 2)
+        try await bookRepo.saveBook(persistedBook)
+
+        // 传入尚未刷新的旧书架快照 (0, 0)，模拟列表尚未更新时打开阅读器
+        let staleBook = Book(
+            bookUrl: bookUrl,
+            origin: "local",
+            originName: "本地书籍",
+            name: "星海漫游",
+            author: "作者",
+            durChapterTitle: "第一章 启程",
+            durChapterIndex: 0,
+            durChapterPos: 0,
+            durChapterTime: 0,
+            totalChapterNum: 2)
+
+        let vm = ReaderViewModel(
+            book: staleBook,
+            initialChapterIndex: nil,
+            getChapterContentUseCase: GetChapterContentUseCase(
+                sourceRepository: sourceRepo,
+                cacheRepository: cacheRepo),
+            getBookTocUseCase: GetBookTocUseCase(
+                sourceRepository: sourceRepo,
+                bookRepository: bookRepo),
+            bookRepository: bookRepo)
+
+        // 立即发送屏幕尺寸更新，验证不会把 pendingRestoreOffset 重置为第 0 页
+        vm.send(.updateScreenBounds(CGRect(x: 0, y: 0, width: 393, height: 852)))
+
+        for _ in 0 ..< 120 {
+            if !vm.state.isLoading && !vm.state.pages.isEmpty && vm.state.currentChapterIndex == 1 {
+                break
+            }
+            try await Task.sleep(nanoseconds: 25_000_000)
+        }
+
+        #expect(vm.state.currentChapterIndex == 1)
+        #expect(vm.state.pages.count > 1)
+        #expect(vm.state.currentPageIndex > 0)
+        let currentPage = vm.state.pages[vm.state.currentPageIndex]
+        #expect(950 >= currentPage.textRange.location)
+        #expect(950 < currentPage.textRange.location + max(currentPage.textRange.length, 1))
+    }
+
+    @Test("Test WebDAV Realtime Sync Push Pull and Disabled Guard")
+    @MainActor
+    func webDAVRealtimeSyncPushPullAndDisabledGuard() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WebDAVRealtime_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let drive = MockWebDAVVirtualDrive()
+        let host = "mock-realtime-\(UUID().uuidString.lowercased()).local"
+        MockWebDAVURLProtocol.register(host: host) { request in
+            try drive.handle(request)
+        }
+        defer { MockWebDAVURLProtocol.unregister(host: host) }
+
+        let client = WebDAVClient(urlSession: MockWebDAVURLProtocol.makeSession())
+
+        let providerA = ModelContainerProvider(inMemory: true)
+        let bookRepoA = BookRepositoryImpl(modelContainer: providerA.container)
+        let sourceRepoA = BookSourceRepositoryImpl(modelContainer: providerA.container)
+        let backupA = BackupToWebDAVUseCase(
+            bookRepository: bookRepoA,
+            sourceRepository: sourceRepoA,
+            webDAVClient: client,
+            replaceRuleStore: ReplaceRuleStore(storageUrl: tempDir.appendingPathComponent("r_a.json")),
+            txtTocRuleStore: TxtTocRuleStore(storageUrl: tempDir.appendingPathComponent("t_a.json")),
+            readRecordStore: ReadRecordStore(storageUrl: tempDir.appendingPathComponent("rec_a.json")),
+            readerConfigExporter: { nil })
+
+        // 1. 当未启用实时同步时，绝对不会发起任何网络请求
+        let disabledOptions = WebDAVSyncOptions(
+            syncProgress: true,
+            syncRules: true,
+            syncBookFiles: true,
+            autoSyncEnabled: false,
+            realtimeSyncProgress: true,
+            realtimeSyncRules: false)
+        let disabledConfig = WebDAVConfig(serverUrl: "https://\(host)/dav/", syncOptions: disabledOptions)
+        let disabledService = WebDAVRealtimeSyncService(
+            bookRepository: bookRepoA,
+            backupUseCase: backupA,
+            webDAVClient: client,
+            configProvider: { disabledConfig })
+
+        let bookA = Book(
+            bookUrl: "local://realtime-book-a",
+            origin: "local",
+            name: "雪中悍刀行",
+            author: "烽火戏诸侯",
+            durChapterTitle: "第十六章",
+            durChapterIndex: 15,
+            durChapterPos: 900,
+            durChapterTime: 6000)
+        disabledService.scheduleProgressPush(book: bookA, debounceSeconds: 0)
+        _ = await disabledService.pullLatestProgressIfNeeded(for: bookA, force: true)
+        #expect(drive.totalRequestCount == 0)
+
+        // 2. 开启实时同步后，设备 A 推送轻量进度，设备 B 拉取后直接合并更新并回调书架刷新
+        let enabledConfig = WebDAVConfig(serverUrl: "https://\(host)/dav/", syncOptions: .defaultSelection)
+        let serviceA = WebDAVRealtimeSyncService(
+            bookRepository: bookRepoA,
+            backupUseCase: backupA,
+            webDAVClient: client,
+            configProvider: { enabledConfig })
+
+        serviceA.scheduleProgressPush(book: bookA, debounceSeconds: 0.02)
+        for _ in 0 ..< 50 {
+            if drive.getData(endingWith: "reading_progress.json") != nil {
+                break
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        #expect(drive.getData(endingWith: "reading_progress.json") != nil)
+
+        let providerB = ModelContainerProvider(inMemory: true)
+        let bookRepoB = BookRepositoryImpl(modelContainer: providerB.container)
+        let sourceRepoB = BookSourceRepositoryImpl(modelContainer: providerB.container)
+        let bookB = Book(
+            bookUrl: "local://realtime-book-b",
+            origin: "local",
+            name: "雪中悍刀行",
+            author: "本地导入",
+            durChapterTitle: "第一章",
+            durChapterIndex: 0,
+            durChapterPos: 0,
+            durChapterTime: 0)
+        try await bookRepoB.saveBook(bookB)
+
+        let backupB = BackupToWebDAVUseCase(
+            bookRepository: bookRepoB,
+            sourceRepository: sourceRepoB,
+            webDAVClient: client,
+            replaceRuleStore: ReplaceRuleStore(storageUrl: tempDir.appendingPathComponent("r_b.json")),
+            txtTocRuleStore: TxtTocRuleStore(storageUrl: tempDir.appendingPathComponent("t_b.json")),
+            readRecordStore: ReadRecordStore(storageUrl: tempDir.appendingPathComponent("rec_b.json")),
+            readerConfigExporter: { nil })
+
+        let refreshFlag = MockWebDAVVirtualDrive()
+        let serviceB = WebDAVRealtimeSyncService(
+            bookRepository: bookRepoB,
+            backupUseCase: backupB,
+            webDAVClient: client,
+            configProvider: { enabledConfig },
+            onBookshelfUpdated: { refreshFlag.markUpdated() })
+
+        let pulledBook = await serviceB.pullLatestProgressIfNeeded(for: bookB, force: true)
+        #expect(refreshFlag.wasUpdated)
+        #expect(pulledBook?.durChapterIndex == 15)
+        #expect(pulledBook?.durChapterPos == 900)
+        let persistedB = try await bookRepoB.getBook(by: "local://realtime-book-b")
+        #expect(persistedB?.durChapterIndex == 15)
+        #expect(persistedB?.durChapterPos == 900)
+    }
 }
 
 private final class MockWebDAVVirtualDrive: @unchecked Sendable {
     private let lock = NSLock()
     private var files: [String: Data] = [:]
+    private var requestCount = 0
+    private var updatedFlag = false
+
+    var totalRequestCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return requestCount
+    }
+
+    var wasUpdated: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return updatedFlag
+    }
+
+    func markUpdated() {
+        lock.lock()
+        updatedFlag = true
+        lock.unlock()
+    }
 
     func getData(endingWith suffix: String) -> Data? {
         lock.lock()
@@ -746,6 +1129,9 @@ private final class MockWebDAVVirtualDrive: @unchecked Sendable {
     }
 
     func handle(_ request: URLRequest) throws -> (HTTPURLResponse, Data) {
+        lock.lock()
+        requestCount += 1
+        lock.unlock()
         let method = request.httpMethod ?? "GET"
         let url = request.url!
         let path = url.path

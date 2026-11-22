@@ -73,6 +73,9 @@ public struct BookshelfView: View {
             .onReceive(environment.externalFileImportSubject) { _ in
                 consumeExternalImports()
             }
+            .onReceive(environment.bookshelfRefreshSubject) { _ in
+                viewModel.send(.onAppear)
+            }
             .sensoryFeedback(.impact(weight: .light), trigger: hapticTrigger)
             .navigationDestination(item: $selectedBookForDetail) { book in
                 BookDetailView(viewModel: environment.makeBookDetailViewModel(book: book))
@@ -446,7 +449,7 @@ private extension BookshelfView {
     func handleEffect(_ effect: BookshelfEffect) {
         switch effect {
         case let .navigateToReader(book):
-            readerDestination = ReaderDestination(book: book, chapterIndex: book.durChapterIndex)
+            readerDestination = ReaderDestination(book: book)
 
         case let .navigateToDetail(book):
             selectedBookForDetail = book

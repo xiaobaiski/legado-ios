@@ -94,17 +94,12 @@ enum WebDAVSyncHelper {
     }
 
     /// 合并远端进度与本地书籍元数据，始终保留本地真实 bookUrl 与本地封面
-    static func mergeRemoteProgress(remote: Book, into local: Book) -> Book {
-        var merged = local
-        let shouldAdoptProgress = remote.durChapterTime >= local.durChapterTime
-        if shouldAdoptProgress {
-            merged.durChapterIndex = remote.durChapterIndex
-            merged.durChapterPos = remote.durChapterPos
-            if let title = remote.durChapterTitle, !title.isEmpty {
-                merged.durChapterTitle = title
-            }
-            merged.durChapterTime = remote.durChapterTime
-        }
+    static func mergeRemoteProgress(
+        remote: Book,
+        into local: Book,
+        preferRemote: Bool = false) -> Book {
+        let snapshot = WebDAVBookProgress(from: remote)
+        var merged = mergeProgressItem(snapshot, into: local, preferRemote: preferRemote) ?? local
         if merged.groupName == nil, let remoteGroup = remote.groupName {
             merged.groupName = remoteGroup
         }
@@ -118,6 +113,76 @@ enum WebDAVSyncHelper {
         }
         merged.syncTime = Int64(Date().timeIntervalSince1970 * 1000)
         return merged
+    }
+
+    /// 将轻量进度快照合并到本地书籍，仅在进度需要更新时返回新 Book
+    static func mergeProgressItem(
+        _ remote: WebDAVBookProgress,
+        into local: Book,
+        preferRemote: Bool = false) -> Book? {
+        let localUnread = local.durChapterIndex == 0 && local.durChapterPos == 0
+        let remoteHasProgress = remote.durChapterIndex > 0
+            || remote.durChapterPos > 0
+            || remote.durChapterTime > 0
+        let shouldAdopt = (preferRemote && remoteHasProgress)
+            || remote.durChapterTime > local.durChapterTime
+            || (remote.durChapterTime == local.durChapterTime && remoteHasProgress && localUnread)
+            || (localUnread && (remote.durChapterIndex > 0 || remote.durChapterPos > 0))
+        guard shouldAdopt else { return nil }
+
+        let targetTime = max(remote.durChapterTime, local.durChapterTime)
+        let titleChanged = (remote.durChapterTitle?.isEmpty == false)
+            && local.durChapterTitle != remote.durChapterTitle
+        let changed = local.durChapterIndex != remote.durChapterIndex
+            || local.durChapterPos != remote.durChapterPos
+            || titleChanged
+            || targetTime > local.durChapterTime
+        guard changed else { return nil }
+
+        var updated = local
+        updated.durChapterIndex = remote.durChapterIndex
+        updated.durChapterPos = remote.durChapterPos
+        if let title = remote.durChapterTitle, !title.isEmpty {
+            updated.durChapterTitle = title
+        }
+        updated.durChapterTime = targetTime
+        updated.syncTime = Int64(Date().timeIntervalSince1970 * 1000)
+        return updated
+    }
+
+    /// 用于轻量进度汇总文件去重合并的规范化键
+    static func progressIdentityKey(name: String, author: String, bookUrl: String) -> String {
+        let cleanName = normalize(name)
+        if !cleanName.isEmpty {
+            let cleanAuthor = isGenericAuthor(author) ? "" : normalize(author)
+            return "\(cleanName)|\(cleanAuthor)"
+        }
+        return normalize(bookUrl)
+    }
+
+    /// 合并本地与云端进度列表，每本书保留更新时间或进度更靠后的条目
+    static func mergeProgressBundles(
+        localItems: [WebDAVBookProgress],
+        remoteItems: [WebDAVBookProgress]) -> [WebDAVBookProgress] {
+        var map: [String: WebDAVBookProgress] = [:]
+        for item in remoteItems {
+            let key = progressIdentityKey(name: item.name, author: item.author, bookUrl: item.bookUrl)
+            map[key] = item
+        }
+        for item in localItems {
+            let key = progressIdentityKey(name: item.name, author: item.author, bookUrl: item.bookUrl)
+            if let existing = map[key] {
+                let itemStarted = item.durChapterIndex > 0 || item.durChapterPos > 0
+                let existingStarted = existing.durChapterIndex > 0 || existing.durChapterPos > 0
+                if item.durChapterTime > existing.durChapterTime ||
+                    (item.durChapterTime == existing.durChapterTime && (!existingStarted || itemStarted)) {
+                    map[key] = item
+                }
+            } else {
+                map[key] = item
+            }
+        }
+        return map.values.sorted { $0.durChapterTime > $1.durChapterTime }
     }
 
     /// 判断本地/云端实体是否为无源本地导入书籍

@@ -71,7 +71,7 @@ public final class ImportLocalBookUseCase: Sendable {
             latestChapterTitle: parsed.chapters.last?.title,
             durChapterTitle: parsed.chapters.first?.title,
             durChapterIndex: 0,
-            durChapterTime: Int64(Date().timeIntervalSince1970 * 1000),
+            durChapterTime: 0,
             wordCount: formatWordCount(parsed.totalWordCount),
             totalChapterNum: parsed.chapters.count)
 
@@ -101,7 +101,7 @@ public final class ImportLocalBookUseCase: Sendable {
             latestChapterTitle: parsedChapters.last?.title,
             durChapterTitle: parsedChapters.first?.title,
             durChapterIndex: 0,
-            durChapterTime: Int64(Date().timeIntervalSince1970 * 1000),
+            durChapterTime: 0,
             wordCount: formatWordCount(content.count),
             totalChapterNum: parsedChapters.count)
 

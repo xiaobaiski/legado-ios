@@ -11,6 +11,7 @@ public struct WebDAVSettingsView: View {
     public var body: some View {
         Form {
             credentialsSection
+            realtimeSyncSection
             syncContentSection
             actionsAndStatusSection
         }
@@ -53,6 +54,29 @@ public struct WebDAVSettingsView: View {
             Text("服务器与账号配置")
         } footer: {
             Text("支持坚果云、Alist / OpenList、群晖、Nextcloud 等服务；仅在点击下方按钮时发起网络请求。")
+        }
+    }
+
+    private var realtimeSyncSection: some View {
+        let options = viewModel.state.webDAVConfig.syncOptions
+        return Section {
+            Toggle(isOn: syncOptionBinding(\.autoSyncEnabled)) {
+                Label("启用实时同步", systemImage: "bolt.horizontal.icloud")
+            }
+
+            if options.autoSyncEnabled {
+                Toggle(isOn: syncOptionBinding(\.realtimeSyncProgress)) {
+                    Label("实时同步阅读进度", systemImage: "arrow.triangle.2.circlepath")
+                }
+
+                Toggle(isOn: syncOptionBinding(\.realtimeSyncRules)) {
+                    Label("实时同步规则与排版", systemImage: "slider.horizontal.3")
+                }
+            }
+        } header: {
+            Text("实时自动同步")
+        } footer: {
+            Text("开启且配置好 WebDAV 服务器后，翻页/退出阅读将自动防抖上传当前阅读进度，打开书籍或切回前台时自动拉取最新进度。")
         }
     }
 

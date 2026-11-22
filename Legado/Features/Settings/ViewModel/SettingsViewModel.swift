@@ -7,20 +7,24 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
     private let backupUseCase: BackupToWebDAVUseCase
     private let restoreUseCase: RestoreFromWebDAVUseCase
     private let manageBookCacheUseCase: ManageBookCacheUseCase?
-
-    private static let webDAVConfigKey = "legado_webdav_config"
+    private let realtimeSyncService: WebDAVRealtimeSyncService?
+    private let onBookshelfUpdated: (@MainActor () -> Void)?
 
     public init(
         webDAVClient: WebDAVClient = .shared,
         backupUseCase: BackupToWebDAVUseCase,
         restoreUseCase: RestoreFromWebDAVUseCase,
-        manageBookCacheUseCase: ManageBookCacheUseCase? = nil) {
+        manageBookCacheUseCase: ManageBookCacheUseCase? = nil,
+        realtimeSyncService: WebDAVRealtimeSyncService? = nil,
+        onBookshelfUpdated: (@MainActor () -> Void)? = nil) {
         self.webDAVClient = webDAVClient
         self.backupUseCase = backupUseCase
         self.restoreUseCase = restoreUseCase
         self.manageBookCacheUseCase = manageBookCacheUseCase
+        self.realtimeSyncService = realtimeSyncService
+        self.onBookshelfUpdated = onBookshelfUpdated
 
-        let savedConfig = SettingsViewModel.loadSavedWebDAVConfig()
+        let savedConfig = WebDAVConfigStore.loadForEditing()
         let initialSpeechRate = TTSPlayer.shared.speechRate
         let initialSpeechPitch = TTSPlayer.shared.speechPitch
         let initialCacheSize = manageBookCacheUseCase?.calculateTotalCacheSize() ?? 0
@@ -147,6 +151,7 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
         case let .updateReaderConfig(config):
             updateState { $0.readerConfig = config }
             ReaderConfigStore.save(config)
+            realtimeSyncService?.scheduleRulesPush()
             if config.isHapticEnabled {
                 emitEffect(.hapticFeedback)
             }
@@ -154,6 +159,7 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
         case .resetReaderConfig:
             let defaults = ReaderConfigStore.reset()
             updateState { $0.readerConfig = defaults }
+            realtimeSyncService?.scheduleRulesPush()
             emitEffect(.showToast("已恢复默认阅读排版与偏好"))
             emitEffect(.hapticFeedback)
 
@@ -166,6 +172,7 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             updated.customFontDisplayName = font.displayName
             updateState { $0.readerConfig = updated }
             ReaderConfigStore.save(updated)
+            realtimeSyncService?.scheduleRulesPush()
             emitEffect(.showToast("已切换阅读字体为「\(font.displayName)」"))
             emitEffect(.hapticFeedback)
 
@@ -224,6 +231,7 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
                 updated.customFontDisplayName = nil
                 updateState { $0.readerConfig = updated }
                 ReaderConfigStore.save(updated)
+                realtimeSyncService?.scheduleRulesPush()
             }
             emitEffect(.showToast("已删除字体「\(font.displayName)」"))
             emitEffect(.hapticFeedback)
@@ -288,6 +296,9 @@ private extension SettingsViewModel {
                 }
                 if options.syncRules {
                     self.send(.refreshReaderConfig)
+                }
+                if options.syncProgress || options.syncBookFiles {
+                    self.onBookshelfUpdated?()
                 }
                 self.emitEffect(.showToast(msg))
             })
@@ -371,18 +382,10 @@ private extension SettingsViewModel {
     }
 
     func saveCurrentConfig() {
-        if let data = try? JSONEncoder().encode(state.webDAVConfig) {
-            UserDefaults.standard.set(data, forKey: SettingsViewModel.webDAVConfigKey)
-        }
+        WebDAVConfigStore.save(state.webDAVConfig)
     }
 
     static func loadSavedWebDAVConfig() -> WebDAVConfig {
-        guard let data = UserDefaults.standard.data(forKey: webDAVConfigKey),
-              let config = try? JSONDecoder().decode(WebDAVConfig.self, from: data) else {
-            return WebDAVConfig(
-                serverUrl: "https://dav.jianguoyun.com/dav/",
-                remoteDirectory: "/Legado/")
-        }
-        return config
+        WebDAVConfigStore.loadForEditing()
     }
 }

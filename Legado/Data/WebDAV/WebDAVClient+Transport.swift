@@ -160,7 +160,7 @@ extension WebDAVClient {
                 request.setValue("Basic \(base64)", forHTTPHeaderField: "Authorization")
             }
         }
-        request.setValue("Legado-iOS/1.1.1", forHTTPHeaderField: "User-Agent")
+        request.setValue("Legado-iOS/1.1.2", forHTTPHeaderField: "User-Agent")
     }
 
     static func mapNetworkError(_ error: Error, url: URL?) -> WebDAVError {

@@ -90,6 +90,7 @@ public struct ReaderView: View {
             }
             .onDisappear {
                 flushReadingSession()
+                viewModel.flushRealtimeProgressSync()
                 cacheDownloadTask?.cancel()
                 cacheDownloadTask = nil
                 viewModel.stopAutoPageTimer()
@@ -108,6 +109,7 @@ public struct ReaderView: View {
                     }
                 } else {
                     flushReadingSession()
+                    viewModel.flushRealtimeProgressSync()
                 }
             }
             .onChange(of: viewModel.state.currentPageIndex) { _, _ in

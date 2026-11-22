@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.2] - 2026-11-22
+
+### 新增
+- **WebDAV 可选实时自动同步（`WebDAVRealtimeSyncService`）**：
+  - 在 `WebDAVSettingsView` 新增「实时自动同步」开关组：支持独立开关「启用实时同步」（默认开启）、「实时同步阅读进度」（默认开启）与「实时同步规则与排版」（默认关闭）；未配置或未主动保存有效 WebDAV 服务器时绝对零后台网络请求。
+  - 阅读翻页/切章时采用 2.5 秒防抖实时上传轻量进度索引 `reading_progress.json`，退出阅读或 App 退入后台立即刷新上传；打开书籍或 App 回到前台时自动拉取最新云端阅读进度并无缝定位。
+
+### 修复
+- **跨设备恢复后打开书籍未切换至对应阅读进度的问题**：
+  - 修复 `ImportLocalBookUseCase` 新导入未读书籍自带当前毫秒时间戳（导致覆盖或阻断另一设备更早阅读时间戳的进度还原）的问题，改为新书默认 `durChapterTime = 0`。
+  - 修复 `RestoreFromWebDAVUseCase` 中 `.legadobook` 归档与 `bundle.books` / `reading_progress.json` 之间的进度合并与跳过逻辑，手动从云端还原会正确采用云端最新或用户显式选择的阅读章节、字偏与阅读时间。
+  - 修复 `BookshelfView`、`BookDetailView` 与 `ReaderDestination` 传入过期快照章节号导致覆盖数据库最新进度的问题；打开阅读器时自动从 `BookRepository` 重读最新书籍进度。
+  - 修复 `ReaderViewModel` 初始化排版期间 `.updateScreenBounds` 竞态将 `durChapterPos` 重置为第 0 页，以及刚打开书籍立即触发 `saveReadingProgress()` 覆写云端进度/时间戳的问题。
+
+### 优化
+- 完善 `BookshelfState.recentReadingBook` 与最近排序策略：优先匹配实际产生过阅读进度的书籍，并在 WebDAV 手动还原或实时拉取完成后立即通过 `bookshelfRefreshSubject` 刷新书架与“继续阅读”横幅。
+
 ## [1.1.1] - 2026-11-22
 
 ### Added

@@ -42,7 +42,7 @@ public final class BackupToWebDAVUseCase: @unchecked Sendable {
         let readRecords = readRecordStore.allRecordsSorted()
         let bookmarks = try await loadBookmarks()
         let configJson = readerConfigExporter()
-        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.1"
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.2"
 
         return WebDAVBackupBundle(
             version: 2,
@@ -96,6 +96,10 @@ public final class BackupToWebDAVUseCase: @unchecked Sendable {
             filename: "legado_backup.json",
             config: config)
 
+        if options.syncProgress {
+            try await uploadProgressSnapshot(books: localBooks, config: config)
+        }
+
         return makeSummary(
             bundle: bundle,
             options: options,
@@ -120,6 +124,25 @@ private extension BackupToWebDAVUseCase {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try? decoder.decode(WebDAVBackupBundle.self, from: data)
+    }
+
+    func uploadProgressSnapshot(books: [Book], config: WebDAVConfig) async throws {
+        var remoteItems: [WebDAVBookProgress] = []
+        if let remoteData = try? await webDAVClient.download(filename: "reading_progress.json", config: config) {
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            if let existing = try? decoder.decode(WebDAVProgressBundle.self, from: remoteData) {
+                remoteItems = existing.items
+            }
+        }
+        let localItems = books.map(WebDAVBookProgress.init(from:))
+        let merged = WebDAVSyncHelper.mergeProgressBundles(localItems: localItems, remoteItems: remoteItems)
+        let bundle = WebDAVProgressBundle(updatedAt: Date(), items: merged)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(bundle)
+        try await webDAVClient.upload(data: data, filename: "reading_progress.json", config: config)
     }
 
     func buildMergedBundle(
@@ -151,7 +174,7 @@ private extension BackupToWebDAVUseCase {
         let bookFiles = options.syncBookFiles
             ? mergeBookFileEntries(uploaded: uploadedEntries, existing: remoteBundle?.bookFiles)
             : remoteBundle?.bookFiles
-        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.1"
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.2"
 
         return WebDAVBackupBundle(
             version: 2,

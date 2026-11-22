@@ -26,6 +26,7 @@ public enum MainTab: String, CaseIterable, Identifiable {
 
 /// App 根视图：采用 iOS 18 原生 TabView 与 Tab 容器架构，专注纯粹本地阅读体验
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppAppearanceMode.storageKey) private var appearanceModeRaw = AppAppearanceMode.system.rawValue
     @EnvironmentObject private var environment: AppEnvironment
     @State private var selectedTab: MainTab = .bookshelf
@@ -75,6 +76,15 @@ struct ContentView: View {
             guard url.isFileURL else { return }
             selectedTab = .bookshelf
             environment.enqueueExternalImport(url)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task {
+                    _ = await environment.webDAVRealtimeSyncService.pullLatestProgressIfNeeded()
+                }
+            } else if phase == .background {
+                environment.webDAVRealtimeSyncService.flushPendingProgressPush()
+            }
         }
     }
 }

@@ -4,12 +4,12 @@ import Foundation
 public struct ReaderDestination: Identifiable, Sendable {
     public let id: String
     public let book: Book
-    public let chapterIndex: Int
+    public let chapterIndex: Int?
 
     public init(book: Book, chapterIndex: Int? = nil) {
-        let chapter = chapterIndex ?? book.durChapterIndex
-        self.id = "\(book.bookUrl)_\(chapter)"
+        let keyPart = chapterIndex.map(String.init) ?? "resume"
+        self.id = "\(book.bookUrl)_\(keyPart)"
         self.book = book
-        self.chapterIndex = chapter
+        self.chapterIndex = chapterIndex
     }
 }

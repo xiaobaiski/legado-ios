@@ -1,6 +1,6 @@
 import Foundation
 
-/// 从 WebDAV 云端还原数据用例（支持选择性还原并彻底避免生成无正文幽灵书）
+/// 从 WebDAV 云端还原数据用例（支持选择性还原、多设备阅读进度对齐与防幽灵书保护）
 public final class RestoreFromWebDAVUseCase: @unchecked Sendable {
     private let bookRepository: BookRepository
     private let sourceRepository: BookSourceRepository
@@ -68,9 +68,14 @@ public final class RestoreFromWebDAVUseCase: @unchecked Sendable {
             }
         }
 
+        let remoteProgressItems = options.syncProgress
+            ? await fetchRemoteProgressItems(config: config)
+            : []
+
         return try await applyRestore(
             bundle: bundle,
             archives: archives,
+            remoteProgressItems: remoteProgressItems,
             totalBytes: totalDownloadedBytes,
             options: options,
             initialSkippedCount: failedFileCount)
@@ -84,6 +89,7 @@ public final class RestoreFromWebDAVUseCase: @unchecked Sendable {
         return try await applyRestore(
             bundle: bundle,
             archives: [],
+            remoteProgressItems: [],
             totalBytes: bundleData.count,
             options: options,
             initialSkippedCount: 0)
@@ -99,9 +105,21 @@ private extension RestoreFromWebDAVUseCase {
         return try decoder.decode(WebDAVBackupBundle.self, from: data)
     }
 
+    func fetchRemoteProgressItems(config: WebDAVConfig) async -> [WebDAVBookProgress] {
+        guard let progressData = try? await webDAVClient.download(
+            filename: "reading_progress.json",
+            config: config) else {
+            return []
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode(WebDAVProgressBundle.self, from: progressData))?.items ?? []
+    }
+
     func applyRestore(
         bundle: WebDAVBackupBundle,
         archives: [WebDAVLocalBookArchive],
+        remoteProgressItems: [WebDAVBookProgress],
         totalBytes: Int,
         options: WebDAVSyncOptions,
         initialSkippedCount: Int) async throws -> WebDAVBackupSummary {
@@ -115,39 +133,32 @@ private extension RestoreFromWebDAVUseCase {
                     archive,
                     localBooks: &localBooks,
                     applyProgress: options.syncProgress)
-                handledArchiveUrls.insert(archive.book.bookUrl)
                 handledArchiveUrls.insert(targetUrl)
                 restoredBookFileCount += 1
             }
         }
 
-        var restoredBookCount = 0
-        var restoredSourceCount = 0
-        var restoredBookmarkCount = 0
-        var skippedCount = initialSkippedCount
-
+        var progressResult = ProgressRestoreResult(books: 0, sources: 0, bookmarks: 0, skipped: initialSkippedCount)
         if options.syncProgress {
-            let result = try await restoreProgressAndMetadata(
+            progressResult = try await restoreProgressAndMetadata(
                 bundle: bundle,
+                remoteProgressItems: remoteProgressItems,
                 localBooks: &localBooks,
                 handledArchiveUrls: handledArchiveUrls)
-            restoredBookCount = result.books
-            restoredSourceCount = result.sources
-            restoredBookmarkCount = result.bookmarks
-            skippedCount += result.skipped
         }
 
         let restoredRuleCount = options.syncRules ? restoreRulesAndConfig(bundle: bundle) : 0
+        let totalSkipped = initialSkippedCount + (options.syncProgress ? progressResult.skipped : 0)
 
         return WebDAVBackupSummary(
-            bookCount: restoredBookCount,
-            sourceCount: restoredSourceCount,
+            bookCount: options.syncProgress ? progressResult.books : 0,
+            sourceCount: options.syncProgress ? progressResult.sources : 0,
             dataSizeBytes: totalBytes,
             backupDate: bundle.backupTime,
             ruleCount: restoredRuleCount,
-            bookmarkCount: restoredBookmarkCount,
+            bookmarkCount: options.syncProgress ? progressResult.bookmarks : 0,
             bookFileCount: restoredBookFileCount,
-            skippedBookCount: skippedCount)
+            skippedBookCount: totalSkipped)
     }
 
     func restoreBookArchive(
@@ -177,11 +188,7 @@ private extension RestoreFromWebDAVUseCase {
         }
 
         try await bookRepository.saveBook(targetBook)
-        if let idx = localBooks.firstIndex(where: { $0.bookUrl == targetBook.bookUrl }) {
-            localBooks[idx] = targetBook
-        } else {
-            localBooks.append(targetBook)
-        }
+        upsertLocalBook(targetBook, in: &localBooks)
         return targetUrl
     }
 
@@ -193,7 +200,7 @@ private extension RestoreFromWebDAVUseCase {
         var targetBook: Book
         if let existing {
             targetBook = applyProgress
-                ? WebDAVSyncHelper.mergeRemoteProgress(remote: archive.book, into: existing)
+                ? WebDAVSyncHelper.mergeRemoteProgress(remote: archive.book, into: existing, preferRemote: true)
                 : existing
         } else {
             targetBook = archive.book
@@ -232,19 +239,29 @@ private extension RestoreFromWebDAVUseCase {
             try cacheRepo.saveChapterContent(bookUrl: targetBookUrl, index: item.index, content: item.content)
         }
     }
+}
 
+private extension RestoreFromWebDAVUseCase {
     func restoreProgressAndMetadata(
         bundle: WebDAVBackupBundle,
+        remoteProgressItems: [WebDAVBookProgress],
         localBooks: inout [Book],
         handledArchiveUrls: Set<String>) async throws -> ProgressRestoreResult {
         if !bundle.sources.isEmpty {
             try await sourceRepository.saveSources(bundle.sources)
         }
 
-        let syncResult = try await syncRemoteBooks(
+        var syncResult = try await syncRemoteBooks(
             bundle.books,
             localBooks: &localBooks,
             handledArchiveUrls: handledArchiveUrls)
+
+        if !remoteProgressItems.isEmpty {
+            let appliedUrls = try await applyRealtimeProgressItems(
+                remoteProgressItems,
+                localBooks: &localBooks)
+            syncResult.syncedUrls.formUnion(appliedUrls)
+        }
 
         if let records = bundle.readRecords, !records.isEmpty {
             readRecordStore.mergeRecords(records)
@@ -256,7 +273,7 @@ private extension RestoreFromWebDAVUseCase {
             skippedUrls: syncResult.skippedUrls)
 
         return ProgressRestoreResult(
-            books: syncResult.synced,
+            books: syncResult.syncedUrls.count,
             sources: bundle.sources.count,
             bookmarks: bookmarkCount,
             skipped: syncResult.skipped)
@@ -266,26 +283,23 @@ private extension RestoreFromWebDAVUseCase {
         _ remoteBooks: [Book],
         localBooks: inout [Book],
         handledArchiveUrls: Set<String>) async throws -> BookSyncResult {
-        var syncedBooks = 0
+        var syncedUrls = handledArchiveUrls
         var skippedBooks = 0
         var skippedUrls = Set<String>()
 
         for remoteBook in remoteBooks {
-            if handledArchiveUrls.contains(remoteBook.bookUrl) {
-                syncedBooks += 1
-                continue
-            }
             if let existing = WebDAVSyncHelper.findMatchingBook(
                 name: remoteBook.name,
                 author: remoteBook.author,
                 bookUrl: remoteBook.bookUrl,
                 in: localBooks) {
-                let merged = WebDAVSyncHelper.mergeRemoteProgress(remote: remoteBook, into: existing)
+                let merged = WebDAVSyncHelper.mergeRemoteProgress(
+                    remote: remoteBook,
+                    into: existing,
+                    preferRemote: true)
                 try await bookRepository.saveBook(merged)
-                if let idx = localBooks.firstIndex(where: { $0.bookUrl == merged.bookUrl }) {
-                    localBooks[idx] = merged
-                }
-                syncedBooks += 1
+                upsertLocalBook(merged, in: &localBooks)
+                syncedUrls.insert(merged.bookUrl)
                 continue
             }
             if WebDAVSyncHelper.isLocalImportedBook(remoteBook),
@@ -297,9 +311,37 @@ private extension RestoreFromWebDAVUseCase {
 
             try await bookRepository.saveBook(remoteBook)
             localBooks.append(remoteBook)
-            syncedBooks += 1
+            syncedUrls.insert(remoteBook.bookUrl)
         }
-        return BookSyncResult(synced: syncedBooks, skipped: skippedBooks, skippedUrls: skippedUrls)
+        return BookSyncResult(syncedUrls: syncedUrls, skipped: skippedBooks, skippedUrls: skippedUrls)
+    }
+
+    func applyRealtimeProgressItems(
+        _ items: [WebDAVBookProgress],
+        localBooks: inout [Book]) async throws -> Set<String> {
+        var updatedUrls = Set<String>()
+        for item in items {
+            guard let existing = WebDAVSyncHelper.findMatchingBook(
+                name: item.name,
+                author: item.author,
+                bookUrl: item.bookUrl,
+                in: localBooks),
+                  let merged = WebDAVSyncHelper.mergeProgressItem(item, into: existing, preferRemote: false) else {
+                continue
+            }
+            try await bookRepository.saveBook(merged)
+            upsertLocalBook(merged, in: &localBooks)
+            updatedUrls.insert(merged.bookUrl)
+        }
+        return updatedUrls
+    }
+
+    func upsertLocalBook(_ book: Book, in localBooks: inout [Book]) {
+        if let idx = localBooks.firstIndex(where: { $0.bookUrl == book.bookUrl }) {
+            localBooks[idx] = book
+        } else {
+            localBooks.append(book)
+        }
     }
 
     func restoreBookmarks(
@@ -354,7 +396,7 @@ private struct ProgressRestoreResult {
 }
 
 private struct BookSyncResult {
-    let synced: Int
+    var syncedUrls: Set<String>
     let skipped: Int
     let skippedUrls: Set<String>
 }

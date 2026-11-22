@@ -5,23 +5,28 @@ import UIKit
 @MainActor
 public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, ReaderEffect> {
     let getChapterContentUseCase: GetChapterContentUseCase
-    private let getBookTocUseCase: GetBookTocUseCase
-    private let bookRepository: BookRepository
-    private let textLayoutEngine: TextLayoutEngine
+    let getBookTocUseCase: GetBookTocUseCase
+    let bookRepository: BookRepository
+    let textLayoutEngine: TextLayoutEngine
     let getBookmarksUseCase: GetBookmarksUseCase?
     let saveBookmarkUseCase: SaveBookmarkUseCase?
     let deleteBookmarkUseCase: DeleteBookmarkUseCase?
     nonisolated(unsafe) var autoPageTask: Task<Void, Never>?
-    nonisolated(unsafe) private var loadChapterTask: Task<Void, Never>?
-    nonisolated(unsafe) private var repaginateTask: Task<Void, Never>?
-    nonisolated(unsafe) private var loadTocTask: Task<Void, Never>?
-    private let initialOffsetToRestore: Int?
+    nonisolated(unsafe) var loadChapterTask: Task<Void, Never>?
+    nonisolated(unsafe) var repaginateTask: Task<Void, Never>?
+    nonisolated(unsafe) var loadTocTask: Task<Void, Never>?
+    nonisolated(unsafe) var remoteSyncTask: Task<Void, Never>?
+    let realtimeSyncService: WebDAVRealtimeSyncService?
+    let explicitInitialChapterIndex: Int?
+    var pendingRestoreOffset: Int?
+    var hasUserNavigated = false
 
     deinit {
         autoPageTask?.cancel()
         loadChapterTask?.cancel()
         repaginateTask?.cancel()
         loadTocTask?.cancel()
+        remoteSyncTask?.cancel()
     }
 
     public init(
@@ -34,7 +39,8 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         textLayoutEngine: TextLayoutEngine = .shared,
         getBookmarksUseCase: GetBookmarksUseCase? = nil,
         saveBookmarkUseCase: SaveBookmarkUseCase? = nil,
-        deleteBookmarkUseCase: DeleteBookmarkUseCase? = nil) {
+        deleteBookmarkUseCase: DeleteBookmarkUseCase? = nil,
+        realtimeSyncService: WebDAVRealtimeSyncService? = nil) {
         self.getChapterContentUseCase = getChapterContentUseCase
         self.getBookTocUseCase = getBookTocUseCase
         self.bookRepository = bookRepository
@@ -42,11 +48,13 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         self.getBookmarksUseCase = getBookmarksUseCase
         self.saveBookmarkUseCase = saveBookmarkUseCase
         self.deleteBookmarkUseCase = deleteBookmarkUseCase
+        self.realtimeSyncService = realtimeSyncService
+        self.explicitInitialChapterIndex = initialChapterIndex
 
         let startChapter = initialChapterIndex ?? book.durChapterIndex
         let shouldRestoreOffset = (initialChapterIndex == nil || initialChapterIndex == book.durChapterIndex)
             && book.durChapterPos > 0
-        self.initialOffsetToRestore = shouldRestoreOffset ? book.durChapterPos : nil
+        self.pendingRestoreOffset = shouldRestoreOffset ? book.durChapterPos : nil
 
         super.init(initialState: ReaderState(
             book: book,
@@ -57,59 +65,6 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
 
         loadTocAndStartReading()
         loadBookmarks()
-    }
-
-    private func loadTocAndStartReading() {
-        loadTocTask?.cancel()
-        loadTocTask = Task { [weak self] in
-            guard let self else { return }
-            let book = self.state.book
-            let local = (try? await self.bookRepository.getChapters(for: book.bookUrl)) ?? []
-            guard !Task.isCancelled else { return }
-
-            if !local.isEmpty {
-                self.updateState { state in
-                    state.chapters = local
-                }
-                self.loadChapterContent(
-                    chapterIndex: self.state.currentChapterIndex,
-                    targetPageIndex: 0,
-                    targetOffset: self.initialOffsetToRestore)
-                return
-            }
-
-            var toc = (try? await self.getBookTocUseCase.execute(book: book)) ?? []
-            guard !Task.isCancelled else { return }
-
-            if toc.isEmpty, book.isLocalFile {
-                let message = "本机未找到该本地书籍的正文文件，请在本机重新导入或开启 WebDAV「本地书籍文件」同步恢复"
-                self.updateState { state in
-                    state.isLoading = false
-                    state.chapters = []
-                    state.pages = []
-                    state.toastMessage = message
-                }
-                self.emitEffect(.showToast(message))
-                return
-            }
-
-            if toc.isEmpty {
-                toc = [
-                    Chapter(
-                        url: book.bookUrl,
-                        title: book.durChapterTitle ?? "第一章 宿命之始",
-                        bookUrl: book.bookUrl,
-                        index: 0),
-                ]
-            }
-            self.updateState { state in
-                state.chapters = toc
-            }
-            self.loadChapterContent(
-                chapterIndex: self.state.currentChapterIndex,
-                targetPageIndex: 0,
-                targetOffset: self.initialOffsetToRestore)
-        }
     }
 
     override public func send(_ intent: ReaderIntent) {
@@ -131,7 +86,17 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         case let .updateScreenBounds(rect):
             if state.screenBounds != rect, rect.width > 50 {
                 updateState { $0.screenBounds = rect }
-                repaginateCurrentChapter()
+                if state.pages.isEmpty {
+                    if !state.chapters.isEmpty {
+                        loadChapterContent(
+                            chapterIndex: state.currentChapterIndex,
+                            targetPageIndex: 0,
+                            targetOffset: pendingRestoreOffset,
+                            persistProgress: false)
+                    }
+                } else {
+                    repaginateCurrentChapter()
+                }
             }
 
         case let .switchSource(updatedBook, newToc, matchedChapterIndex):
@@ -154,19 +119,29 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
     private func handleNavigationIntent(_ intent: ReaderIntent) {
         switch intent {
         case let .loadChapter(index):
+            hasUserNavigated = true
+            pendingRestoreOffset = nil
             loadChapterContent(chapterIndex: index, targetPageIndex: 0)
 
         case let .jumpToChapterAndOffset(chapterIndex, matchOffset):
+            hasUserNavigated = true
+            pendingRestoreOffset = nil
             loadChapterContent(chapterIndex: chapterIndex, targetPageIndex: 0, targetOffset: matchOffset)
 
         case .nextPage:
+            hasUserNavigated = true
+            pendingRestoreOffset = nil
             handleNextPage()
 
         case .prevPage:
+            hasUserNavigated = true
+            pendingRestoreOffset = nil
             handlePrevPage()
 
         case let .jumpToPage(index):
             if index >= 0, index < state.pages.count {
+                hasUserNavigated = true
+                pendingRestoreOffset = nil
                 updateState { $0.currentPageIndex = index }
                 saveReadingProgress()
                 emitHapticIfEnabled()
@@ -234,10 +209,11 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         }
     }
 
-    private func loadChapterContent(
+    func loadChapterContent(
         chapterIndex: Int,
         targetPageIndex: Int,
-        targetOffset: Int? = nil) {
+        targetOffset: Int? = nil,
+        persistProgress: Bool = true) {
         guard chapterIndex >= 0, chapterIndex < state.chapters.count else { return }
 
         loadChapterTask?.cancel()
@@ -246,8 +222,9 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         let bookOrigin = state.book.origin
         let bookName = state.book.name
         let configSnapshot = state.config
+        let hasRealBounds = state.screenBounds.width > 50
         let defaultBounds = CGRect(x: 0, y: 0, width: 393, height: 852)
-        let layoutBounds = state.screenBounds.width > 50 ? state.screenBounds : defaultBounds
+        let layoutBounds = hasRealBounds ? state.screenBounds : defaultBounds
         let engine = textLayoutEngine
 
         updateState {
@@ -291,8 +268,13 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
                     state.pages = pages
                     state.currentPageIndex = safePageIndex
                 }
+                if self.state.screenBounds.width > 50 {
+                    self.pendingRestoreOffset = nil
+                }
 
-                self.saveReadingProgress()
+                if persistProgress {
+                    self.saveReadingProgress()
+                }
 
                 if chapterIndex + 1 < self.state.chapters.count {
                     let nextChapter = self.state.chapters[chapterIndex + 1]
@@ -359,92 +341,6 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
             emitHapticIfEnabled()
         } else {
             emitEffect(.showToast("已经是第一页了"))
-        }
-    }
-
-    func repaginateCurrentChapter() {
-        guard let chapter = state.currentChapter else { return }
-        repaginateTask?.cancel()
-        let currentOffset = state.currentPage?.textRange.location ?? 0
-        let chapterIndex = state.currentChapterIndex
-        let bookOrigin = state.book.origin
-        let bookName = state.book.name
-        let configSnapshot = state.config
-        let defaultBounds = CGRect(x: 0, y: 0, width: 393, height: 852)
-        let layoutBounds = state.screenBounds.width > 50 ? state.screenBounds : defaultBounds
-        let engine = textLayoutEngine
-
-        repaginateTask = Task { [weak self] in
-            guard let self else { return }
-            guard let content = try? await self.getChapterContentUseCase.execute(
-                chapter: chapter,
-                origin: bookOrigin),
-                  !Task.isCancelled else {
-                return
-            }
-
-            let pages = await Task.detached(priority: .userInitiated) {
-                engine.paginate(
-                    chapterTitle: chapter.title,
-                    content: content,
-                    chapterIndex: chapterIndex,
-                    bounds: layoutBounds,
-                    config: configSnapshot,
-                    bookName: bookName,
-                    bookOrigin: bookOrigin)
-            }.value
-            guard !Task.isCancelled else { return }
-
-            let preservedPage = Self.pageIndex(forOffset: currentOffset, in: pages)
-            self.updateState { state in
-                state.pages = pages
-                state.currentPageIndex = preservedPage
-            }
-        }
-    }
-
-    static func pageIndex(forOffset offset: Int, in pages: [ReaderPage]) -> Int {
-        guard !pages.isEmpty else { return 0 }
-        if let exact = pages.firstIndex(where: { page in
-            offset >= page.textRange.location &&
-                offset < (page.textRange.location + max(page.textRange.length, 1))
-        }) {
-            return exact
-        }
-        if let last = pages.last, offset >= last.textRange.location {
-            return pages.count - 1
-        }
-        return 0
-    }
-
-    func applyNewConfig(_ newConfig: ReaderConfig, triggerHaptic: Bool = true) {
-        let oldConfig = state.config
-        updateState { $0.config = newConfig }
-        ReaderConfigStore.save(newConfig)
-        if newConfig.requiresRepagination(comparedTo: oldConfig) {
-            repaginateCurrentChapter()
-        }
-        if triggerHaptic {
-            emitHapticIfEnabled()
-        }
-    }
-
-    func emitHapticIfEnabled() {
-        if state.config.isHapticEnabled {
-            emitEffect(.hapticFeedback)
-        }
-    }
-
-    private func saveReadingProgress() {
-        guard let chapter = state.currentChapter else { return }
-        var updated = state.book
-        updated.durChapterIndex = state.currentChapterIndex
-        updated.durChapterPos = state.currentPage?.textRange.location ?? 0
-        updated.durChapterTitle = chapter.title
-        updated.durChapterTime = Int64(Date().timeIntervalSince1970 * 1000)
-
-        Task {
-            try? await bookRepository.saveBook(updated)
         }
     }
 }

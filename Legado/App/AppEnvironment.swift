@@ -30,6 +30,7 @@ public final class AppEnvironment: ObservableObject {
     public let purifyContentUseCase: PurifyContentUseCase
     public let backupToWebDAVUseCase: BackupToWebDAVUseCase
     public let restoreFromWebDAVUseCase: RestoreFromWebDAVUseCase
+    public let webDAVRealtimeSyncService: WebDAVRealtimeSyncService
     public let changeBookSourceUseCase: ChangeBookSourceUseCase
     public let searchBookContentUseCase: SearchBookContentUseCase
     public let bookmarkRepository: BookmarkRepository
@@ -46,6 +47,7 @@ public final class AppEnvironment: ObservableObject {
     public let checkBookSourceHealthUseCase: CheckBookSourceHealthUseCase
     public let importLocalBookUseCase: ImportLocalBookUseCase
     public let externalFileImportSubject = PassthroughSubject<Void, Never>()
+    public let bookshelfRefreshSubject = PassthroughSubject<Void, Never>()
     private var pendingExternalImportURLs: [URL] = []
 
     public init(inMemory: Bool = false) {
@@ -99,6 +101,10 @@ public final class AppEnvironment: ObservableObject {
             sourceRepository: sourceRepo,
             bookmarkRepository: bookmarkRepo,
             bookCacheRepository: cacheRepo)
+        self.webDAVRealtimeSyncService = WebDAVRealtimeSyncService(
+            bookRepository: bookRepo,
+            backupUseCase: self.backupToWebDAVUseCase,
+            configProvider: inMemory ? { nil } : { WebDAVConfigStore.loadSavedIfConfigured() })
         self.changeBookSourceUseCase = ChangeBookSourceUseCase(
             sourceRepository: sourceRepo,
             bookRepository: bookRepo)
@@ -113,6 +119,10 @@ public final class AppEnvironment: ObservableObject {
         self.importLocalBookUseCase = ImportLocalBookUseCase(
             bookRepository: bookRepo,
             bookCacheRepository: cacheRepo)
+
+        self.webDAVRealtimeSyncService.onBookshelfUpdated = { [weak self] in
+            self?.notifyBookshelfNeedsRefresh()
+        }
 
         if !inMemory {
             LocalFontManager.shared.registerAllStoredFonts()
@@ -193,7 +203,8 @@ public final class AppEnvironment: ObservableObject {
             bookRepository: bookRepository,
             getBookmarksUseCase: getBookmarksUseCase,
             saveBookmarkUseCase: saveBookmarkUseCase,
-            deleteBookmarkUseCase: deleteBookmarkUseCase)
+            deleteBookmarkUseCase: deleteBookmarkUseCase,
+            realtimeSyncService: webDAVRealtimeSyncService)
     }
 
     /// 创建发现 ViewModel
@@ -219,7 +230,16 @@ public final class AppEnvironment: ObservableObject {
         SettingsViewModel(
             backupUseCase: backupToWebDAVUseCase,
             restoreUseCase: restoreFromWebDAVUseCase,
-            manageBookCacheUseCase: manageBookCacheUseCase)
+            manageBookCacheUseCase: manageBookCacheUseCase,
+            realtimeSyncService: webDAVRealtimeSyncService,
+            onBookshelfUpdated: { [weak self] in
+                self?.notifyBookshelfNeedsRefresh()
+            })
+    }
+
+    /// 通知书架重新从数据库加载最新阅读进度与书单
+    public func notifyBookshelfNeedsRefresh() {
+        bookshelfRefreshSubject.send(())
     }
 
     /// 创建换源 ViewModel

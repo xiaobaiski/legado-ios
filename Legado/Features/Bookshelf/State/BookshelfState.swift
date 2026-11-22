@@ -66,9 +66,15 @@ public struct BookshelfState: ViewState, Equatable {
         self.searchText = searchText
     }
 
-    /// 最近一次打开阅读的书籍（用于书架顶部「继续阅读」快捷入口）
+    /// 最近一次打开阅读的书籍（优先定位真正产生过阅读进度的书籍，避免未读新书抢占入口）
     public var recentReadingBook: Book? {
-        books
+        let activelyRead = books.filter {
+            $0.durChapterTime > 0 && ($0.durChapterIndex > 0 || $0.durChapterPos > 0)
+        }
+        if let latest = activelyRead.max(by: { $0.durChapterTime < $1.durChapterTime }) {
+            return latest
+        }
+        return books
             .filter { $0.durChapterTime > 0 }
             .max { $0.durChapterTime < $1.durChapterTime }
     }
@@ -96,7 +102,15 @@ public struct BookshelfState: ViewState, Equatable {
 
         switch sortOrder {
         case .recent:
-            list.sort { $0.durChapterTime > $1.durChapterTime }
+            list.sort {
+                if $0.durChapterTime != $1.durChapterTime {
+                    return $0.durChapterTime > $1.durChapterTime
+                }
+                if $0.latestChapterTime != $1.latestChapterTime {
+                    return $0.latestChapterTime > $1.latestChapterTime
+                }
+                return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }
 
         case .title:
             list.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
