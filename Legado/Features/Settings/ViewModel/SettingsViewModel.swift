@@ -236,20 +236,22 @@ private extension SettingsViewModel {
     func runConnectionTest() {
         runWebDAVTask(
             setBusy: { $0.isTestingConnection = $1 },
-            failurePrefix: "连接失败") { config in
+            failurePrefix: "连接失败",
+            operation: { config in
                 _ = try await self.webDAVClient.testConnection(config: config)
                 self.updateState {
                     $0.errorMessage = nil
                     $0.successMessage = "WebDAV 服务器连接成功，认证通过！"
                 }
                 self.emitEffect(.showToast("WebDAV 认证通过，连接成功"))
-        }
+            })
     }
 
     func runBackup() {
         runWebDAVTask(
             setBusy: { $0.isBackingUp = $1 },
-            failurePrefix: "备份失败") { config in
+            failurePrefix: "备份失败",
+            operation: { config in
                 let summary = try await self.backupUseCase.execute(config: config)
                 let sizeKB = max(summary.dataSizeBytes / 1024, 1)
                 let msg = "已备份 \(summary.bookCount) 本书与 \(summary.ruleCount) 条规则 (\(sizeKB) KB)"
@@ -259,13 +261,14 @@ private extension SettingsViewModel {
                     $0.successMessage = "云端备份成功：\(msg)"
                 }
                 self.emitEffect(.showToast(msg))
-        }
+            })
     }
 
     func runRestore() {
         runWebDAVTask(
             setBusy: { $0.isRestoring = $1 },
-            failurePrefix: "还原失败") { config in
+            failurePrefix: "还原失败",
+            operation: { config in
                 let summary = try await self.restoreUseCase.execute(config: config)
                 let msg = "已恢复 \(summary.bookCount) 本书、\(summary.ruleCount) 条规则与阅读配置"
                 self.updateState {
@@ -274,7 +277,7 @@ private extension SettingsViewModel {
                 }
                 self.send(.refreshReaderConfig)
                 self.emitEffect(.showToast(msg))
-        }
+            })
     }
 
     func runWebDAVTask(

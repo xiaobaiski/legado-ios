@@ -272,10 +272,12 @@ public struct BookshelfView: View {
             }
         }
     }
+}
 
-    // MARK: - Books Content
+// MARK: - Books Content, Overlays & File Import
 
-    private var booksGridContent: some View {
+private extension BookshelfView {
+    var booksGridContent: some View {
         let isWide = horizontalSizeClass == .regular
         let gridSpacing: CGFloat = isWide ? 20 : 14
         let columns = [GridItem(.adaptive(minimum: isWide ? 144 : 102, maximum: 186), spacing: gridSpacing)]
@@ -303,7 +305,7 @@ public struct BookshelfView: View {
             }
     }
 
-    private var booksListContent: some View {
+    var booksListContent: some View {
         let isWide = horizontalSizeClass == .regular
         let columns = isWide
             ? [GridItem(.adaptive(minimum: 340, maximum: 560), spacing: 16)]
@@ -330,7 +332,7 @@ public struct BookshelfView: View {
         }
     }
 
-    private var emptyStateView: some View {
+    var emptyStateView: some View {
         ContentUnavailableView {
             Label(
                 viewModel.state.searchText.isEmpty ? "书架空空如也" : "无搜索结果",
@@ -349,11 +351,7 @@ public struct BookshelfView: View {
         }
         .padding(.top, 40)
     }
-}
 
-// MARK: - Overlays, Effects & File Import
-
-private extension BookshelfView {
     /// 允许选择 TXT / EPUB 与通用数据文件，避免 iOS 文件选择器中部分下载的电子书变灰不可选
     static var localBookContentTypes: [UTType] {
         var types: [UTType] = [.plainText, .text, .data]

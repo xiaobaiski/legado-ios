@@ -141,10 +141,12 @@ public struct ReaderHUDView: View {
         .ignoresSafeArea(edges: .top)
         .preferredColorScheme(config.isEffectiveDark ? .dark : .light)
     }
+}
 
-    // MARK: - 顶部导航条（精简右区，保障书名完整显示）
+// MARK: - HUD 子视图扩展
 
-    private var topBar: some View {
+private extension ReaderHUDView {
+    var topBar: some View {
         HStack {
             HStack(spacing: 10) {
                 circleIconButton(systemName: "chevron.left", action: onBack)
@@ -190,7 +192,7 @@ public struct ReaderHUDView: View {
         }
     }
 
-    private var moreMenuButton: some View {
+    var moreMenuButton: some View {
         Menu {
             Button(action: onOpenTextAction) {
                 Label("正文摘录与净化", systemImage: "text.quote")
@@ -222,7 +224,7 @@ public struct ReaderHUDView: View {
         }
     }
 
-    private func circleIconButton(
+    func circleIconButton(
         systemName: String,
         foreground: Color = .primary,
         action: @escaping () -> Void) -> some View {
@@ -237,9 +239,7 @@ public struct ReaderHUDView: View {
         }
     }
 
-    // MARK: - 底部主控制栏
-
-    private var bottomControlBar: some View {
+    var bottomControlBar: some View {
         let isPageMode = config.progressBarBehavior == .page && totalPages > 1
         let itemTotal = isPageMode ? totalPages : totalChapters
         let currentItem = isPageMode ? currentPageIndex : currentChapterIndex
@@ -322,7 +322,7 @@ public struct ReaderHUDView: View {
         .shadow(color: .black.opacity(0.12), radius: 10, y: 5)
     }
 
-    private var quickActionsBar: some View {
+    var quickActionsBar: some View {
         HStack {
             quickActionButton(title: "目录", systemImage: "list.bullet", action: onOpenToc)
             quickActionButton(
@@ -346,7 +346,7 @@ public struct ReaderHUDView: View {
         .padding(.vertical, 4)
     }
 
-    private func quickActionButton(
+    func quickActionButton(
         title: String,
         systemImage: String,
         isActive: Bool = false,

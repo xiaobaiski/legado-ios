@@ -155,8 +155,8 @@ public struct BookshelfBookRowView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
 
-            if let durTitle = book.durChapterTitle, !durTitle.isEmpty,
-               (book.durChapterIndex > 0 || book.durChapterPos > 0) {
+            let hasProgress = book.durChapterIndex > 0 || book.durChapterPos > 0
+            if let durTitle = book.durChapterTitle, !durTitle.isEmpty, hasProgress {
                 Text("读至: \(durTitle)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)

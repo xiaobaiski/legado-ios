@@ -240,6 +240,7 @@ struct TTSAndWebDAVSyncTests {
             recorder.append(method: method, path: path)
 
             if method == "MKCOL" {
+                #expect(request.url?.absoluteString.hasSuffix("/") == true)
                 let resp = HTTPURLResponse(url: request.url!, statusCode: 201, httpVersion: nil, headerFields: nil)!
                 return (resp, Data())
             }
@@ -263,8 +264,8 @@ struct TTSAndWebDAVSyncTests {
         let downloaded = try await client.download(filename: "legado_backup.json", config: configC)
         #expect(downloaded == payload)
         let calls = recorder.snapshotCalls()
-        #expect(calls.contains("MKCOL:/dav/Backup/"))
-        #expect(calls.contains("MKCOL:/dav/Backup/Legado/"))
+        #expect(calls.contains("MKCOL:/dav/Backup"))
+        #expect(calls.contains("MKCOL:/dav/Backup/Legado"))
         #expect(calls.contains("PUT:/dav/Backup/Legado/legado_backup.json"))
         #expect(calls.contains("GET:/dav/Backup/Legado/legado_backup.json"))
 
