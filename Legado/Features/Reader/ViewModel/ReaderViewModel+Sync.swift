@@ -74,12 +74,13 @@ extension ReaderViewModel {
 
     func startRealtimeProgressPull(for book: Book) {
         guard let realtimeSyncService else { return }
+        let startGeneration = navigationGeneration
         remoteSyncTask?.cancel()
         remoteSyncTask = Task { [weak self] in
             guard let syncedBook = await realtimeSyncService.pullLatestProgressIfNeeded(for: book, force: true),
                   let self,
                   !Task.isCancelled,
-                  !self.hasUserNavigated else {
+                  self.navigationGeneration == startGeneration else {
                 return
             }
             let totalChapters = max(self.state.chapters.count, 1)
@@ -87,7 +88,7 @@ extension ReaderViewModel {
             let targetOffset = (targetIndex == syncedBook.durChapterIndex && syncedBook.durChapterPos > 0)
                 ? syncedBook.durChapterPos
                 : nil
-            let currentOffset = self.state.currentPage?.textRange.location ?? 0
+            let currentOffset = self.pendingRestoreOffset ?? self.state.currentPage?.textRange.location ?? 0
             if targetIndex == self.state.currentChapterIndex,
                abs((targetOffset ?? 0) - currentOffset) < 20 {
                 self.updateState { $0.book = syncedBook }
@@ -231,6 +232,7 @@ extension ReaderViewModel {
 
     func flushRealtimeProgressSync() {
         realtimeSyncService?.flushPendingProgressPush()
+        realtimeSyncService?.flushPendingRulesPush()
     }
 
     func emitHapticIfEnabled() {

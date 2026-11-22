@@ -20,7 +20,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
     let realtimeSyncService: WebDAVRealtimeSyncService?
     let explicitInitialChapterIndex: Int?
     var pendingRestoreOffset: Int?
-    var hasUserNavigated = false
+    var navigationGeneration = 0
 
     deinit {
         autoPageTask?.cancel()
@@ -121,28 +121,28 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
     private func handleNavigationIntent(_ intent: ReaderIntent) {
         switch intent {
         case let .loadChapter(index):
-            hasUserNavigated = true
+            navigationGeneration += 1
             pendingRestoreOffset = nil
             loadChapterContent(chapterIndex: index, targetPageIndex: 0)
 
         case let .jumpToChapterAndOffset(chapterIndex, matchOffset):
-            hasUserNavigated = true
+            navigationGeneration += 1
             pendingRestoreOffset = nil
             loadChapterContent(chapterIndex: chapterIndex, targetPageIndex: 0, targetOffset: matchOffset)
 
         case .nextPage:
-            hasUserNavigated = true
+            navigationGeneration += 1
             pendingRestoreOffset = nil
             handleNextPage()
 
         case .prevPage:
-            hasUserNavigated = true
+            navigationGeneration += 1
             pendingRestoreOffset = nil
             handlePrevPage()
 
         case let .jumpToPage(index):
             if index >= 0, index < state.pages.count {
-                hasUserNavigated = true
+                navigationGeneration += 1
                 pendingRestoreOffset = nil
                 updateState { $0.currentPageIndex = index }
                 saveReadingProgress()

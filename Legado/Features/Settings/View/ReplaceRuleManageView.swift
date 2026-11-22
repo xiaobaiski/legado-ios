@@ -46,7 +46,6 @@ public struct ReplaceRuleManageView: View {
 
                     Button {
                         viewModel.importFromClipboard()
-                        onRulesChanged()
                     } label: {
                         Label("从剪贴板导入 JSON", systemImage: "doc.on.clipboard")
                     }
@@ -70,10 +69,12 @@ public struct ReplaceRuleManageView: View {
                 }
             }
         }
+        .onAppear {
+            viewModel.onRulesMutated = onRulesChanged
+        }
         .sheet(item: $editingRule) { rule in
             ReplaceRuleEditorSheet(rule: rule, viewModel: viewModel) { saved in
                 viewModel.save(saved)
-                onRulesChanged()
             }
         }
         .sheet(isPresented: $isShowingJsonPicker) {
@@ -84,7 +85,6 @@ public struct ReplaceRuleManageView: View {
                     isShowingJsonPicker = false
                     if let first = urls.first {
                         viewModel.importFromFile(first)
-                        onRulesChanged()
                     }
                 },
                 onCancel: {
@@ -96,7 +96,6 @@ public struct ReplaceRuleManageView: View {
             Button("取消", role: .cancel) {}
             Button("恢复默认", role: .destructive) {
                 viewModel.resetDefaults()
-                onRulesChanged()
             }
         } message: {
             Text("将重置为默认内置去广告、防盗水印与零宽字符清理规则。")
@@ -162,14 +161,12 @@ public struct ReplaceRuleManageView: View {
                 get: { rule.isEnabled },
                 set: { _ in
                     viewModel.toggleEnabled(id: rule.id)
-                    onRulesChanged()
                 }))
                 .labelsHidden()
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
                 viewModel.delete(id: rule.id)
-                onRulesChanged()
             } label: {
                 Label("删除", systemImage: "trash")
             }

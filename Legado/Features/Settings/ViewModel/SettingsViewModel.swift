@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 /// 系统设置 ViewModel (MVI 状态中枢)
@@ -9,6 +10,7 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
     private let manageBookCacheUseCase: ManageBookCacheUseCase?
     private let realtimeSyncService: WebDAVRealtimeSyncService?
     private let onBookshelfUpdated: (@MainActor () -> Void)?
+    private var cancellables = Set<AnyCancellable>()
 
     public init(
         webDAVClient: WebDAVClient = .shared,
@@ -16,6 +18,7 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
         restoreUseCase: RestoreFromWebDAVUseCase,
         manageBookCacheUseCase: ManageBookCacheUseCase? = nil,
         realtimeSyncService: WebDAVRealtimeSyncService? = nil,
+        rulesRefreshPublisher: AnyPublisher<Void, Never>? = nil,
         onBookshelfUpdated: (@MainActor () -> Void)? = nil) {
         self.webDAVClient = webDAVClient
         self.backupUseCase = backupUseCase
@@ -28,14 +31,34 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
         let initialSpeechRate = TTSPlayer.shared.speechRate
         let initialSpeechPitch = TTSPlayer.shared.speechPitch
         let initialCacheSize = manageBookCacheUseCase?.calculateTotalCacheSize() ?? 0
+        let initialSyncStatus = realtimeSyncService?.status ?? WebDAVRealtimeSyncStatus()
 
         super.init(initialState: SettingsState(
             webDAVConfig: savedConfig,
+            realtimeSyncStatus: initialSyncStatus,
             speechRate: initialSpeechRate,
             speechPitch: initialSpeechPitch,
             cacheSizeBytes: initialCacheSize,
             readerConfig: ReaderConfigStore.load(),
             importedFonts: LocalFontManager.shared.listImportedFonts()))
+
+        bindRealtimeSubscriptions(rulesRefreshPublisher: rulesRefreshPublisher)
+    }
+
+    private func bindRealtimeSubscriptions(rulesRefreshPublisher: AnyPublisher<Void, Never>?) {
+        realtimeSyncService?.$status
+            .receive(on: RunLoop.main)
+            .sink { [weak self] status in
+                self?.updateState { $0.realtimeSyncStatus = status }
+            }
+            .store(in: &cancellables)
+
+        rulesRefreshPublisher?
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                self?.send(.refreshReaderConfig)
+            }
+            .store(in: &cancellables)
     }
 
     override public func send(_ intent: SettingsIntent) {
@@ -51,7 +74,7 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             handleGeneralIntent(intent)
 
         case .refreshReaderConfig, .updateReaderConfig, .resetReaderConfig,
-             .importLocalFonts, .selectLocalFont, .deleteLocalFont:
+             .importLocalFonts, .selectLocalFont, .deleteLocalFont, .notifyRulesChanged:
             handleReaderAndFontIntent(intent)
         }
     }
@@ -178,6 +201,9 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
 
         case let .deleteLocalFont(font):
             handleDeleteLocalFont(font)
+
+        case .notifyRulesChanged:
+            realtimeSyncService?.scheduleRulesPush()
 
         default:
             break

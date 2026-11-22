@@ -47,7 +47,12 @@ public final class RestoreFromWebDAVUseCase: @unchecked Sendable {
         }
 
         let data = try await webDAVClient.download(filename: "legado_backup.json", config: config)
-        let bundle = try decodeBundle(from: data)
+        var bundle = try decodeBundle(from: data)
+        if options.syncRules,
+           let syncedRules = await fetchRemoteRulesBundle(config: config),
+           syncedRules.updatedAt > bundle.backupTime {
+            bundle = mergeNewerRulesBundle(syncedRules, into: bundle)
+        }
 
         var archives: [WebDAVLocalBookArchive] = []
         var totalDownloadedBytes = data.count
@@ -107,6 +112,32 @@ private extension RestoreFromWebDAVUseCase {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(WebDAVBackupBundle.self, from: data)
+    }
+
+    func fetchRemoteRulesBundle(config: WebDAVConfig) async -> WebDAVRulesBundle? {
+        guard let data = try? await webDAVClient.download(
+            filename: "rules_sync.json",
+            config: config) else {
+            return nil
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(WebDAVRulesBundle.self, from: data)
+    }
+
+    func mergeNewerRulesBundle(_ synced: WebDAVRulesBundle, into bundle: WebDAVBackupBundle) -> WebDAVBackupBundle {
+        WebDAVBackupBundle(
+            version: bundle.version,
+            backupTime: bundle.backupTime,
+            appVersion: bundle.appVersion,
+            books: bundle.books,
+            sources: bundle.sources,
+            replaceRules: synced.replaceRules.isEmpty ? bundle.replaceRules : synced.replaceRules,
+            txtTocRules: synced.txtTocRules.isEmpty ? bundle.txtTocRules : synced.txtTocRules,
+            readRecords: bundle.readRecords,
+            readerConfigJson: synced.readerConfigJson ?? bundle.readerConfigJson,
+            bookmarks: bundle.bookmarks,
+            bookFiles: bundle.bookFiles)
     }
 
     func fetchRemoteProgressItems(config: WebDAVConfig) async -> [WebDAVBookProgress] {

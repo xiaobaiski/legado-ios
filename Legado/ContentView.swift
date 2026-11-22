@@ -77,13 +77,19 @@ struct ContentView: View {
             selectedTab = .bookshelf
             environment.enqueueExternalImport(url)
         }
+        .task {
+            _ = await environment.webDAVRealtimeSyncService.pullLatestProgressIfNeeded()
+            _ = await environment.webDAVRealtimeSyncService.pullLatestRulesIfNeeded()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task {
                     _ = await environment.webDAVRealtimeSyncService.pullLatestProgressIfNeeded()
+                    _ = await environment.webDAVRealtimeSyncService.pullLatestRulesIfNeeded()
                 }
             } else if phase == .background {
                 environment.webDAVRealtimeSyncService.flushPendingProgressPush()
+                environment.webDAVRealtimeSyncService.flushPendingRulesPush()
             }
         }
     }

@@ -234,3 +234,44 @@ public struct WebDAVBackupBundle: Codable, Sendable {
         self.bookFiles = bookFiles
     }
 }
+
+/// 轻量级规则与排版配置实时同步数据包（`rules_sync.json`）
+public struct WebDAVRulesBundle: Codable, Equatable, Sendable {
+    public let version: Int
+    public let updatedAt: Date
+    public let replaceRules: [ReplaceRule]
+    public let txtTocRules: [TxtTocRule]
+    public let readerConfigJson: String?
+
+    public init(
+        version: Int = 1,
+        updatedAt: Date = Date(),
+        replaceRules: [ReplaceRule] = [],
+        txtTocRules: [TxtTocRule] = [],
+        readerConfigJson: String? = nil) {
+        self.version = version
+        self.updatedAt = updatedAt
+        self.replaceRules = replaceRules
+        self.txtTocRules = txtTocRules
+        self.readerConfigJson = readerConfigJson
+    }
+}
+
+/// WebDAV 实时同步运行状态（用于 UI 展示同步时间与错误诊断）
+public struct WebDAVRealtimeSyncStatus: Equatable, Sendable {
+    public var isSyncing: Bool
+    public var lastSyncAt: Date?
+    public var lastSyncSummary: String?
+    public var lastErrorMessage: String?
+
+    public init(
+        isSyncing: Bool = false,
+        lastSyncAt: Date? = nil,
+        lastSyncSummary: String? = nil,
+        lastErrorMessage: String? = nil) {
+        self.isSyncing = isSyncing
+        self.lastSyncAt = lastSyncAt
+        self.lastSyncSummary = lastSyncSummary
+        self.lastErrorMessage = lastErrorMessage
+    }
+}

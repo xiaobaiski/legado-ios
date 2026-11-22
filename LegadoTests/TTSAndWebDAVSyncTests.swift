@@ -1232,6 +1232,421 @@ struct TTSAndWebDAVSyncTests {
         RuleEvaluator.clearVariables()
         #expect(RuleEvaluator.getVariable("bounds_k_599") == nil)
     }
+
+    // MARK: - WebDAV 实时同步可靠性、防覆盖与规则双向同步回归测试
+
+    @Test("Realtime progress push aborts overwrite on HTTP 500 and preserves other books after recovery")
+    @MainActor
+    func webDAVRealtimeProgressPushProtectsRemoteOnTransientError() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WebDAVRealtimeGuard_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let drive = MockWebDAVVirtualDrive()
+        let host = "mock-rt-guard-\(UUID().uuidString.lowercased()).local"
+        MockWebDAVURLProtocol.register(host: host) { request in
+            try drive.handle(request)
+        }
+        defer { MockWebDAVURLProtocol.unregister(host: host) }
+
+        let client = WebDAVClient(urlSession: MockWebDAVURLProtocol.makeSession())
+        let provider = ModelContainerProvider(inMemory: true)
+        let bookRepo = BookRepositoryImpl(modelContainer: provider.container)
+        let sourceRepo = BookSourceRepositoryImpl(modelContainer: provider.container)
+        let backup = BackupToWebDAVUseCase(
+            bookRepository: bookRepo,
+            sourceRepository: sourceRepo,
+            webDAVClient: client,
+            replaceRuleStore: ReplaceRuleStore(storageUrl: tempDir.appendingPathComponent("r.json")),
+            txtTocRuleStore: TxtTocRuleStore(storageUrl: tempDir.appendingPathComponent("t.json")),
+            readRecordStore: ReadRecordStore(storageUrl: tempDir.appendingPathComponent("rec.json")),
+            readerConfigExporter: { nil })
+
+        let config = WebDAVConfig(serverUrl: "https://\(host)/dav/", syncOptions: .defaultSelection)
+        let existingProgress = WebDAVProgressBundle(
+            updatedAt: Date(),
+            items: [
+                WebDAVBookProgress(
+                    bookUrl: "local://existing-book-x",
+                    name: "诡秘之主",
+                    author: "爱潜水的乌贼",
+                    durChapterIndex: 8,
+                    durChapterPos: 500,
+                    durChapterTitle: "第九章",
+                    durChapterTime: 4000),
+            ])
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let seededData = try encoder.encode(existingProgress)
+        try await client.upload(data: seededData, filename: "reading_progress.json", config: config)
+
+        let service = WebDAVRealtimeSyncService(
+            bookRepository: bookRepo,
+            backupUseCase: backup,
+            webDAVClient: client,
+            configProvider: { config })
+
+        drive.setSimulatedGetStatusCode(500)
+        drive.resetRecordedCalls()
+
+        let bookY = Book(
+            bookUrl: "local://book-y",
+            origin: "local",
+            name: "道诡异仙",
+            author: "狐尾的笔",
+            durChapterTitle: "第二十章",
+            durChapterIndex: 19,
+            durChapterPos: 300,
+            durChapterTime: 8000)
+        service.scheduleProgressPush(book: bookY, debounceSeconds: 0.01)
+
+        for _ in 0 ..< 50 {
+            if service.status.lastErrorMessage != nil {
+                break
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+
+        #expect(service.status.lastErrorMessage != nil)
+        #expect(!drive.recordedCallsSnapshot().contains { $0.hasPrefix("PUT:") })
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let untouched = try decoder.decode(
+            WebDAVProgressBundle.self,
+            from: drive.getData(endingWith: "reading_progress.json")!)
+        #expect(untouched.items.count == 1)
+        #expect(untouched.items.first?.name == "诡秘之主")
+
+        drive.setSimulatedGetStatusCode(nil)
+        service.flushPendingProgressPush()
+        for _ in 0 ..< 50 {
+            if service.status.lastErrorMessage == nil,
+               drive.recordedCallsSnapshot().contains(where: { $0.hasPrefix("PUT:") }) {
+                break
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+
+        #expect(service.status.lastErrorMessage == nil)
+        let merged = try decoder.decode(
+            WebDAVProgressBundle.self,
+            from: drive.getData(endingWith: "reading_progress.json")!)
+        #expect(merged.items.count == 2)
+        #expect(merged.items.contains { $0.name == "诡秘之主" && $0.durChapterIndex == 8 })
+        #expect(merged.items.contains { $0.name == "道诡异仙" && $0.durChapterIndex == 19 })
+    }
+
+    @Test("Partial backup throws on remote HTTP 503 instead of wiping existing remote bundle")
+    func backupUseCaseAbortsPartialOverwriteWhenRemoteIndexFails() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WebDAVPartialGuard_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let drive = MockWebDAVVirtualDrive()
+        let host = "mock-partial-\(UUID().uuidString.lowercased()).local"
+        MockWebDAVURLProtocol.register(host: host) { request in
+            try drive.handle(request)
+        }
+        defer { MockWebDAVURLProtocol.unregister(host: host) }
+
+        let client = WebDAVClient(urlSession: MockWebDAVURLProtocol.makeSession())
+        let provider = ModelContainerProvider(inMemory: true)
+        let bookRepo = BookRepositoryImpl(modelContainer: provider.container)
+        let sourceRepo = BookSourceRepositoryImpl(modelContainer: provider.container)
+        let backupUseCase = BackupToWebDAVUseCase(
+            bookRepository: bookRepo,
+            sourceRepository: sourceRepo,
+            webDAVClient: client,
+            replaceRuleStore: ReplaceRuleStore(storageUrl: tempDir.appendingPathComponent("r.json")),
+            txtTocRuleStore: TxtTocRuleStore(storageUrl: tempDir.appendingPathComponent("t.json")),
+            readRecordStore: ReadRecordStore(storageUrl: tempDir.appendingPathComponent("rec.json")),
+            readerConfigExporter: { nil })
+
+        let config = WebDAVConfig(serverUrl: "https://\(host)/dav/", syncOptions: .defaultSelection)
+        let existingBundle = WebDAVBackupBundle(
+            version: 2,
+            backupTime: Date(),
+            appVersion: "1.2.0",
+            books: [Book(bookUrl: "local://keep-me", origin: "local", name: "保留书籍", author: "作者")])
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try await client.upload(
+            data: try encoder.encode(existingBundle),
+            filename: "legado_backup.json",
+            config: config)
+
+        drive.setSimulatedGetStatusCode(503)
+        drive.resetRecordedCalls()
+
+        let rulesOnly = WebDAVSyncOptions(syncProgress: false, syncRules: true, syncBookFiles: false)
+        var didThrow = false
+        do {
+            _ = try await backupUseCase.execute(config: config, options: rulesOnly)
+        } catch {
+            didThrow = true
+        }
+
+        #expect(didThrow)
+        #expect(!drive.recordedCallsSnapshot().contains { $0.hasPrefix("PUT:") })
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let intact = try decoder.decode(
+            WebDAVBackupBundle.self,
+            from: drive.getData(endingWith: "legado_backup.json")!)
+        #expect(intact.books.count == 1)
+        #expect(intact.books.first?.name == "保留书籍")
+    }
+
+    @Test("Realtime rules sync pushes rules_sync.json, pulls on second device, and ignores older timestamps")
+    @MainActor
+    func webDAVRealtimeRulesSyncRoundTripAndTimestampGuard() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WebDAVRulesRT_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let suiteA = "legado_rt_rules_a_\(UUID().uuidString)"
+        let suiteB = "legado_rt_rules_b_\(UUID().uuidString)"
+        let defaultsA = UserDefaults(suiteName: suiteA)!
+        let defaultsB = UserDefaults(suiteName: suiteB)!
+        defer {
+            defaultsA.removePersistentDomain(forName: suiteA)
+            defaultsB.removePersistentDomain(forName: suiteB)
+        }
+
+        let drive = MockWebDAVVirtualDrive()
+        let host = "mock-rules-rt-\(UUID().uuidString.lowercased()).local"
+        MockWebDAVURLProtocol.register(host: host) { request in
+            try drive.handle(request)
+        }
+        defer { MockWebDAVURLProtocol.unregister(host: host) }
+
+        let client = WebDAVClient(urlSession: MockWebDAVURLProtocol.makeSession())
+        let providerA = ModelContainerProvider(inMemory: true)
+        let providerB = ModelContainerProvider(inMemory: true)
+        let replaceA = ReplaceRuleStore(storageUrl: tempDir.appendingPathComponent("rep_a.json"))
+        let replaceB = ReplaceRuleStore(storageUrl: tempDir.appendingPathComponent("rep_b.json"))
+        let tocA = TxtTocRuleStore(storageUrl: tempDir.appendingPathComponent("toc_a.json"))
+        let tocB = TxtTocRuleStore(storageUrl: tempDir.appendingPathComponent("toc_b.json"))
+        let configBoxA = LockedStringBox("{\"fontSize\":24}")
+        let configBoxB = LockedStringBox(nil)
+
+        replaceA.saveRules([ReplaceRule(name: "实时规则A", pattern: "旧水印", replacement: "")])
+        tocA.saveRules([TxtTocRule(name: "实时分章A", rule: "^第\\d+节.*", example: "第1节")])
+
+        let rulesSyncOptions = WebDAVSyncOptions(
+            syncProgress: true,
+            syncRules: true,
+            syncBookFiles: true,
+            autoSyncEnabled: true,
+            realtimeSyncProgress: true,
+            realtimeSyncRules: true)
+        let config = WebDAVConfig(serverUrl: "https://\(host)/dav/", syncOptions: rulesSyncOptions)
+
+        let serviceA = WebDAVRealtimeSyncService(
+            bookRepository: BookRepositoryImpl(modelContainer: providerA.container),
+            backupUseCase: BackupToWebDAVUseCase(
+                bookRepository: BookRepositoryImpl(modelContainer: providerA.container),
+                sourceRepository: BookSourceRepositoryImpl(modelContainer: providerA.container),
+                webDAVClient: client),
+            webDAVClient: client,
+            replaceRuleStore: replaceA,
+            txtTocRuleStore: tocA,
+            readerConfigExporter: { configBoxA.get() },
+            rulesTimestampDefaults: defaultsA,
+            configProvider: { config })
+
+        serviceA.scheduleRulesPush(debounceSeconds: 0.01)
+        for _ in 0 ..< 50 {
+            if drive.getData(endingWith: "rules_sync.json") != nil {
+                break
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        #expect(drive.getData(endingWith: "rules_sync.json") != nil)
+
+        let rulesCallbackFlag = MockWebDAVVirtualDrive()
+        let serviceB = WebDAVRealtimeSyncService(
+            bookRepository: BookRepositoryImpl(modelContainer: providerB.container),
+            backupUseCase: BackupToWebDAVUseCase(
+                bookRepository: BookRepositoryImpl(modelContainer: providerB.container),
+                sourceRepository: BookSourceRepositoryImpl(modelContainer: providerB.container),
+                webDAVClient: client),
+            webDAVClient: client,
+            replaceRuleStore: replaceB,
+            txtTocRuleStore: tocB,
+            readerConfigExporter: { configBoxB.get() },
+            readerConfigImporter: { configBoxB.set($0) },
+            rulesTimestampDefaults: defaultsB,
+            configProvider: { config },
+            onRulesUpdated: { rulesCallbackFlag.markUpdated() })
+
+        let pulled = await serviceB.pullLatestRulesIfNeeded(force: true)
+        #expect(pulled)
+        #expect(rulesCallbackFlag.wasUpdated)
+        #expect(replaceB.loadRules().contains { $0.name == "实时规则A" })
+        #expect(tocB.loadRules().contains { $0.name == "实时分章A" })
+        #expect(configBoxB.get() == "{\"fontSize\":24}")
+
+        // 远端退化为更早时间戳时，不会覆盖设备 B 较新的规则
+        let staleBundle = WebDAVRulesBundle(
+            updatedAt: Date().addingTimeInterval(-3600),
+            replaceRules: [ReplaceRule(name: "过期旧规则", pattern: "old", replacement: "")],
+            txtTocRules: [],
+            readerConfigJson: "{\"fontSize\":12}")
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try await client.upload(
+            data: try encoder.encode(staleBundle),
+            filename: "rules_sync.json",
+            config: config)
+
+        let appliedStale = await serviceB.pullLatestRulesIfNeeded(force: true)
+        #expect(!appliedStale)
+        #expect(configBoxB.get() == "{\"fontSize\":24}")
+        #expect(!replaceB.loadRules().contains { $0.name == "过期旧规则" })
+    }
+
+    @Test("WebDAVClient skips redundant MKCOL unless 409, and serialized flush preserves latest progress")
+    @MainActor
+    func webDAVSkipMkcolAndSerializedFlushWithBackgroundTask() async throws {
+        let drive = MockWebDAVVirtualDrive()
+        let host = "mock-mkcol-opt-\(UUID().uuidString.lowercased()).local"
+        MockWebDAVURLProtocol.register(host: host) { request in
+            try drive.handle(request)
+        }
+        defer { MockWebDAVURLProtocol.unregister(host: host) }
+
+        let client = WebDAVClient(urlSession: MockWebDAVURLProtocol.makeSession())
+        let config = WebDAVConfig(serverUrl: "https://\(host)/dav/", remoteDirectory: "/Legado/")
+
+        // 目录尚未创建时，ensureDirectory: false 遇 409 自动 MKCOL 并重试 PUT
+        drive.setRequireMkcolOnce(true)
+        drive.resetRecordedCalls()
+        try await client.upload(
+            data: Data("{\"v\":1}".utf8),
+            filename: "probe.json",
+            config: config,
+            ensureDirectory: false)
+        let firstCalls = drive.recordedCallsSnapshot()
+        #expect(firstCalls.contains("MKCOL:/dav/Legado"))
+        #expect(firstCalls.filter { $0.hasPrefix("PUT:") }.count == 2)
+
+        // 目录已存在时，ensureDirectory: false 直接 PUT，不发 MKCOL
+        drive.resetRecordedCalls()
+        try await client.upload(
+            data: Data("{\"v\":2}".utf8),
+            filename: "probe.json",
+            config: config,
+            ensureDirectory: false)
+        let steadyCalls = drive.recordedCallsSnapshot()
+        #expect(!steadyCalls.contains { $0.hasPrefix("MKCOL:") })
+        #expect(steadyCalls == ["PUT:/dav/Legado/probe.json"])
+
+        // 连续入队并立即冲洗时，调用后台任务保活成对释放，并持久化最后一次进度
+        let provider = ModelContainerProvider(inMemory: true)
+        let bookRepo = BookRepositoryImpl(modelContainer: provider.container)
+        let sourceRepo = BookSourceRepositoryImpl(modelContainer: provider.container)
+        let backup = BackupToWebDAVUseCase(
+            bookRepository: bookRepo,
+            sourceRepository: sourceRepo,
+            webDAVClient: client)
+
+        let bgStats = MockWebDAVRecorder()
+        let service = WebDAVRealtimeSyncService(
+            bookRepository: bookRepo,
+            backupUseCase: backup,
+            webDAVClient: client,
+            configProvider: { config },
+            backgroundTaskProvider: { _ in
+                bgStats.append(method: "BEGIN", path: "bg")
+                return {
+                    bgStats.append(method: "END", path: "bg")
+                }
+            })
+
+        let b1 = Book(
+            bookUrl: "local://seq-1",
+            origin: "local",
+            name: "凡人修仙传",
+            author: "忘语",
+            durChapterTitle: "第10章",
+            durChapterIndex: 9,
+            durChapterPos: 100,
+            durChapterTime: 1000)
+        var b2 = b1
+        b2.durChapterIndex = 30
+        b2.durChapterPos = 450
+        b2.durChapterTitle = "第31章"
+        b2.durChapterTime = 9000
+
+        service.scheduleProgressPush(book: b1, debounceSeconds: 5.0)
+        service.scheduleProgressPush(book: b2, debounceSeconds: 5.0)
+        service.flushPendingProgressPush()
+
+        for _ in 0 ..< 50 {
+            let calls = bgStats.snapshotCalls()
+            if calls.contains("END:bg") {
+                break
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+
+        let bgEvents = bgStats.snapshotCalls()
+        #expect(bgEvents.filter { $0 == "BEGIN:bg" }.count == 1)
+        #expect(bgEvents.filter { $0 == "END:bg" }.count == 1)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let synced = try decoder.decode(
+            WebDAVProgressBundle.self,
+            from: drive.getData(endingWith: "reading_progress.json")!)
+        #expect(synced.items.first?.durChapterIndex == 30)
+        #expect(synced.items.first?.durChapterPos == 450)
+    }
+
+    @Test("WebDAVConfigStore filters incomplete hosts and unauthenticated template defaults")
+    func webDAVConfigStoreEffectiveConfigurationFilter() {
+        #expect(!WebDAVConfigStore.isEffectivelyConfigured(WebDAVConfig()))
+        #expect(!WebDAVConfigStore.isEffectivelyConfigured(WebDAVConfig(serverUrl: "http://nas")))
+        #expect(!WebDAVConfigStore.isEffectivelyConfigured(WebDAVConfig(serverUrl: "http://192")))
+        #expect(!WebDAVConfigStore.isEffectivelyConfigured(
+            WebDAVConfig(serverUrl: WebDAVConfigStore.defaultTemplateServerUrl)))
+        #expect(WebDAVConfigStore.isEffectivelyConfigured(
+            WebDAVConfig(
+                serverUrl: WebDAVConfigStore.defaultTemplateServerUrl,
+                username: "user@example.com",
+                password: "app-password")))
+        #expect(WebDAVConfigStore.isEffectivelyConfigured(
+            WebDAVConfig(serverUrl: "http://192.168.1.5:5244/dav/")))
+        #expect(WebDAVConfigStore.isEffectivelyConfigured(
+            WebDAVConfig(serverUrl: "http://nas.local:8080/dav")))
+    }
+}
+
+private final class LockedStringBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: String?
+
+    init(_ initial: String?) {
+        self.value = initial
+    }
+
+    func get() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func set(_ newValue: String?) {
+        lock.lock()
+        value = newValue
+        lock.unlock()
+    }
 }
 
 private final class MockWebDAVVirtualDrive: @unchecked Sendable {
@@ -1239,6 +1654,10 @@ private final class MockWebDAVVirtualDrive: @unchecked Sendable {
     private var files: [String: Data] = [:]
     private var requestCount = 0
     private var updatedFlag = false
+    private var simulatedGetStatusCode: Int?
+    private var requireMkcolOnce = false
+    private var mkcolCompleted = false
+    private var recordedCalls: [String] = []
 
     var totalRequestCount: Int {
         lock.lock()
@@ -1258,6 +1677,31 @@ private final class MockWebDAVVirtualDrive: @unchecked Sendable {
         lock.unlock()
     }
 
+    func setSimulatedGetStatusCode(_ code: Int?) {
+        lock.lock()
+        simulatedGetStatusCode = code
+        lock.unlock()
+    }
+
+    func setRequireMkcolOnce(_ required: Bool) {
+        lock.lock()
+        requireMkcolOnce = required
+        mkcolCompleted = false
+        lock.unlock()
+    }
+
+    func resetRecordedCalls() {
+        lock.lock()
+        recordedCalls.removeAll()
+        lock.unlock()
+    }
+
+    func recordedCallsSnapshot() -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedCalls
+    }
+
     func getData(endingWith suffix: String) -> Data? {
         lock.lock()
         defer { lock.unlock() }
@@ -1265,12 +1709,18 @@ private final class MockWebDAVVirtualDrive: @unchecked Sendable {
     }
 
     func handle(_ request: URLRequest) throws -> (HTTPURLResponse, Data) {
-        lock.lock()
-        requestCount += 1
-        lock.unlock()
         let method = request.httpMethod ?? "GET"
         let url = request.url!
         let path = url.path
+        lock.lock()
+        requestCount += 1
+        recordedCalls.append("\(method):\(path)")
+        let forcedGetCode = simulatedGetStatusCode
+        let needsMkcol = requireMkcolOnce && !mkcolCompleted
+        if method == "MKCOL" {
+            mkcolCompleted = true
+        }
+        lock.unlock()
 
         switch method {
         case "MKCOL", "PROPFIND", "OPTIONS":
@@ -1279,6 +1729,10 @@ private final class MockWebDAVVirtualDrive: @unchecked Sendable {
             return (resp, Data())
 
         case "PUT":
+            if needsMkcol {
+                let conflict = HTTPURLResponse(url: url, statusCode: 409, httpVersion: nil, headerFields: nil)!
+                return (conflict, Data())
+            }
             let body = MockWebDAVURLProtocol.readBody(from: request)
             lock.lock()
             files[path] = body
@@ -1287,6 +1741,14 @@ private final class MockWebDAVVirtualDrive: @unchecked Sendable {
             return (resp, Data())
 
         case "GET":
+            if let forcedGetCode {
+                let forcedResp = HTTPURLResponse(
+                    url: url,
+                    statusCode: forcedGetCode,
+                    httpVersion: nil,
+                    headerFields: nil)!
+                return (forcedResp, Data())
+            }
             lock.lock()
             let data = files[path]
             lock.unlock()

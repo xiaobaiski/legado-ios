@@ -53,12 +53,13 @@ public struct WebDAVSettingsView: View {
         } header: {
             Text("服务器与账号配置")
         } footer: {
-            Text("支持坚果云、Alist / OpenList、群晖、Nextcloud 等服务；仅在点击下方按钮时发起网络请求。")
+            Text("支持坚果云、Alist / OpenList、群晖、Nextcloud 等服务；未完成配置前不会发起任何后台同步请求。")
         }
     }
 
     private var realtimeSyncSection: some View {
         let options = viewModel.state.webDAVConfig.syncOptions
+        let syncStatus = viewModel.state.realtimeSyncStatus
         return Section {
             Toggle(isOn: syncOptionBinding(\.autoSyncEnabled)) {
                 Label("启用实时同步", systemImage: "bolt.horizontal.icloud")
@@ -72,11 +73,44 @@ public struct WebDAVSettingsView: View {
                 Toggle(isOn: syncOptionBinding(\.realtimeSyncRules)) {
                     Label("实时同步规则与排版", systemImage: "slider.horizontal.3")
                 }
+
+                realtimeSyncStatusRow(syncStatus)
             }
         } header: {
             Text("实时自动同步")
         } footer: {
-            Text("开启且配置好 WebDAV 服务器后，翻页/退出阅读将自动防抖上传当前阅读进度，打开书籍或切回前台时自动拉取最新进度。")
+            Text("开启且完成 WebDAV 配置后，翻页或退出阅读将防抖上传进度，开启规则同步时修改排版或净化/目录规则也会自动双向同步。")
+        }
+    }
+
+    @ViewBuilder
+    private func realtimeSyncStatusRow(_ syncStatus: WebDAVRealtimeSyncStatus) -> some View {
+        if syncStatus.isSyncing {
+            HStack(spacing: 8) {
+                ProgressView().scaleEffect(0.75)
+                Text("正在同步云端状态...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } else if let err = syncStatus.lastErrorMessage, !err.isEmpty {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                Text("最近实时同步异常：\(err)")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else if let summary = syncStatus.lastSyncSummary, let syncAt = syncStatus.lastSyncAt {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.icloud")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+                Text("\(summary)（\(syncAt.formatted(date: .omitted, time: .shortened))）")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

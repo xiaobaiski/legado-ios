@@ -160,7 +160,7 @@ private extension ReaderSettingsSheet {
             }
 
             NavigationLink {
-                TxtTocRuleManageView()
+                TxtTocRuleManageView(onRulesChanged: onRulesChanged)
             } label: {
                 Label("TXT 目录分章规则 (txtTocRule)", systemImage: "list.bullet.indent")
             }

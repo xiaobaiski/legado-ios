@@ -8,6 +8,7 @@ public final class ReplaceRuleManageViewModel: ObservableObject {
     @Published public var toastMessage: String?
 
     private let store: ReplaceRuleStore
+    public var onRulesMutated: (@MainActor () -> Void)?
 
     public init(store: ReplaceRuleStore = .shared) {
         self.store = store
@@ -20,6 +21,7 @@ public final class ReplaceRuleManageViewModel: ObservableObject {
 
     public func toggleEnabled(id: String) {
         rules = store.toggleEnabled(id: id)
+        onRulesMutated?()
     }
 
     public func save(_ rule: ReplaceRule) {
@@ -28,16 +30,19 @@ public final class ReplaceRuleManageViewModel: ObservableObject {
             return
         }
         rules = store.upsert(rule)
+        onRulesMutated?()
         showToast("已保存规则「\(rule.name.isEmpty ? "未命名规则" : rule.name)」")
     }
 
     public func delete(id: String) {
         rules = store.delete(id: id)
+        onRulesMutated?()
         showToast("已删除替换规则")
     }
 
     public func resetDefaults() {
         rules = store.resetToDefaults()
+        onRulesMutated?()
         showToast("已恢复内置净化规则")
     }
 
@@ -87,6 +92,9 @@ public final class ReplaceRuleManageViewModel: ObservableObject {
         do {
             let count = try store.importLegadoJSON(data)
             rules = store.loadRules()
+            if count > 0 {
+                onRulesMutated?()
+            }
             showToast(count > 0 ? "成功导入 \(count) 条替换净化规则" : "未发现有效替换规则")
         } catch {
             showToast(error.localizedDescription)
@@ -111,6 +119,7 @@ public final class TxtTocRuleManageViewModel: ObservableObject {
     @Published public var toastMessage: String?
 
     private let store: TxtTocRuleStore
+    public var onRulesMutated: (@MainActor () -> Void)?
 
     public init(store: TxtTocRuleStore = .shared) {
         self.store = store
@@ -123,6 +132,7 @@ public final class TxtTocRuleManageViewModel: ObservableObject {
 
     public func toggleEnabled(id: Int64) {
         rules = store.toggleEnabled(id: id)
+        onRulesMutated?()
     }
 
     public func save(_ rule: TxtTocRule) {
@@ -131,16 +141,19 @@ public final class TxtTocRuleManageViewModel: ObservableObject {
             return
         }
         rules = store.upsert(rule)
+        onRulesMutated?()
         showToast("已保存目录规则「\(rule.name.isEmpty ? "自定义规则" : rule.name)」")
     }
 
     public func delete(id: Int64) {
         rules = store.delete(id: id)
+        onRulesMutated?()
         showToast("已删除目录规则")
     }
 
     public func resetDefaults() {
         rules = store.resetToDefaults()
+        onRulesMutated?()
         showToast("已恢复 Legado 官方默认目录规则")
     }
 
@@ -190,6 +203,9 @@ public final class TxtTocRuleManageViewModel: ObservableObject {
         do {
             let count = try store.importLegadoJSON(data)
             rules = store.loadRules()
+            if count > 0 {
+                onRulesMutated?()
+            }
             showToast(count > 0 ? "成功导入 \(count) 条目录规则" : "未发现有效目录规则")
         } catch {
             showToast(error.localizedDescription)

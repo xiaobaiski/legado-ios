@@ -78,7 +78,8 @@ public final class BackupToWebDAVUseCase: @unchecked Sendable {
             throw WebDAVError.serverError(statusCode: 400, message: "请至少选择一项需要备份的内容")
         }
 
-        let remoteBundle = options == .all ? nil : await fetchExistingRemoteBundle(config: config)
+        let isFullBackup = options.syncProgress && options.syncRules && options.syncBookFiles
+        let remoteBundle = isFullBackup ? nil : try await fetchExistingRemoteBundle(config: config)
         let localBooks = try await bookRepository.getBookshelf()
         let uploadedFiles = options.syncBookFiles
             ? try await uploadBookArchives(books: localBooks, config: config)
@@ -99,6 +100,9 @@ public final class BackupToWebDAVUseCase: @unchecked Sendable {
         if options.syncProgress {
             try await uploadProgressSnapshot(books: localBooks, config: config)
         }
+        if options.syncRules {
+            try await uploadRulesSnapshot(bundle: bundle, config: config)
+        }
 
         return makeSummary(
             bundle: bundle,
@@ -117,23 +121,33 @@ private extension BackupToWebDAVUseCase {
         return try await bookmarkRepository.getAllBookmarks()
     }
 
-    func fetchExistingRemoteBundle(config: WebDAVConfig) async -> WebDAVBackupBundle? {
-        guard let data = try? await webDAVClient.download(filename: "legado_backup.json", config: config) else {
+    func fetchExistingRemoteBundle(config: WebDAVConfig) async throws -> WebDAVBackupBundle? {
+        let data: Data
+        do {
+            data = try await webDAVClient.download(filename: "legado_backup.json", config: config)
+        } catch WebDAVError.notFound {
             return nil
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(WebDAVBackupBundle.self, from: data)
+        guard let decoded = try? decoder.decode(WebDAVBackupBundle.self, from: data) else {
+            throw WebDAVError.serverError(statusCode: 500, message: "云端备份索引解析失败，已中止覆盖写入")
+        }
+        return decoded
     }
 
     func uploadProgressSnapshot(books: [Book], config: WebDAVConfig) async throws {
         var remoteItems: [WebDAVBookProgress] = []
-        if let remoteData = try? await webDAVClient.download(filename: "reading_progress.json", config: config) {
+        do {
+            let remoteData = try await webDAVClient.download(filename: "reading_progress.json", config: config)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            if let existing = try? decoder.decode(WebDAVProgressBundle.self, from: remoteData) {
-                remoteItems = existing.items
+            guard let existing = try? decoder.decode(WebDAVProgressBundle.self, from: remoteData) else {
+                throw WebDAVError.serverError(statusCode: 500, message: "云端进度文件解析失败，已中止覆盖写入")
             }
+            remoteItems = existing.items
+        } catch WebDAVError.notFound {
+            remoteItems = []
         }
         let localItems = books.map(WebDAVBookProgress.init(from:))
         let merged = WebDAVSyncHelper.mergeProgressBundles(localItems: localItems, remoteItems: remoteItems)
@@ -142,7 +156,28 @@ private extension BackupToWebDAVUseCase {
         encoder.outputFormatting = [.sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(bundle)
-        try await webDAVClient.upload(data: data, filename: "reading_progress.json", config: config)
+        try await webDAVClient.upload(
+            data: data,
+            filename: "reading_progress.json",
+            config: config,
+            ensureDirectory: false)
+    }
+
+    func uploadRulesSnapshot(bundle: WebDAVBackupBundle, config: WebDAVConfig) async throws {
+        let rulesBundle = WebDAVRulesBundle(
+            updatedAt: bundle.backupTime,
+            replaceRules: bundle.replaceRules,
+            txtTocRules: bundle.txtTocRules ?? [],
+            readerConfigJson: bundle.readerConfigJson)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(rulesBundle)
+        try await webDAVClient.upload(
+            data: data,
+            filename: "rules_sync.json",
+            config: config,
+            ensureDirectory: false)
     }
 
     func buildMergedBundle(

@@ -290,13 +290,18 @@ public final class WebDAVClient: Sendable {
     // MARK: - 文件上传 (PUT) 与下载 (GET)
 
     /// 上传备份数据包至远程 WebDAV 路径
-    public func upload(data: Data, filename: String, config: WebDAVConfig) async throws {
+    public func upload(
+        data: Data,
+        filename: String,
+        config: WebDAVConfig,
+        ensureDirectory: Bool = true) async throws {
         try await upload(
             data: data,
             subdirectories: [],
             filename: filename,
             contentType: "application/json; charset=utf-8",
-            config: config)
+            config: config,
+            ensureDirectory: ensureDirectory)
     }
 
     /// 从远程 WebDAV 服务器下载指定文件

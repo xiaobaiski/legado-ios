@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import SwiftData
+import UIKit
 
 /// 全局依赖注入环境容器
 @MainActor
@@ -48,6 +49,7 @@ public final class AppEnvironment: ObservableObject {
     public let importLocalBookUseCase: ImportLocalBookUseCase
     public let externalFileImportSubject = PassthroughSubject<Void, Never>()
     public let bookshelfRefreshSubject = PassthroughSubject<Void, Never>()
+    public let rulesRefreshSubject = PassthroughSubject<Void, Never>()
     private var pendingExternalImportURLs: [URL] = []
 
     public init(inMemory: Bool = false) {
@@ -99,7 +101,8 @@ public final class AppEnvironment: ObservableObject {
             bookmarkRepository: bookmarkRepo, bookCacheRepository: cacheRepo)
         self.webDAVRealtimeSyncService = WebDAVRealtimeSyncService(
             bookRepository: bookRepo, backupUseCase: self.backupToWebDAVUseCase,
-            configProvider: { inMemory ? nil : WebDAVConfigStore.loadSavedIfConfigured() })
+            configProvider: { inMemory ? nil : WebDAVConfigStore.loadSavedIfConfigured() },
+            backgroundTaskProvider: inMemory ? nil : Self.makeBackgroundTaskStarter())
         self.changeBookSourceUseCase = ChangeBookSourceUseCase(sourceRepository: sourceRepo, bookRepository: bookRepo)
         self.searchBookContentUseCase = SearchBookContentUseCase()
         self.getBookmarksUseCase = GetBookmarksUseCase(bookmarkRepository: bookmarkRepo)
@@ -117,6 +120,9 @@ public final class AppEnvironment: ObservableObject {
     private func configurePostInit(inMemory: Bool) {
         self.webDAVRealtimeSyncService.onBookshelfUpdated = { [weak self] in
             self?.notifyBookshelfNeedsRefresh()
+        }
+        self.webDAVRealtimeSyncService.onRulesUpdated = { [weak self] in
+            self?.notifyRulesNeedsRefresh()
         }
         if !inMemory {
             LocalFontManager.shared.registerAllStoredFonts()
@@ -227,6 +233,7 @@ public final class AppEnvironment: ObservableObject {
             restoreUseCase: restoreFromWebDAVUseCase,
             manageBookCacheUseCase: manageBookCacheUseCase,
             realtimeSyncService: webDAVRealtimeSyncService,
+            rulesRefreshPublisher: rulesRefreshSubject.eraseToAnyPublisher(),
             onBookshelfUpdated: { [weak self] in
                 self?.notifyBookshelfNeedsRefresh()
             })
@@ -235,6 +242,26 @@ public final class AppEnvironment: ObservableObject {
     /// 通知书架重新从数据库加载最新阅读进度与书单
     public func notifyBookshelfNeedsRefresh() {
         bookshelfRefreshSubject.send(())
+    }
+
+    /// 通知阅读器与设置页重新加载云端最新同步的规则与排版配置
+    public func notifyRulesNeedsRefresh() {
+        rulesRefreshSubject.send(())
+    }
+
+    private static func makeBackgroundTaskStarter() -> RealtimeBackgroundTaskStarter {
+        { onExpire in
+            let state = RealtimeBackgroundTaskHolder()
+            state.taskId = UIApplication.shared.beginBackgroundTask(withName: "LegadoWebDAVRealtimeSync") {
+                Task { @MainActor in
+                    onExpire()
+                    state.end()
+                }
+            }
+            return {
+                state.end()
+            }
+        }
     }
 
     /// 创建换源 ViewModel
@@ -271,5 +298,19 @@ public final class AppEnvironment: ObservableObject {
         let urls = pendingExternalImportURLs
         pendingExternalImportURLs.removeAll()
         return urls
+    }
+}
+
+@MainActor
+private final class RealtimeBackgroundTaskHolder {
+    var taskId: UIBackgroundTaskIdentifier = .invalid
+    private var ended = false
+
+    func end() {
+        guard !ended, taskId != .invalid else { return }
+        ended = true
+        let current = taskId
+        taskId = .invalid
+        UIApplication.shared.endBackgroundTask(current)
     }
 }

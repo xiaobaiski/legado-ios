@@ -129,7 +129,7 @@ private extension SettingsView {
                 HStack {
                     Label("WebDAV 云备份同步", systemImage: "icloud")
                     Spacer()
-                    Text(viewModel.state.webDAVConfig.isValid ? "已配置" : "未配置")
+                    Text(WebDAVConfigStore.isEffectivelyConfigured(viewModel.state.webDAVConfig) ? "已配置" : "未配置")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -150,7 +150,7 @@ private extension SettingsView {
         } header: {
             Label("云同步与存储", systemImage: "icloud.and.arrow.up")
         } footer: {
-            Text("仅在主动备份、还原或测试连接时访问网络；本地导入的 TXT / EPUB 电子书独立保存，清理缓存不会删除本地书籍。")
+            Text("仅在配置有效 WebDAV 服务器后支持手动或可选实时同步；本地导入的 TXT / EPUB 电子书独立保存，清理缓存不会删除本地书籍。")
         }
     }
 

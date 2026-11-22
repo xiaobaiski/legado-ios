@@ -7,6 +7,7 @@ public struct SettingsState: ViewState, Equatable, Sendable {
     public var isBackingUp: Bool
     public var isRestoring: Bool
     public var lastBackupSummary: WebDAVBackupSummary?
+    public var realtimeSyncStatus: WebDAVRealtimeSyncStatus
     public var speechRate: Float
     public var speechPitch: Float
     public var cacheSizeBytes: Int64
@@ -21,6 +22,7 @@ public struct SettingsState: ViewState, Equatable, Sendable {
         isBackingUp: Bool = false,
         isRestoring: Bool = false,
         lastBackupSummary: WebDAVBackupSummary? = nil,
+        realtimeSyncStatus: WebDAVRealtimeSyncStatus = WebDAVRealtimeSyncStatus(),
         speechRate: Float = 1.0,
         speechPitch: Float = 1.0,
         cacheSizeBytes: Int64 = 0,
@@ -33,6 +35,7 @@ public struct SettingsState: ViewState, Equatable, Sendable {
         self.isBackingUp = isBackingUp
         self.isRestoring = isRestoring
         self.lastBackupSummary = lastBackupSummary
+        self.realtimeSyncStatus = realtimeSyncStatus
         self.speechRate = speechRate
         self.speechPitch = speechPitch
         self.cacheSizeBytes = cacheSizeBytes

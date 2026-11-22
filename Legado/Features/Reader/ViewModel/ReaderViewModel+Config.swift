@@ -182,4 +182,21 @@ extension ReaderViewModel {
             updateState { $0.isAutoPaging = false }
         }
     }
+
+    func handleAppDidBecomeActive() {
+        startRealtimeProgressPull(for: state.book)
+    }
+
+    func notifyRulesChanged() {
+        realtimeSyncService?.scheduleRulesPush()
+        repaginateCurrentChapter()
+    }
+
+    func reloadExternalReaderConfig() {
+        let latest = ReaderConfigStore.load()
+        if latest != state.config {
+            updateState { $0.config = latest }
+        }
+        repaginateCurrentChapter()
+    }
 }

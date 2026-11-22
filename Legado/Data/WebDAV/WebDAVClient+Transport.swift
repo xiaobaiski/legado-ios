@@ -28,22 +28,48 @@ extension WebDAVClient {
         }
     }
 
-    /// 上传数据至指定子目录下的远程文件
+    /// 上传数据至指定子目录下的远程文件（稳态实时同步可设 ensureDirectory = false，仅遇 404/409 时补建目录）
     public func upload(
         data: Data,
         subdirectories: [String],
         filename: String,
         contentType: String = "application/octet-stream",
-        config: WebDAVConfig) async throws {
+        config: WebDAVConfig,
+        ensureDirectory: Bool = true) async throws {
         guard config.isValid else { throw WebDAVError.invalidConfig }
         let cleanSubdirs = subdirectories.filter { !$0.isEmpty }
-        try await createDirectoryIfNeeded(subdirectories: cleanSubdirs, config: config)
+        if ensureDirectory {
+            try await createDirectoryIfNeeded(subdirectories: cleanSubdirs, config: config)
+        }
 
         let segments = Self.remotePathSegments(from: config.remoteDirectory) + cleanSubdirs + [filename]
         guard let targetUrl = Self.buildUrl(base: config.serverUrl, pathSegments: segments, isDirectory: false) else {
             throw WebDAVError.badUrl
         }
 
+        let code = try await performPutUpload(
+            data: data,
+            targetUrl: targetUrl,
+            contentType: contentType,
+            config: config)
+        if !ensureDirectory, code == 404 || code == 409 {
+            try await createDirectoryIfNeeded(subdirectories: cleanSubdirs, config: config)
+            let retryCode = try await performPutUpload(
+                data: data,
+                targetUrl: targetUrl,
+                contentType: contentType,
+                config: config)
+            try mapUploadStatusCode(retryCode)
+            return
+        }
+        try mapUploadStatusCode(code)
+    }
+
+    private func performPutUpload(
+        data: Data,
+        targetUrl: URL,
+        contentType: String,
+        config: WebDAVConfig) async throws -> Int {
         let request = makeRequest(
             url: targetUrl,
             method: "PUT",
@@ -51,8 +77,11 @@ extension WebDAVClient {
             headers: ["Content-Type": contentType],
             body: data)
         let (_, httpResponse) = try await performRequest(request, config: config)
+        return httpResponse.statusCode
+    }
 
-        switch httpResponse.statusCode {
+    private func mapUploadStatusCode(_ statusCode: Int) throws {
+        switch statusCode {
         case 200 ... 204, 207:
             return
 
@@ -63,7 +92,7 @@ extension WebDAVClient {
             throw WebDAVError.forbidden
 
         default:
-            throw WebDAVError.serverError(statusCode: httpResponse.statusCode, message: "文件上传失败")
+            throw WebDAVError.serverError(statusCode: statusCode, message: "文件上传失败")
         }
     }
 

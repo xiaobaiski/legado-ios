@@ -107,10 +107,14 @@ public struct ReaderView: View {
                     if readingSessionStart == nil {
                         readingSessionStart = Date()
                     }
+                    viewModel.handleAppDidBecomeActive()
                 } else {
                     flushReadingSession()
                     viewModel.flushRealtimeProgressSync()
                 }
+            }
+            .onReceive(environment.rulesRefreshSubject) { _ in
+                viewModel.reloadExternalReaderConfig()
             }
             .onChange(of: viewModel.state.currentPageIndex) { _, _ in
                 scheduleScreenKeepOnTimer()
@@ -151,7 +155,7 @@ public struct ReaderView: View {
                     },
                     onToggleAutoPage: { viewModel.send(.toggleAutoPage) },
                     onSetAutoPageInterval: { viewModel.send(.setAutoPageInterval($0)) },
-                    onRulesChanged: { viewModel.send(.repaginate) },
+                    onRulesChanged: { viewModel.notifyRulesChanged() },
                     onResetConfig: { viewModel.send(.resetConfig) })
         }
         .sheet(isPresented: $isFontChooserPresented) {
@@ -208,7 +212,7 @@ public struct ReaderView: View {
                         note: note))
                 },
                 onQuickPurifyRuleSaved: {
-                    viewModel.send(.repaginate)
+                    viewModel.notifyRulesChanged()
                 })
                 .preferredColorScheme(readerColorScheme)
         }

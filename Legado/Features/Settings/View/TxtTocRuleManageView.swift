@@ -8,7 +8,11 @@ public struct TxtTocRuleManageView: View {
     @State private var isShowingJsonPicker = false
     @State private var isShowingResetAlert = false
 
-    public init() {}
+    private let onRulesChanged: () -> Void
+
+    public init(onRulesChanged: @escaping () -> Void = {}) {
+        self.onRulesChanged = onRulesChanged
+    }
 
     public var body: some View {
         List {
@@ -19,6 +23,9 @@ public struct TxtTocRuleManageView: View {
             } footer: {
                 Text("导入本地 TXT 书籍时，引擎会自动从已启用的规则中评分选出匹配率最高的目录规则，完全兼容 Legado Android `txtTocRule.json`。")
             }
+        }
+        .onAppear {
+            viewModel.onRulesMutated = onRulesChanged
         }
         .navigationTitle("TXT 目录分章规则")
         .navigationBarTitleDisplayMode(.inline)

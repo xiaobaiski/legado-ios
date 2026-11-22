@@ -21,6 +21,7 @@ public enum SettingsIntent: ViewIntent {
     case importLocalFonts([URL])
     case selectLocalFont(ImportedFont)
     case deleteLocalFont(ImportedFont)
+    case notifyRulesChanged
     case clearNotice
 }
 

@@ -226,6 +226,7 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
             guard let self else { return }
             do {
                 _ = await self.realtimeSyncService?.pullLatestProgressIfNeeded(force: true)
+                _ = await self.realtimeSyncService?.pullLatestRulesIfNeeded(force: true)
                 let currentBooks = try await self.getBookshelfUseCase.execute()
                 guard !Task.isCancelled else { return }
                 if currentBooks.allSatisfy({ $0.isLocalFile || $0.origin == "local" }) {

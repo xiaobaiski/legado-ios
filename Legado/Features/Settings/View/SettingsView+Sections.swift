@@ -201,13 +201,13 @@ extension SettingsView {
             Toggle("智能重新分段（修复断行）", isOn: readerBinding(\.reSegment))
 
             NavigationLink {
-                ReplaceRuleManageView()
+                ReplaceRuleManageView(onRulesChanged: { viewModel.send(.notifyRulesChanged) })
             } label: {
                 Label("管理替换净化规则 (兼容 Legado JSON)", systemImage: "wand.and.stars")
             }
 
             NavigationLink {
-                TxtTocRuleManageView()
+                TxtTocRuleManageView(onRulesChanged: { viewModel.send(.notifyRulesChanged) })
             } label: {
                 Label("TXT 目录分章规则 (兼容 txtTocRule.json)", systemImage: "list.bullet.indent")
             }
