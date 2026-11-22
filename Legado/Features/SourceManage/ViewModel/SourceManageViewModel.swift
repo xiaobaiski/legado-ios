@@ -10,8 +10,13 @@ public final class SourceManageViewModel: BaseMVIViewModel<SourceManageState, So
     let debugSourceUseCase: DebugBookSourceUseCase
     let checkHealthUseCase: CheckBookSourceHealthUseCase
 
-    private var debugTask: Task<Void, Never>?
-    var healthCheckTask: Task<Void, Never>?
+    nonisolated(unsafe) private var debugTask: Task<Void, Never>?
+    nonisolated(unsafe) var healthCheckTask: Task<Void, Never>?
+
+    deinit {
+        debugTask?.cancel()
+        healthCheckTask?.cancel()
+    }
 
     public init(
         sourceRepository: BookSourceRepository,

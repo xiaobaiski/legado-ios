@@ -212,7 +212,7 @@ public struct WebDAVBackupBundle: Codable, Sendable {
     public init(
         version: Int = 2,
         backupTime: Date = Date(),
-        appVersion: String = "1.1.2",
+        appVersion: String = "1.2.0",
         books: [Book] = [],
         sources: [BookSource] = [],
         replaceRules: [ReplaceRule] = [],

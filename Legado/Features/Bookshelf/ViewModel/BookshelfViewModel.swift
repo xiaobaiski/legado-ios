@@ -11,7 +11,20 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
     private let saveBookGroupUseCase: SaveBookGroupUseCase?
     private let deleteBookGroupUseCase: DeleteBookGroupUseCase?
     let importLocalBookUseCase: ImportLocalBookUseCase?
+    private let realtimeSyncService: WebDAVRealtimeSyncService?
     private let layoutDefaults: UserDefaults?
+
+    nonisolated(unsafe) var loadTask: Task<Void, Never>?
+    nonisolated(unsafe) var refreshTask: Task<Void, Never>?
+    nonisolated(unsafe) var importTask: Task<Void, Never>?
+    nonisolated(unsafe) var mutationTask: Task<Void, Never>?
+
+    deinit {
+        loadTask?.cancel()
+        refreshTask?.cancel()
+        importTask?.cancel()
+        mutationTask?.cancel()
+    }
 
     public init(
         getBookshelfUseCase: GetBookshelfUseCase,
@@ -22,7 +35,8 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         saveBookGroupUseCase: SaveBookGroupUseCase? = nil,
         deleteBookGroupUseCase: DeleteBookGroupUseCase? = nil,
         importLocalBookUseCase: ImportLocalBookUseCase? = nil,
-        layoutDefaults: UserDefaults? = nil) {
+        layoutDefaults: UserDefaults? = nil,
+        realtimeSyncService: WebDAVRealtimeSyncService? = nil) {
         self.getBookshelfUseCase = getBookshelfUseCase
         self.removeBookFromShelfUseCase = removeBookFromShelfUseCase
         self.checkBookUpdatesUseCase = checkBookUpdatesUseCase
@@ -32,6 +46,7 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         self.deleteBookGroupUseCase = deleteBookGroupUseCase
         self.importLocalBookUseCase = importLocalBookUseCase
         self.layoutDefaults = layoutDefaults
+        self.realtimeSyncService = realtimeSyncService
         let savedSort = UserDefaults.standard.string(forKey: BookshelfSortOrder.storageKey)
             .flatMap(BookshelfSortOrder.init(rawValue:)) ?? .recent
         let savedLayout = layoutDefaults?.string(forKey: BookshelfLayoutMode.storageKey)
@@ -49,6 +64,24 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         case .refresh, .refreshAllBookUpdates:
             refreshUpdates()
 
+        case .updateSearchText, .selectGroup, .toggleLayoutMode, .selectSortOrder,
+             .updateBookMetadata, .importLocalBook, .importLocalBooks:
+            handlePreferenceAndImportIntent(intent)
+
+        case .didSelectBook, .openBookDetail, .removeBook:
+            handleBookActionIntent(intent)
+
+        case .toggleBatchMode, .toggleSelectBook, .selectAll, .deselectAll,
+             .batchRemoveSelected, .batchMoveSelectedToGroup:
+            handleBatchIntent(intent)
+
+        case .addCustomGroup, .deleteCustomGroup, .moveBookToGroup:
+            handleGroupIntent(intent)
+        }
+    }
+
+    private func handlePreferenceAndImportIntent(_ intent: BookshelfIntent) {
+        switch intent {
         case let .updateSearchText(query):
             updateState { $0.searchText = query }
 
@@ -70,21 +103,14 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         case let .updateBookMetadata(bookUrl, name, author):
             performUpdateBookMetadata(bookUrl: bookUrl, name: name, author: author)
 
-        case .didSelectBook, .openBookDetail, .removeBook:
-            handleBookActionIntent(intent)
-
-        case .toggleBatchMode, .toggleSelectBook, .selectAll, .deselectAll,
-             .batchRemoveSelected, .batchMoveSelectedToGroup:
-            handleBatchIntent(intent)
-
-        case .addCustomGroup, .deleteCustomGroup, .moveBookToGroup:
-            handleGroupIntent(intent)
-
         case let .importLocalBook(url):
             handleImportLocalBooks(urls: [url])
 
         case let .importLocalBooks(urls):
             handleImportLocalBooks(urls: urls)
+
+        default:
+            break
         }
     }
 
@@ -163,12 +189,15 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
     }
 
     private func loadData() {
+        loadTask?.cancel()
         updateState { $0.isLoading = true }
 
-        Task {
+        loadTask = Task { [weak self] in
+            guard let self else { return }
             do {
-                let books = try await getBookshelfUseCase.execute()
-                let customGroups = (try? await getBookGroupsUseCase?.execute()) ?? []
+                let books = try await self.getBookshelfUseCase.execute()
+                let customGroups = (try? await self.getBookGroupsUseCase?.execute()) ?? []
+                guard !Task.isCancelled else { return }
                 let defaultGroups = ["全部", "在读", "未读", "完结"]
                 let allGroupNames = defaultGroups + customGroups.map(\.name)
 
@@ -179,6 +208,7 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
                     state.groups = allGroupNames
                 }
             } catch {
+                guard !Task.isCancelled else { return }
                 self.updateState { $0.isLoading = false }
                 self.emitEffect(.showToast("获取书架失败: \(error.localizedDescription)"))
             }
@@ -186,16 +216,20 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
     }
 
     private func refreshUpdates() {
+        refreshTask?.cancel()
         updateState {
             $0.isLoading = true
             $0.isRefreshingUpdates = true
         }
 
-        Task {
+        refreshTask = Task { [weak self] in
+            guard let self else { return }
             do {
-                let currentBooks = try await getBookshelfUseCase.execute()
+                _ = await self.realtimeSyncService?.pullLatestProgressIfNeeded(force: true)
+                let currentBooks = try await self.getBookshelfUseCase.execute()
+                guard !Task.isCancelled else { return }
                 if currentBooks.allSatisfy({ $0.isLocalFile || $0.origin == "local" }) {
-                    let customGroups = (try? await getBookGroupsUseCase?.execute()) ?? []
+                    let customGroups = (try? await self.getBookGroupsUseCase?.execute()) ?? []
                     let defaultGroups = ["全部", "在读", "未读", "完结"]
                     self.updateState { state in
                         state.isLoading = false
@@ -209,8 +243,9 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
                     return
                 }
 
-                let updatedCount = try await checkBookUpdatesUseCase.execute()
-                let books = try await getBookshelfUseCase.execute()
+                let updatedCount = try await self.checkBookUpdatesUseCase.execute()
+                let books = try await self.getBookshelfUseCase.execute()
+                guard !Task.isCancelled else { return }
                 let updatedUrls = Set(books.filter { $0.latestChapterTime > $0.durChapterTime }.map(\.bookUrl))
 
                 self.updateState { state in
@@ -226,6 +261,7 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
                 }
                 self.emitEffect(.hapticFeedback)
             } catch {
+                guard !Task.isCancelled else { return }
                 self.updateState {
                     $0.isLoading = false
                     $0.isRefreshingUpdates = false
@@ -235,10 +271,12 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
     }
 
     private func deleteBook(bookUrl: String) {
-        Task {
+        mutationTask?.cancel()
+        mutationTask = Task { [weak self] in
+            guard let self else { return }
             do {
-                try await removeBookFromShelfUseCase.execute(bookUrl: bookUrl)
-                let books = try await getBookshelfUseCase.execute()
+                try await self.removeBookFromShelfUseCase.execute(bookUrl: bookUrl)
+                let books = try await self.getBookshelfUseCase.execute()
                 self.updateState { $0.books = books }
                 self.emitEffect(.showToast("已从书架移出"))
                 self.emitEffect(.hapticFeedback)
@@ -252,11 +290,13 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         let targets = Array(state.selectedBookUrls)
         guard !targets.isEmpty else { return }
 
-        Task {
+        mutationTask?.cancel()
+        mutationTask = Task { [weak self] in
+            guard let self else { return }
             for bookUrl in targets {
-                try? await removeBookFromShelfUseCase.execute(bookUrl: bookUrl)
+                try? await self.removeBookFromShelfUseCase.execute(bookUrl: bookUrl)
             }
-            let books = (try? await getBookshelfUseCase.execute()) ?? []
+            let books = (try? await self.getBookshelfUseCase.execute()) ?? []
             self.updateState {
                 $0.books = books
                 $0.selectedBookUrls.removeAll()
@@ -271,13 +311,16 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         let targets = state.selectedBookUrls
         guard !targets.isEmpty, let saveBookToShelfUseCase else { return }
 
-        Task {
-            for book in state.books where targets.contains(book.bookUrl) {
+        let snapshot = state.books
+        mutationTask?.cancel()
+        mutationTask = Task { [weak self] in
+            guard let self else { return }
+            for book in snapshot where targets.contains(book.bookUrl) {
                 var updated = book
                 updated.groupName = groupName
                 try? await saveBookToShelfUseCase.execute(updated)
             }
-            let books = (try? await getBookshelfUseCase.execute()) ?? []
+            let books = (try? await self.getBookshelfUseCase.execute()) ?? []
             self.updateState {
                 $0.books = books
                 $0.selectedBookUrls.removeAll()
@@ -293,11 +336,13 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         guard let book = state.books.first(where: { $0.bookUrl == bookUrl }),
               let saveBookToShelfUseCase else { return }
 
-        Task {
+        mutationTask?.cancel()
+        mutationTask = Task { [weak self] in
+            guard let self else { return }
             var updated = book
             updated.groupName = groupName
             try? await saveBookToShelfUseCase.execute(updated)
-            let books = (try? await getBookshelfUseCase.execute()) ?? []
+            let books = (try? await self.getBookshelfUseCase.execute()) ?? []
             self.updateState { $0.books = books }
             let targetTitle = groupName ?? "未分组"
             self.emitEffect(.showToast("已将《\(book.name)》移动至「\(targetTitle)」"))
@@ -306,9 +351,12 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
     }
 
     private func performAddGroup(name: String) {
-        Task {
-            let group = BookGroup(name: name, order: state.customGroups.count)
-            try? await saveBookGroupUseCase?.execute(group)
+        let groupCount = state.customGroups.count
+        mutationTask?.cancel()
+        mutationTask = Task { [weak self] in
+            guard let self else { return }
+            let group = BookGroup(name: name, order: groupCount)
+            try? await self.saveBookGroupUseCase?.execute(group)
             self.loadData()
             self.emitEffect(.showToast("分组「\(name)」创建成功"))
             self.emitEffect(.hapticFeedback)
@@ -316,8 +364,10 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
     }
 
     private func performDeleteGroup(id: String) {
-        Task {
-            try? await deleteBookGroupUseCase?.execute(id: id)
+        mutationTask?.cancel()
+        mutationTask = Task { [weak self] in
+            guard let self else { return }
+            try? await self.deleteBookGroupUseCase?.execute(id: id)
             self.loadData()
             self.emitEffect(.showToast("已删除分组"))
             self.emitEffect(.hapticFeedback)
@@ -331,12 +381,14 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
               let saveBookToShelfUseCase else { return }
 
         let trimmedAuthor = author.trimmingCharacters(in: .whitespacesAndNewlines)
-        Task {
+        mutationTask?.cancel()
+        mutationTask = Task { [weak self] in
+            guard let self else { return }
             var updated = book
             updated.name = trimmedName
             updated.author = trimmedAuthor.isEmpty ? "本地导入" : trimmedAuthor
             try? await saveBookToShelfUseCase.execute(updated)
-            let books = (try? await getBookshelfUseCase.execute()) ?? []
+            let books = (try? await self.getBookshelfUseCase.execute()) ?? []
             self.updateState { $0.books = books }
             self.emitEffect(.showToast("已更新《\(trimmedName)》信息"))
             self.emitEffect(.hapticFeedback)

@@ -73,7 +73,7 @@ extension ReaderViewModel {
 
     func handleImportFonts(urls: [URL]) {
         guard !urls.isEmpty else { return }
-        Task {
+        Task { [weak self] in
             let result = await Task.detached(priority: .userInitiated) {
                 var imported: [ImportedFont] = []
                 var lastError: Error?
@@ -89,19 +89,20 @@ extension ReaderViewModel {
                 return (imported, allFonts, lastError)
             }.value
 
-            updateState { $0.importedFonts = result.1 }
+            guard let self else { return }
+            self.updateState { $0.importedFonts = result.1 }
 
             if let first = result.0.first {
-                var updated = state.config
+                var updated = self.state.config
                 updated.customFontName = first.postScriptName
                 updated.customFontDisplayName = first.displayName
-                applyNewConfig(updated)
+                self.applyNewConfig(updated)
                 let msg = result.0.count == 1
                     ? "已导入并应用字体「\(first.displayName)」"
                     : "成功导入 \(result.0.count) 款本地字体"
-                emitEffect(.showToast(msg))
+                self.emitEffect(.showToast(msg))
             } else if let lastError = result.2 {
-                emitEffect(.showToast("字体导入失败: \(lastError.localizedDescription)"))
+                self.emitEffect(.showToast("字体导入失败: \(lastError.localizedDescription)"))
             }
         }
     }

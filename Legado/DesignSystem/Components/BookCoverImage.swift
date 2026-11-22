@@ -13,7 +13,11 @@ private final class LocalCoverImageCache: @unchecked Sendable {
         return cache
     }()
 
-    func image(for url: URL) -> UIImage? {
+    func cachedImage(for url: URL) -> UIImage? {
+        cache.object(forKey: url.absoluteString as NSString)
+    }
+
+    func loadImage(for url: URL) -> UIImage? {
         let key = url.absoluteString as NSString
         if let cached = cache.object(forKey: key) {
             return cached
@@ -62,10 +66,11 @@ private final class LocalCoverImageCache: @unchecked Sendable {
     }
 }
 
-/// 纯本地书籍封面图片组件（仅读取本地 file:// 缓存，绝不自动发起非必要网络请求）
+/// 纯本地书籍封面图片组件（仅读取本地 file:// 缓存，异步后台解码降采样，避免滚动掉帧）
 public struct BookCoverImage<Placeholder: View>: View {
     private let coverUrl: String?
     private let placeholder: () -> Placeholder
+    @State private var loadedImage: UIImage?
 
     public init(
         coverUrl: String?,
@@ -75,15 +80,36 @@ public struct BookCoverImage<Placeholder: View>: View {
     }
 
     public var body: some View {
-        if let coverUrl,
-           let url = URL(string: coverUrl),
-           url.isFileURL,
-           let uiImage = LocalCoverImageCache.shared.image(for: url) {
-            Image(uiImage: uiImage)
-                .resizable()
-                .scaledToFill()
-        } else {
-            placeholder()
+        let cached: UIImage? = {
+            guard let coverUrl, let url = URL(string: coverUrl), url.isFileURL else { return nil }
+            return LocalCoverImageCache.shared.cachedImage(for: url)
+        }()
+
+        Group {
+            if let displayImage = cached ?? loadedImage {
+                Image(uiImage: displayImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                placeholder()
+            }
+        }
+        .task(id: coverUrl) {
+            loadedImage = nil
+            guard let coverUrl,
+                  let url = URL(string: coverUrl),
+                  url.isFileURL else {
+                return
+            }
+            if let immediate = LocalCoverImageCache.shared.cachedImage(for: url) {
+                loadedImage = immediate
+                return
+            }
+            let decoded = await Task.detached(priority: .utility) {
+                LocalCoverImageCache.shared.loadImage(for: url)
+            }.value
+            guard !Task.isCancelled else { return }
+            loadedImage = decoded
         }
     }
 }

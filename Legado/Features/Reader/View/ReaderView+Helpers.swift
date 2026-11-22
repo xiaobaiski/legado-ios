@@ -107,8 +107,8 @@ extension ReaderView {
         let shouldEnable = viewModel.state.config.volumeKeyPageTurn && !isTTSSpeaking
         if shouldEnable {
             volumeHandler.start(
-                onVolumeUp: { viewModel.send(.prevPage) },
-                onVolumeDown: { viewModel.send(.nextPage) })
+                onVolumeUp: { [weak viewModel] in viewModel?.send(.prevPage) },
+                onVolumeDown: { [weak viewModel] in viewModel?.send(.nextPage) })
         } else {
             volumeHandler.stop()
         }
@@ -201,9 +201,11 @@ extension ReaderView {
                     option: option,
                     concurrency: 3) { progress in
                         Task { @MainActor in
+                            guard !Task.isCancelled else { return }
                             cacheDownloadProgress = progress
                         }
                     }
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
                     cacheInfo = environment.manageBookCacheUseCase.getBookCacheInfo(
                         bookUrl: book.bookUrl,
@@ -215,11 +217,58 @@ extension ReaderView {
                     cacheDownloadProgress?.status = .paused
                 }
             } catch {
+                guard !Task.isCancelled else { return }
                 await MainActor.run {
                     cacheDownloadProgress?.status = .failed(error.localizedDescription)
                     toastMessage = "缓存失败: \(error.localizedDescription)"
                 }
             }
+        }
+    }
+
+    func startTTSReading() {
+        let cleanText = viewModel.state.currentChapterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanText.isEmpty else {
+            toastMessage = "当前章节无可朗读正文"
+            return
+        }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            viewModel.send(.toggleHUD)
+            isTTSSpeaking = true
+        }
+        setupTTSCallbacks()
+        ttsPlayer.startReading(
+            content: cleanText,
+            bookTitle: viewModel.state.book.name,
+            chapterTitle: viewModel.state.currentChapter?.title ?? "",
+            author: viewModel.state.book.author)
+    }
+
+    func openChangeSourceSheet() {
+        if viewModel.state.book.isLocalFile {
+            toastMessage = "本地书籍无需换源"
+            return
+        }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            viewModel.send(.hideHUD)
+            isChangeSourcePresented = true
+        }
+    }
+
+    func openSearchContentSheet() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            viewModel.send(.hideHUD)
+            isSearchContentPresented = true
+        }
+    }
+
+    func openCacheSheet() {
+        cacheInfo = environment.manageBookCacheUseCase.getBookCacheInfo(
+            bookUrl: viewModel.state.book.bookUrl,
+            totalChapters: viewModel.state.chapters.count)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            viewModel.send(.hideHUD)
+            isCachePresented = true
         }
     }
 }

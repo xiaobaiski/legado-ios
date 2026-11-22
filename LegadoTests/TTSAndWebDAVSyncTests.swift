@@ -1096,6 +1096,141 @@ struct TTSAndWebDAVSyncTests {
         #expect(persistedB?.durChapterIndex == 15)
         #expect(persistedB?.durChapterPos == 900)
     }
+
+    // MARK: - v1.2.0 性能优化与内存防泄露回归测试
+
+    @Test("Bookmark formattedDate matches formatter and deleteBookmarks deletes batch in one pass")
+    func bookmarkFormattedDateAndBatchDelete() async throws {
+        let timestamp: Int64 = 1_700_000_000_000
+        let bookmark = Bookmark(
+            time: timestamp,
+            bookName: "测试书签",
+            bookAuthor: "作者A",
+            bookUrl: "local://bookmark-test",
+            chapterIndex: 2,
+            chapterPos: 45,
+            chapterName: "第三章",
+            bookText: "示例正文摘录")
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        let expectedDate = formatter.string(from: Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000))
+        #expect(bookmark.formattedDate == expectedDate)
+
+        let provider = ModelContainerProvider(inMemory: true)
+        let repo = BookmarkRepositoryImpl(modelContainer: provider.container)
+        let b1 = Bookmark(
+            time: 1001,
+            bookName: "书A",
+            bookAuthor: "作者",
+            bookUrl: "local://b",
+            chapterIndex: 0,
+            chapterPos: 0,
+            chapterName: "一",
+            bookText: "摘录1")
+        let b2 = Bookmark(
+            time: 1002,
+            bookName: "书A",
+            bookAuthor: "作者",
+            bookUrl: "local://b",
+            chapterIndex: 1,
+            chapterPos: 0,
+            chapterName: "二",
+            bookText: "摘录2")
+        let b3 = Bookmark(
+            time: 1003,
+            bookName: "书A",
+            bookAuthor: "作者",
+            bookUrl: "local://b",
+            chapterIndex: 2,
+            chapterPos: 0,
+            chapterName: "三",
+            bookText: "摘录3")
+
+        try await repo.saveBookmark(b1)
+        try await repo.saveBookmark(b2)
+        try await repo.saveBookmark(b3)
+
+        try await repo.deleteBookmarks(ids: [])
+        #expect(try await repo.getAllBookmarks().count == 3)
+
+        try await repo.deleteBookmarks(ids: [b1.id, b3.id])
+        let remaining = try await repo.getAllBookmarks()
+        #expect(remaining.count == 1)
+        #expect(remaining.first?.id == b2.id)
+    }
+
+    @Test("SearchBookContentUseCase runs off main actor and respects maxMatches limit")
+    func searchBookContentRunsOffMainActorAndRespectsLimit() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "LegadoSearchTest-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceRepo = BookSourceRepositoryImpl(modelContainer: ModelContainerProvider(inMemory: true).container)
+        let cacheRepo = BookCacheRepositoryImpl(baseDirectory: tempDir)
+        let getChapterContentUseCase = GetChapterContentUseCase(
+            sourceRepository: sourceRepo,
+            cacheRepository: cacheRepo)
+
+        let book = Book(
+            bookUrl: "local://search-perf-book",
+            origin: "local",
+            name: "秘境探索",
+            author: "测试作者")
+        let chapters = [
+            Chapter(url: "local://c0", title: "第一章", bookUrl: book.bookUrl, index: 0),
+            Chapter(url: "local://c1", title: "第二章", bookUrl: book.bookUrl, index: 1),
+            Chapter(url: "local://c2", title: "第三章", bookUrl: book.bookUrl, index: 2),
+        ]
+
+        try cacheRepo.saveChapterContent(bookUrl: book.bookUrl, index: 0, content: "荒野之中藏着古老秘宝。")
+        try cacheRepo.saveChapterContent(bookUrl: book.bookUrl, index: 1, content: "密室石门上也刻着秘宝线索。")
+        try cacheRepo.saveChapterContent(bookUrl: book.bookUrl, index: 2, content: "最终大厅发现了失落秘宝。")
+
+        var matches: [BookSearchMatch] = []
+        for await match in SearchBookContentUseCase().search(
+            keyword: "秘宝",
+            book: book,
+            chapters: chapters,
+            getChapterContentUseCase: getChapterContentUseCase,
+            maxMatches: 2) {
+            matches.append(match)
+        }
+
+        #expect(matches.count == 2)
+        #expect(matches[0].chapterIndex == 0)
+        #expect(matches[1].chapterIndex == 1)
+    }
+
+    @Test("TTSPlayer.splitIntoSentences uses cached regex deterministically")
+    func ttsSplitIntoSentencesConsistency() {
+        let sample = "第一句内容。\n第二句感叹！  \nThird sentence?  \n   \n"
+        let first = TTSPlayer.splitIntoSentences(sample)
+        let second = TTSPlayer.splitIntoSentences(sample)
+
+        #expect(first == second)
+        #expect(first.count >= 3)
+        #expect(first.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        #expect(TTSPlayer.splitIntoSentences("   \n\t  ").isEmpty)
+    }
+
+    @Test("RuleEvaluator bounds static storage capacity and clears cleanly")
+    func ruleEvaluatorStorageBoundsAndClear() {
+        defer { RuleEvaluator.clearVariables() }
+        RuleEvaluator.clearVariables()
+
+        for index in 0 ..< 600 {
+            RuleEvaluator.putVariable("bounds_k_\(index)", value: "val_\(index)")
+        }
+
+        #expect(RuleEvaluator.getVariable("bounds_k_599") == "val_599")
+        let presentCount = (0 ..< 600).filter { RuleEvaluator.getVariable("bounds_k_\($0)") != nil }.count
+        #expect(presentCount > 0)
+        #expect(presentCount <= 512)
+
+        RuleEvaluator.clearVariables()
+        #expect(RuleEvaluator.getVariable("bounds_k_599") == nil)
+    }
 }
 
 private final class MockWebDAVVirtualDrive: @unchecked Sendable {

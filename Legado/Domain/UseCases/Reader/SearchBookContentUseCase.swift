@@ -14,7 +14,7 @@ public final class SearchBookContentUseCase: Sendable {
         let cleanKeyword = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return AsyncStream { continuation in
-            let task = Task {
+            let task = Task.detached(priority: .userInitiated) {
                 guard !cleanKeyword.isEmpty, !chapters.isEmpty else {
                     continuation.finish()
                     return

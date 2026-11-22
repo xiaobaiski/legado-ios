@@ -186,7 +186,7 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
 
     private func handleImportLocalFonts(urls: [URL]) {
         guard !urls.isEmpty else { return }
-        Task {
+        Task { [weak self] in
             let result = await Task.detached(priority: .userInitiated) {
                 var imported: [ImportedFont] = []
                 var lastError: Error?
@@ -202,20 +202,22 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
                 return (imported, allFonts, lastError)
             }.value
 
-            updateState { $0.importedFonts = result.1 }
+            guard let self else { return }
+            self.updateState { $0.importedFonts = result.1 }
             if let first = result.0.first {
-                var updated = state.readerConfig
+                var updated = self.state.readerConfig
                 updated.customFontName = first.postScriptName
                 updated.customFontDisplayName = first.displayName
-                updateState { $0.readerConfig = updated }
+                self.updateState { $0.readerConfig = updated }
                 ReaderConfigStore.save(updated)
+                self.realtimeSyncService?.scheduleRulesPush()
                 let msg = result.0.count == 1
                     ? "已导入并应用字体「\(first.displayName)」"
                     : "成功导入 \(result.0.count) 款本地字体"
-                emitEffect(.showToast(msg))
-                emitEffect(.hapticFeedback)
+                self.emitEffect(.showToast(msg))
+                self.emitEffect(.hapticFeedback)
             } else if let lastError = result.2 {
-                emitEffect(.showToast("字体导入失败: \(lastError.localizedDescription)"))
+                self.emitEffect(.showToast("字体导入失败: \(lastError.localizedDescription)"))
             }
         }
     }

@@ -72,6 +72,7 @@ public final class TTSPlayer: NSObject, ObservableObject {
     var currentUtteranceVolume: Float = 1.0
     var cachedArtworkKey = ""
     var cachedArtwork: MPMediaItemArtwork?
+    nonisolated(unsafe) var audioNotificationTokens: [NSObjectProtocol] = []
 
     // 跨章节与进度联动回调
     public var onSentenceChanged: ((_ index: Int, _ sentence: String) -> Void)?
@@ -80,6 +81,7 @@ public final class TTSPlayer: NSObject, ObservableObject {
     public var onRequestNextChapterAsync: (() async -> (title: String, content: String)?)?
 
     private static let configStorageKey = "io.github.theliser.legado.ttsConfig"
+    private static let sentenceRegex = try? NSRegularExpression(pattern: "[^。！？!?；;]+[。！？!?；;]?")
 
     override private init() {
         if let savedData = UserDefaults.standard.data(forKey: Self.configStorageKey),
@@ -93,7 +95,12 @@ public final class TTSPlayer: NSObject, ObservableObject {
         synthesizer.delegate = self
         setupRemoteCommands()
         setupAudioNotifications()
-        fetchAvailableVoices()
+    }
+
+    deinit {
+        for token in audioNotificationTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
     }
 
     /// 持久化朗读设置
@@ -288,6 +295,12 @@ public final class TTSPlayer: NSObject, ObservableObject {
 
     // MARK: - 可用声音枚举
 
+    /// 按需懒加载可用语音列表，避免初次进入阅读器时同步枚举系统语音阻塞主线程
+    public func loadVoicesIfNeeded() {
+        guard availableVoices.isEmpty else { return }
+        fetchAvailableVoices()
+    }
+
     public func fetchAvailableVoices() {
         let allVoices = AVSpeechSynthesisVoice.speechVoices()
         let mapped = allVoices.map { voice -> TTSVoice in
@@ -330,8 +343,7 @@ public final class TTSPlayer: NSObject, ObservableObject {
             let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
 
-            let pattern = "[^。！？!?；;]+[。！？!?；;]?"
-            if let regex = try? NSRegularExpression(pattern: pattern) {
+            if let regex = Self.sentenceRegex {
                 let nsString = trimmed as NSString
                 let matches = regex.matches(in: trimmed, range: NSRange(location: 0, length: nsString.length))
                 if !matches.isEmpty {

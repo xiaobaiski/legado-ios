@@ -68,7 +68,8 @@ extension SourceManageViewModel {
             return
         }
 
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             for url in invalidUrls {
                 try? await self.toggleEnabledUseCase.execute(sourceUrl: url, enabled: false)
             }
@@ -86,7 +87,8 @@ extension SourceManageViewModel {
             return
         }
 
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             for url in invalidUrls {
                 try? await self.deleteSourceUseCase.execute(sourceUrl: url)
             }

@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.2.0] - 2026-11-22
+
+### 性能
+- **本地封面图异步解码与内存缓存（`BookCoverImage`）**：将本地磁盘封面图的 `Data(contentsOf:)` 与 `UIImage` 解码移出主线程 `body` 计算，改为 O(1) 内存缓存命中的同步渲染与 `.task` 后台异步解码，大幅消除书架滚动掉帧。
+- **CoreText 阅读页排版渲染缓存（`CoreTextDrawView`）**：精简 `RenderKey` 对比字段至排版样式与高亮范围，并缓存 `CTFrame`，避免 HUD 显隐、进度面板联动触发无效 `NSAttributedString` 重构与文本重新排版。
+- **高频调用点零分配优化**：
+  - `Bookmark.formattedDate` 改用 `Calendar.current.dateComponents` 计算格式化字符串，替代每次渲染重复构造 `DateFormatter`。
+  - `BookmarkRepositoryImpl.deleteBookmarks(ids:)` 由 N+1 循环查询合并为单次 SwiftData 拉取与单次 `save()` 提交。
+  - `SearchBookContentUseCase` 改用 `Task.detached(priority: .userInitiated)` 在后台并发执行全书搜索。
+  - `BookshelfView.body` 缓存 `filteredBooks` 计算结果，消除单次渲染周期内的 3 次重复筛选与排序。
+
+### 优化
+- **生命周期与防内存泄露加固**：
+  - 为 `ReaderView+Helpers` 音量键监听回调补齐 `[weak viewModel]` 弱引用；为 `ReaderViewModel`、`BookshelfViewModel`、`SearchViewModel`、`ChangeSourceViewModel` 与 `SourceManageViewModel` 的异步任务统一挂载 `Task` 句柄，在 `deinit` 时自动取消并统一使用 `[weak self]`，消除页面关闭后的悬挂任务与强引用环。
+  - `TTSPlayer` 将音频中断/路由/朗读生命周期通知令牌统一托管并在 `deinit` 注销；将 `AVSpeechSynthesisVoice.speechVoices()` 枚举延后至打开 `TTSControlSheet` 时按需懒加载，并预编译静态 `sentenceRegex`。
+  - 为 `RuleEvaluator.storage` 增加 512 条容量上限，防止长期运行后内存无界增长。
+- **交互逻辑与架构整洁度**：
+  - 优化 `ReaderView` 左右边缘切章点击提示（首章/末章边界给出明确反馈）、滑动进度条重置 `draggingChapterIndex` 状态、下滑关闭目录 Sheet 时自动清理搜索关键词。
+  - 书架为空且未处于批量管理模式时隐藏「管理」按钮；本地无在线源书架在下拉刷新时亦支持触发 `WebDAVRealtimeSyncService` 增量同步。
+  - 拆分 `ReaderConfig+Helpers.swift` 与 `ReaderViewModel+Sync.swift`，消除 SwiftLint 长度与复杂度告警。
+
+### 验证
+- 新增回归单元测试覆盖 `Bookmark.formattedDate` 与批量删除、`SearchBookContentUseCase` 后台搜索上限、`TTSPlayer.splitIntoSentences` 确定性及 `RuleEvaluator` 存储上限；版本号升级至 `1.2.0 (120)`。
+
 ## [1.1.2] - 2026-11-22
 
 ### 新增

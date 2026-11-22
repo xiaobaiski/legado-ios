@@ -4,7 +4,13 @@ import Foundation
 @MainActor
 public final class ChangeSourceViewModel: BaseMVIViewModel<ChangeSourceState, ChangeSourceIntent, ChangeSourceEffect> {
     private let changeBookSourceUseCase: ChangeBookSourceUseCase
-    private var searchTask: Task<Void, Never>?
+    nonisolated(unsafe) private var searchTask: Task<Void, Never>?
+    nonisolated(unsafe) private var switchTask: Task<Void, Never>?
+
+    deinit {
+        searchTask?.cancel()
+        switchTask?.cancel()
+    }
 
     public init(
         book: Book,
@@ -40,8 +46,9 @@ public final class ChangeSourceViewModel: BaseMVIViewModel<ChangeSourceState, Ch
             $0.candidates = []
         }
 
-        searchTask = Task {
-            for await candidate in changeBookSourceUseCase.searchCandidates(for: state.book) {
+        searchTask = Task { [weak self] in
+            guard let self else { return }
+            for await candidate in self.changeBookSourceUseCase.searchCandidates(for: self.state.book) {
                 if Task.isCancelled {
                     break
                 }
@@ -75,13 +82,15 @@ public final class ChangeSourceViewModel: BaseMVIViewModel<ChangeSourceState, Ch
         }
         emitEffect(.hapticFeedback)
 
-        Task {
+        switchTask?.cancel()
+        switchTask = Task { [weak self] in
+            guard let self else { return }
             do {
-                let result = try await changeBookSourceUseCase.switchSource(
+                let result = try await self.changeBookSourceUseCase.switchSource(
                     target: candidate,
-                    currentBook: state.book,
-                    currentChapterTitle: state.currentChapterTitle,
-                    currentChapterIndex: state.currentChapterIndex)
+                    currentBook: self.state.book,
+                    currentChapterTitle: self.state.currentChapterTitle,
+                    currentChapterIndex: self.state.currentChapterIndex)
 
                 self.updateState {
                     $0.isSwitching = false

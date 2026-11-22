@@ -241,7 +241,12 @@ public struct ReaderView: View {
         }
         .sheet(isPresented: Binding(
             get: { viewModel.state.isTocSheetVisible },
-            set: { if !$0 { viewModel.send(.closeToc) } })) {
+            set: {
+                if !$0 {
+                    tocSearchText = ""
+                    viewModel.send(.closeToc)
+                }
+            })) {
                 BookTocSheet(
                     chapters: viewModel.state.chapters,
                     durChapterIndex: viewModel.state.currentChapterIndex,
@@ -375,49 +380,11 @@ public struct ReaderView: View {
             onResetConfig: { viewModel.send(.resetConfig) },
             onOpenMoreSettings: { viewModel.send(.openMoreSettings) },
             onToggleAutoPage: { viewModel.send(.toggleAutoPage) },
-            onStartTTS: {
-                let cleanText = viewModel.state.currentChapterText.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !cleanText.isEmpty else {
-                    toastMessage = "当前章节无可朗读正文"
-                    return
-                }
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                    viewModel.send(.toggleHUD)
-                    isTTSSpeaking = true
-                }
-                setupTTSCallbacks()
-                ttsPlayer.startReading(
-                    content: cleanText,
-                    bookTitle: viewModel.state.book.name,
-                    chapterTitle: viewModel.state.currentChapter?.title ?? "",
-                    author: viewModel.state.book.author)
-            },
-            onOpenChangeSource: {
-                if viewModel.state.book.isLocalFile {
-                    toastMessage = "本地书籍无需换源"
-                    return
-                }
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                    viewModel.send(.hideHUD)
-                    isChangeSourcePresented = true
-                }
-            },
-            onOpenSearch: {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                    viewModel.send(.hideHUD)
-                    isSearchContentPresented = true
-                }
-            },
+            onStartTTS: { startTTSReading() },
+            onOpenChangeSource: { openChangeSourceSheet() },
+            onOpenSearch: { openSearchContentSheet() },
             isBookmarked: viewModel.state.isCurrentPageBookmarked,
             onToggleBookmark: { viewModel.send(.toggleBookmark) },
-            onOpenCache: {
-                cacheInfo = environment.manageBookCacheUseCase.getBookCacheInfo(
-                    bookUrl: viewModel.state.book.bookUrl,
-                    totalChapters: viewModel.state.chapters.count)
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                    viewModel.send(.hideHUD)
-                    isCachePresented = true
-                }
-            })
+            onOpenCache: { openCacheSheet() })
     }
 }

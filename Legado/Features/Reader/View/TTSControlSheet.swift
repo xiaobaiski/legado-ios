@@ -47,6 +47,9 @@ public struct TTSControlSheet: View {
         }
         .presentationDetents([.fraction(0.55), .large])
         .presentationBackground(.ultraThinMaterial)
+        .onAppear {
+            ttsPlayer.loadVoicesIfNeeded()
+        }
     }
 
     // MARK: - 睡眠定时器设置面板

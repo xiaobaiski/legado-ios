@@ -63,15 +63,12 @@ public actor BookmarkRepositoryImpl: BookmarkRepository {
     }
 
     public func deleteBookmarks(ids: [String]) throws {
-        for id in ids {
-            let predicate = #Predicate<BookmarkEntity> { entity in
-                entity.id == id
-            }
-            let descriptor = FetchDescriptor<BookmarkEntity>(predicate: predicate)
-            let entities = try modelContext.fetch(descriptor)
-            for entity in entities {
-                modelContext.delete(entity)
-            }
+        let targetIds = Set(ids)
+        guard !targetIds.isEmpty else { return }
+        let descriptor = FetchDescriptor<BookmarkEntity>()
+        let entities = try modelContext.fetch(descriptor)
+        for entity in entities where targetIds.contains(entity.id) {
+            modelContext.delete(entity)
         }
         try modelContext.save()
     }

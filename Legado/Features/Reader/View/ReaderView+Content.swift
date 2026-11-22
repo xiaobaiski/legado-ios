@@ -260,10 +260,18 @@ extension ReaderView {
             viewModel.send(.toggleHUD)
 
         case .nextChapter:
-            viewModel.send(.loadChapter(viewModel.state.currentChapterIndex + 1))
+            if viewModel.state.currentChapterIndex + 1 < viewModel.state.chapters.count {
+                viewModel.send(.loadChapter(viewModel.state.currentChapterIndex + 1))
+            } else {
+                toastMessage = "已经是最后一章了"
+            }
 
         case .prevChapter:
-            viewModel.send(.loadChapter(viewModel.state.currentChapterIndex - 1))
+            if viewModel.state.currentChapterIndex > 0 {
+                viewModel.send(.loadChapter(viewModel.state.currentChapterIndex - 1))
+            } else {
+                toastMessage = "已经是第一章了"
+            }
 
         case .toggleNightMode:
             var updated = config

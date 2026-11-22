@@ -5,6 +5,7 @@ import SwiftSoup
 public enum RuleEvaluator {
     private static let jsEngine = JSEngine()
     private static let storageLock = NSLock()
+    private static let maxStorageEntries = 512
     private static var storage: [String: String] = [:]
 
     public static func getVariable(_ key: String) -> String? {
@@ -16,6 +17,11 @@ public enum RuleEvaluator {
     public static func putVariable(_ key: String, value: String) {
         storageLock.lock()
         defer { storageLock.unlock() }
+        if storage[key] == nil, storage.count >= maxStorageEntries {
+            for existingKey in Array(storage.keys.prefix(maxStorageEntries / 2)) {
+                storage.removeValue(forKey: existingKey)
+            }
+        }
         storage[key] = value
     }
 

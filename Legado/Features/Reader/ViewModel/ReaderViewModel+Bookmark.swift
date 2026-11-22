@@ -5,11 +5,15 @@ import Foundation
 extension ReaderViewModel {
     func loadBookmarks() {
         guard let getBookmarksUseCase else { return }
-        Task {
+        let bookName = state.book.name
+        let bookAuthor = state.book.author
+        loadBookmarksTask?.cancel()
+        loadBookmarksTask = Task { [weak self] in
             if let list = try? await getBookmarksUseCase.execute(
-                bookName: state.book.name,
-                bookAuthor: state.book.author) {
-                self.updateState { $0.bookmarks = list }
+                bookName: bookName,
+                bookAuthor: bookAuthor),
+               !Task.isCancelled {
+                self?.updateState { $0.bookmarks = list }
             }
         }
     }
@@ -60,8 +64,9 @@ extension ReaderViewModel {
                 chapterPos: page.textRange.location,
                 chapterName: state.currentChapter?.title ?? "第\(state.currentChapterIndex + 1)章",
                 bookText: excerpt)
-            Task {
-                try? await saveBookmarkUseCase?.execute(bookmark: bookmark)
+            Task { [weak self] in
+                guard let self else { return }
+                try? await self.saveBookmarkUseCase?.execute(bookmark: bookmark)
                 self.loadBookmarks()
                 self.emitEffect(.showToast("已添加书签"))
                 self.emitEffect(.hapticFeedback)
@@ -84,8 +89,9 @@ extension ReaderViewModel {
             chapterName: chapterTitle,
             bookText: bookText,
             content: note)
-        Task {
-            try? await saveBookmarkUseCase?.execute(bookmark: bookmark)
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.saveBookmarkUseCase?.execute(bookmark: bookmark)
             self.loadBookmarks()
             self.emitEffect(.showToast("书签已保存"))
             self.emitEffect(.hapticFeedback)
@@ -93,8 +99,9 @@ extension ReaderViewModel {
     }
 
     private func handleDeleteBookmark(id: String) {
-        Task {
-            try? await deleteBookmarkUseCase?.execute(id: id)
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.deleteBookmarkUseCase?.execute(id: id)
             self.loadBookmarks()
             self.emitEffect(.showToast("已移除书签"))
             self.emitEffect(.hapticFeedback)

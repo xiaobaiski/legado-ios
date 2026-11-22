@@ -26,7 +26,7 @@ extension TTSPlayer {
     }
 
     func setupAudioNotifications() {
-        NotificationCenter.default.addObserver(
+        let interruptionToken = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance(),
             queue: .main) { [weak self] notification in
@@ -58,7 +58,7 @@ extension TTSPlayer {
                 }
             }
 
-        NotificationCenter.default.addObserver(
+        let routeToken = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification,
             object: AVAudioSession.sharedInstance(),
             queue: .main) { [weak self] notification in
@@ -75,6 +75,8 @@ extension TTSPlayer {
                     }
                 }
             }
+
+        audioNotificationTokens = [interruptionToken, routeToken]
     }
 
     func setupRemoteCommands() {

@@ -92,22 +92,15 @@ public final class AppEnvironment: ObservableObject {
         self.debugBookSourceUseCase = DebugBookSourceUseCase()
         self.purifyContentUseCase = PurifyContentUseCase()
         self.backupToWebDAVUseCase = BackupToWebDAVUseCase(
-            bookRepository: bookRepo,
-            sourceRepository: sourceRepo,
-            bookmarkRepository: bookmarkRepo,
-            bookCacheRepository: cacheRepo)
+            bookRepository: bookRepo, sourceRepository: sourceRepo,
+            bookmarkRepository: bookmarkRepo, bookCacheRepository: cacheRepo)
         self.restoreFromWebDAVUseCase = RestoreFromWebDAVUseCase(
-            bookRepository: bookRepo,
-            sourceRepository: sourceRepo,
-            bookmarkRepository: bookmarkRepo,
-            bookCacheRepository: cacheRepo)
+            bookRepository: bookRepo, sourceRepository: sourceRepo,
+            bookmarkRepository: bookmarkRepo, bookCacheRepository: cacheRepo)
         self.webDAVRealtimeSyncService = WebDAVRealtimeSyncService(
-            bookRepository: bookRepo,
-            backupUseCase: self.backupToWebDAVUseCase,
+            bookRepository: bookRepo, backupUseCase: self.backupToWebDAVUseCase,
             configProvider: { inMemory ? nil : WebDAVConfigStore.loadSavedIfConfigured() })
-        self.changeBookSourceUseCase = ChangeBookSourceUseCase(
-            sourceRepository: sourceRepo,
-            bookRepository: bookRepo)
+        self.changeBookSourceUseCase = ChangeBookSourceUseCase(sourceRepository: sourceRepo, bookRepository: bookRepo)
         self.searchBookContentUseCase = SearchBookContentUseCase()
         self.getBookmarksUseCase = GetBookmarksUseCase(bookmarkRepository: bookmarkRepo)
         self.saveBookmarkUseCase = SaveBookmarkUseCase(bookmarkRepository: bookmarkRepo)
@@ -117,13 +110,14 @@ public final class AppEnvironment: ObservableObject {
         self.deleteBookGroupUseCase = DeleteBookGroupUseCase(groupRepository: groupRepo)
         self.checkBookSourceHealthUseCase = CheckBookSourceHealthUseCase()
         self.importLocalBookUseCase = ImportLocalBookUseCase(
-            bookRepository: bookRepo,
-            bookCacheRepository: cacheRepo)
+            bookRepository: bookRepo, bookCacheRepository: cacheRepo)
+        configurePostInit(inMemory: inMemory)
+    }
 
+    private func configurePostInit(inMemory: Bool) {
         self.webDAVRealtimeSyncService.onBookshelfUpdated = { [weak self] in
             self?.notifyBookshelfNeedsRefresh()
         }
-
         if !inMemory {
             LocalFontManager.shared.registerAllStoredFonts()
             primeSampleChapterCache()
@@ -186,7 +180,8 @@ public final class AppEnvironment: ObservableObject {
             saveBookGroupUseCase: saveBookGroupUseCase,
             deleteBookGroupUseCase: deleteBookGroupUseCase,
             importLocalBookUseCase: importLocalBookUseCase,
-            layoutDefaults: .standard)
+            layoutDefaults: .standard,
+            realtimeSyncService: webDAVRealtimeSyncService)
     }
 
     /// 创建阅读器 ViewModel

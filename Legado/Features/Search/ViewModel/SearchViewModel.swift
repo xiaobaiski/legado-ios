@@ -7,8 +7,16 @@ public final class SearchViewModel: MVIViewModel<SearchState, SearchIntent, Sear
     private let saveBookToShelfUseCase: SaveBookToShelfUseCase
     private let getBookshelfUseCase: GetBookshelfUseCase
 
-    private var activeSearchTask: Task<Void, Never>?
+    nonisolated(unsafe) private var activeSearchTask: Task<Void, Never>?
+    nonisolated(unsafe) private var loadShelfTask: Task<Void, Never>?
+    nonisolated(unsafe) private var saveBookTask: Task<Void, Never>?
     private let recentSearchesKey = "legado_recent_searches"
+
+    deinit {
+        activeSearchTask?.cancel()
+        loadShelfTask?.cancel()
+        saveBookTask?.cancel()
+    }
 
     public init(
         searchBooksUseCase: SearchBooksUseCase,
@@ -25,8 +33,10 @@ public final class SearchViewModel: MVIViewModel<SearchState, SearchIntent, Sear
     }
 
     private func loadShelfBooks() {
-        Task {
-            if let books = try? await getBookshelfUseCase.execute() {
+        loadShelfTask?.cancel()
+        loadShelfTask = Task { [weak self] in
+            guard let self else { return }
+            if let books = try? await self.getBookshelfUseCase.execute(), !Task.isCancelled {
                 let urls = Set(books.map(\.bookUrl))
                 self.updateState { state in
                     state.addedBookUrls = urls
@@ -83,16 +93,17 @@ public final class SearchViewModel: MVIViewModel<SearchState, SearchIntent, Sear
             emitEffect(.hapticFeedback)
 
         case let .addToBookshelf(result):
-            Task {
+            saveBookTask = Task { [weak self] in
+                guard let self else { return }
                 do {
-                    try await saveBookToShelfUseCase.execute(from: result)
-                    updateState { state in
+                    try await self.saveBookToShelfUseCase.execute(from: result)
+                    self.updateState { state in
                         state.addedBookUrls.insert(result.bookUrl)
                     }
-                    emitEffect(.showToast("《\(result.name)》已加入书架"))
-                    emitEffect(.hapticFeedback)
+                    self.emitEffect(.showToast("《\(result.name)》已加入书架"))
+                    self.emitEffect(.hapticFeedback)
                 } catch {
-                    emitEffect(.showToast("加入书架失败: \(error.localizedDescription)"))
+                    self.emitEffect(.showToast("加入书架失败: \(error.localizedDescription)"))
                 }
             }
         }
@@ -106,8 +117,9 @@ public final class SearchViewModel: MVIViewModel<SearchState, SearchIntent, Sear
         saveHistoryKeyword(trimmed)
 
         activeSearchTask?.cancel()
-        activeSearchTask = Task {
-            updateState { state in
+        activeSearchTask = Task { [weak self] in
+            guard let self else { return }
+            self.updateState { state in
                 state.isSearching = true
                 state.searchProgress = 0.0
                 state.progressText = "正在准备书源..."
@@ -118,7 +130,7 @@ public final class SearchViewModel: MVIViewModel<SearchState, SearchIntent, Sear
             var totalSources = 0
             var completedCount = 0
 
-            let stream = searchBooksUseCase.execute(keyword: trimmed)
+            let stream = self.searchBooksUseCase.execute(keyword: trimmed)
             for await event in stream {
                 if Task.isCancelled {
                     break
@@ -127,7 +139,7 @@ public final class SearchViewModel: MVIViewModel<SearchState, SearchIntent, Sear
                 switch event {
                 case let .started(total):
                     totalSources = total
-                    updateState { state in
+                    self.updateState { state in
                         state.progressText = "0 / \(total) 个书源已完成"
                     }
 
@@ -135,13 +147,13 @@ public final class SearchViewModel: MVIViewModel<SearchState, SearchIntent, Sear
                     completedCount += 1
                     let progress = totalSources > 0 ? Double(completedCount) / Double(totalSources) : 0.0
                     let text = "\(completedCount) / \(totalSources) 个书源已完成"
-                    updateState { state in
+                    self.updateState { state in
                         state.searchProgress = progress
                         state.progressText = text
                     }
 
                 case let .allCompleted(groups):
-                    updateState { state in
+                    self.updateState { state in
                         state.isSearching = false
                         state.searchProgress = 1.0
                         state.resultGroups = groups

@@ -29,7 +29,9 @@ public struct BookshelfView: View {
     }
 
     public var body: some View {
-        NavigationStack {
+        let displayedBooks = viewModel.state.filteredBooks
+
+        return NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
                     groupSelectorSection
@@ -43,12 +45,12 @@ public struct BookshelfView: View {
                         }
                     }
 
-                    if viewModel.state.filteredBooks.isEmpty && !viewModel.state.isLoading {
+                    if displayedBooks.isEmpty && !viewModel.state.isLoading {
                         emptyStateView
                     } else if viewModel.state.layoutMode == .grid {
-                        booksGridContent
+                        booksGridContent(books: displayedBooks)
                     } else {
-                        booksListContent
+                        booksListContent(books: displayedBooks)
                     }
                 }
                 .frame(maxWidth: horizontalSizeClass == .regular ? 1180 : .infinity)
@@ -98,7 +100,7 @@ public struct BookshelfView: View {
                 VStack(spacing: 12) {
                     toastOverlay
                     if viewModel.state.isBatchMode {
-                        batchBarOverlay
+                        batchBarOverlay(displayedCount: displayedBooks.count)
                     }
                 }
             }
@@ -201,11 +203,13 @@ public struct BookshelfView: View {
 
         ToolbarItem(placement: .topBarTrailing) {
             HStack(spacing: 12) {
-                Button {
-                    viewModel.send(.toggleBatchMode)
-                } label: {
-                    Text(viewModel.state.isBatchMode ? "完成" : "管理")
-                        .font(.subheadline.weight(.medium))
+                if !viewModel.state.books.isEmpty || viewModel.state.isBatchMode {
+                    Button {
+                        viewModel.send(.toggleBatchMode)
+                    } label: {
+                        Text(viewModel.state.isBatchMode ? "完成" : "管理")
+                            .font(.subheadline.weight(.medium))
+                    }
                 }
 
                 Button {
@@ -280,7 +284,7 @@ public struct BookshelfView: View {
 // MARK: - Books Content, Overlays & File Import
 
 private extension BookshelfView {
-    var booksGridContent: some View {
+    func booksGridContent(books: [Book]) -> some View {
         let isWide = horizontalSizeClass == .regular
         let gridSpacing: CGFloat = isWide ? 20 : 14
         let columns = [GridItem(.adaptive(minimum: isWide ? 144 : 102, maximum: 186), spacing: gridSpacing)]
@@ -288,7 +292,7 @@ private extension BookshelfView {
         return LazyVGrid(
             columns: columns,
             spacing: isWide ? 22 : 16) {
-                ForEach(viewModel.state.filteredBooks) { book in
+                ForEach(books) { book in
                     BookshelfBookCardView(
                         book: book,
                         isBatchMode: viewModel.state.isBatchMode,
@@ -308,14 +312,14 @@ private extension BookshelfView {
             }
     }
 
-    var booksListContent: some View {
+    func booksListContent(books: [Book]) -> some View {
         let isWide = horizontalSizeClass == .regular
         let columns = isWide
             ? [GridItem(.adaptive(minimum: 340, maximum: 560), spacing: 16)]
             : [GridItem(.flexible())]
 
         return LazyVGrid(columns: columns, spacing: isWide ? 14 : 12) {
-            ForEach(viewModel.state.filteredBooks) { book in
+            ForEach(books) { book in
                 BookshelfBookRowView(
                     book: book,
                     isBatchMode: viewModel.state.isBatchMode,
@@ -389,14 +393,13 @@ private extension BookshelfView {
         .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
     }
 
-    var batchBarOverlay: some View {
+    func batchBarOverlay(displayedCount: Int) -> some View {
         BookshelfBatchBar(
             selectedCount: viewModel.state.selectedBookUrls.count,
-            isAllSelected: !viewModel.state.filteredBooks.isEmpty &&
-                viewModel.state.selectedBookUrls.count == viewModel.state.filteredBooks.count,
+            isAllSelected: displayedCount > 0 && viewModel.state.selectedBookUrls.count == displayedCount,
             customGroups: viewModel.state.customGroups,
             onToggleSelectAll: {
-                if viewModel.state.selectedBookUrls.count == viewModel.state.filteredBooks.count {
+                if viewModel.state.selectedBookUrls.count == displayedCount {
                     viewModel.send(.deselectAll)
                 } else {
                     viewModel.send(.selectAll)

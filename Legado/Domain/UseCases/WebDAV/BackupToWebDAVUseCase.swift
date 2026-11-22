@@ -42,7 +42,7 @@ public final class BackupToWebDAVUseCase: @unchecked Sendable {
         let readRecords = readRecordStore.allRecordsSorted()
         let bookmarks = try await loadBookmarks()
         let configJson = readerConfigExporter()
-        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.2"
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.0"
 
         return WebDAVBackupBundle(
             version: 2,
@@ -174,7 +174,7 @@ private extension BackupToWebDAVUseCase {
         let bookFiles = options.syncBookFiles
             ? mergeBookFileEntries(uploaded: uploadedEntries, existing: remoteBundle?.bookFiles)
             : remoteBundle?.bookFiles
-        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.2"
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.0"
 
         return WebDAVBackupBundle(
             version: 2,

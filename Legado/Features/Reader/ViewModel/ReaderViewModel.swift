@@ -16,6 +16,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
     nonisolated(unsafe) var repaginateTask: Task<Void, Never>?
     nonisolated(unsafe) var loadTocTask: Task<Void, Never>?
     nonisolated(unsafe) var remoteSyncTask: Task<Void, Never>?
+    nonisolated(unsafe) var loadBookmarksTask: Task<Void, Never>?
     let realtimeSyncService: WebDAVRealtimeSyncService?
     let explicitInitialChapterIndex: Int?
     var pendingRestoreOffset: Int?
@@ -27,6 +28,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         repaginateTask?.cancel()
         loadTocTask?.cancel()
         remoteSyncTask?.cancel()
+        loadBookmarksTask?.cancel()
     }
 
     public init(
@@ -244,35 +246,23 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
                     return
                 }
 
-                let pages = await Task.detached(priority: .userInitiated) {
-                    engine.paginate(
-                        chapterTitle: chapter.title,
-                        content: content,
-                        chapterIndex: chapterIndex,
-                        bounds: layoutBounds,
-                        config: configSnapshot,
-                        bookName: bookName,
-                        bookOrigin: bookOrigin)
-                }.value
+                let pages = await Self.computePaginatedPages(
+                    engine: engine,
+                    chapterTitle: chapter.title,
+                    content: content,
+                    chapterIndex: chapterIndex,
+                    bounds: layoutBounds,
+                    config: configSnapshot,
+                    bookName: bookName,
+                    bookOrigin: bookOrigin)
                 guard !Task.isCancelled else { return }
 
-                let safePageIndex = Self.resolveTargetPageIndex(
+                self.applyLoadedPages(
+                    pages,
                     targetOffset: targetOffset,
                     targetPageIndex: targetPageIndex,
-                    in: pages)
-
-                self.updateState { state in
-                    state.isLoading = false
-                    state.pages = pages
-                    state.currentPageIndex = safePageIndex
-                }
-                if hasRealBounds {
-                    self.pendingRestoreOffset = nil
-                }
-
-                if persistProgress {
-                    self.saveReadingProgress()
-                }
+                    hasRealBounds: hasRealBounds,
+                    persistProgress: persistProgress)
                 self.preloadNextChapterIfAvailable(after: chapterIndex, origin: bookOrigin)
             } catch {
                 guard !Task.isCancelled else { return }

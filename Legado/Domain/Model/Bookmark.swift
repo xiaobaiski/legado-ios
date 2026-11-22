@@ -46,11 +46,16 @@ public struct Bookmark: Identifiable, Hashable, Codable, Sendable {
         self.content = content
     }
 
-    /// 格式化创建日期
+    /// 格式化创建日期（零堆分配日历计算，避免重复构造 DateFormatter）
     public var formattedDate: String {
         let date = Date(timeIntervalSince1970: TimeInterval(time) / 1000)
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm"
-        return formatter.string(from: date)
+        let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        return String(
+            format: "%04d-%02d-%02d %02d:%02d",
+            comps.year ?? 1970,
+            comps.month ?? 1,
+            comps.day ?? 1,
+            comps.hour ?? 0,
+            comps.minute ?? 0)
     }
 }

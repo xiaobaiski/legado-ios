@@ -150,6 +150,50 @@ extension ReaderViewModel {
         }
     }
 
+    static func computePaginatedPages(
+        engine: TextLayoutEngine,
+        chapterTitle: String,
+        content: String,
+        chapterIndex: Int,
+        bounds: CGRect,
+        config: ReaderConfig,
+        bookName: String,
+        bookOrigin: String) async -> [ReaderPage] {
+        await Task.detached(priority: .userInitiated) {
+            engine.paginate(
+                chapterTitle: chapterTitle,
+                content: content,
+                chapterIndex: chapterIndex,
+                bounds: bounds,
+                config: config,
+                bookName: bookName,
+                bookOrigin: bookOrigin)
+        }.value
+    }
+
+    func applyLoadedPages(
+        _ pages: [ReaderPage],
+        targetOffset: Int?,
+        targetPageIndex: Int,
+        hasRealBounds: Bool,
+        persistProgress: Bool) {
+        let safePageIndex = Self.resolveTargetPageIndex(
+            targetOffset: targetOffset,
+            targetPageIndex: targetPageIndex,
+            in: pages)
+        updateState { state in
+            state.isLoading = false
+            state.pages = pages
+            state.currentPageIndex = safePageIndex
+        }
+        if hasRealBounds {
+            pendingRestoreOffset = nil
+        }
+        if persistProgress {
+            saveReadingProgress()
+        }
+    }
+
     static func resolveTargetPageIndex(
         targetOffset: Int?,
         targetPageIndex: Int,

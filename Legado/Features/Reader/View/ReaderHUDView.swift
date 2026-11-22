@@ -140,6 +140,12 @@ public struct ReaderHUDView: View {
         }
         .ignoresSafeArea(edges: .top)
         .preferredColorScheme(config.isEffectiveDark ? .dark : .light)
+        .onChange(of: currentChapterIndex) { _, _ in
+            draggingChapterIndex = nil
+        }
+        .onChange(of: config.progressBarBehavior) { _, _ in
+            draggingChapterIndex = nil
+        }
     }
 }
 

@@ -294,12 +294,25 @@ private final class CoreTextDrawView: UIView {
     private struct RenderKey: Equatable {
         let content: String
         let titlePrefixLength: Int
-        let config: ReaderConfig
+        let fontFamily: ReaderFontFamily
+        let customFontName: String?
+        let fontSize: CGFloat
+        let fontWeight: ReaderFontWeight
+        let isBoldFont: Bool
+        let lineSpacing: CGFloat
+        let paragraphSpacing: CGFloat
+        let letterSpacing: CGFloat
+        let isTextJustified: Bool
+        let theme: ReaderTheme
+        let customTextHex: String
+        let titleStyle: ChapterTitleStyleConfig
         let highlightedSentence: String?
     }
 
     private var lastKey: RenderKey?
     private var cachedFramesetter: CTFramesetter?
+    private var cachedFrame: CTFrame?
+    private var cachedFrameSize: CGSize = .zero
 
     func updateIfNeeded(
         content: String,
@@ -309,7 +322,18 @@ private final class CoreTextDrawView: UIView {
         let key = RenderKey(
             content: content,
             titlePrefixLength: titlePrefixLength,
-            config: config,
+            fontFamily: config.fontFamily,
+            customFontName: config.customFontName,
+            fontSize: config.fontSize,
+            fontWeight: config.fontWeight,
+            isBoldFont: config.isBoldFont,
+            lineSpacing: config.lineSpacing,
+            paragraphSpacing: config.paragraphSpacing,
+            letterSpacing: config.letterSpacing,
+            isTextJustified: config.isTextJustified,
+            theme: config.theme,
+            customTextHex: config.customTextHex,
+            titleStyle: config.titleStyle,
             highlightedSentence: highlightedSentence)
         guard key != lastKey else { return }
         lastKey = key
@@ -321,6 +345,8 @@ private final class CoreTextDrawView: UIView {
         cachedFramesetter = attributed.length > 0
             ? CTFramesetterCreateWithAttributedString(attributed as CFAttributedString)
             : nil
+        cachedFrame = nil
+        cachedFrameSize = .zero
         setNeedsDisplay()
     }
 
@@ -331,13 +357,17 @@ private final class CoreTextDrawView: UIView {
             return
         }
 
+        if cachedFrame == nil || cachedFrameSize != bounds.size {
+            let path = CGPath(rect: bounds, transform: nil)
+            cachedFrame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
+            cachedFrameSize = bounds.size
+        }
+        guard let frame = cachedFrame else { return }
+
         context.saveGState()
         context.textMatrix = .identity
         context.translateBy(x: 0, y: bounds.height)
         context.scaleBy(x: 1.0, y: -1.0)
-
-        let path = CGPath(rect: bounds, transform: nil)
-        let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
         CTFrameDraw(frame, context)
         context.restoreGState()
     }
