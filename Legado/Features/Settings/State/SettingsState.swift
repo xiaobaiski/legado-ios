@@ -21,7 +21,7 @@ public struct SettingsState: ViewState, Equatable, Sendable {
         isBackingUp: Bool = false,
         isRestoring: Bool = false,
         lastBackupSummary: WebDAVBackupSummary? = nil,
-        speechRate: Float = 0.5,
+        speechRate: Float = 1.0,
         speechPitch: Float = 1.0,
         cacheSizeBytes: Int64 = 0,
         readerConfig: ReaderConfig = ReaderConfig.defaultConfig,

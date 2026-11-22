@@ -370,13 +370,18 @@ public struct ReaderView: View {
             onOpenMoreSettings: { viewModel.send(.openMoreSettings) },
             onToggleAutoPage: { viewModel.send(.toggleAutoPage) },
             onStartTTS: {
+                let cleanText = viewModel.state.currentChapterText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !cleanText.isEmpty else {
+                    toastMessage = "当前章节无可朗读正文"
+                    return
+                }
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                     viewModel.send(.toggleHUD)
                     isTTSSpeaking = true
                 }
                 setupTTSCallbacks()
                 ttsPlayer.startReading(
-                    content: viewModel.state.currentChapterText,
+                    content: cleanText,
                     bookTitle: viewModel.state.book.name,
                     chapterTitle: viewModel.state.currentChapter?.title ?? "",
                     author: viewModel.state.book.author)

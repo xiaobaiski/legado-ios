@@ -5,7 +5,7 @@ import UIKit
 // MARK: - 锁屏媒体控制、控制中心与音频会话通知联动
 
 extension TTSPlayer {
-    func setupAudioSession() {
+    func activateAudioSession() {
         do {
             try AVAudioSession.sharedInstance().setCategory(
                 .playback,
@@ -14,6 +14,14 @@ extension TTSPlayer {
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
             print("[TTSPlayer] Failed to activate audio session: \(error)")
+        }
+    }
+
+    func deactivateAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        } catch {
+            print("[TTSPlayer] Failed to deactivate audio session: \(error)")
         }
     }
 

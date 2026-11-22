@@ -148,5 +148,26 @@ extension AppEnvironment {
             content: sampleContent,
             bookUrl: sampleBook.bookUrl,
             index: 0)
+
+        let chapterTwoContent = """
+        　　清晨的薄雾还未散尽，科尔杜村的钟楼已经敲响了第一声沉闷的钟鸣。
+        　　石板路两侧的木屋渐渐升起炊烟，面包房里飘出黑麦发酵后的微酸香气，与山风带来的松针气息交织在一起。
+        　　卢米安压低帽檐，穿过热闹却又透着一丝压抑的集市。自从前几日那场突如其来的浓雾之后，村里几位老人总是在黄昏时分早早关紧木门，低声谈论着山谷深处传来的怪异回响。
+        　　他站在旅店斜对面的旧报亭旁，看似随意地翻阅着泛黄的旧报纸，余光却始终留意着通往教堂的那条鹅卵石坡道。
+        """
+        let chapterThreeContent = """
+        　　推开略显陈旧的橡木门时，门框上的铜铃发出清脆而短促的声响。
+        　　壁炉里的松木正噼啪作响，橘红色的火光将墙面上几幅褪色的油画映照得明暗不定。坐在窗边的中年绅士放下了手中的银质茶匙，镜片后的目光平静而深邃。
+        　　“你比约定的时间晚了两分钟，卢米安。”对方的声音低沉而温和，却莫名给人一种置身于教堂忏悔室般的压力。
+        　　卢米安拉开木椅坐下，从风衣内袋取出那张折叠整齐的羊皮纸：“因为街口多出了几个陌生的面孔，我绕了两条街才确认没有尾巴。”
+        """
+        getChapterContentUseCase.saveChapterCache(
+            content: chapterTwoContent,
+            bookUrl: sampleBook.bookUrl,
+            index: 1)
+        getChapterContentUseCase.saveChapterCache(
+            content: chapterThreeContent,
+            bookUrl: sampleBook.bookUrl,
+            index: 2)
     }
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.1] - 2026-11-22
+
+### Fixed
+- **WebDAV Connectivity & Protocol Compatibility**:
+  - Declared `NSLocalNetworkUsageDescription` in `project.yml` & `Legado/Info.plist` so iOS permits connecting to LAN NAS / Alist / OpenList / Synology servers instead of failing with `-1004`.
+  - Added dedicated `URLSessionTaskDelegate` (`WebDAVSessionDelegate`) preserving HTTP method (`PROPFIND` / `MKCOL` / `PUT`), body, headers, and `Authorization` across HTTP redirects (`301/302/307/308`), supporting HTTP Basic & Digest challenges, and adding an opt-in `允许自签名证书 (局域网 NAS HTTPS)` toggle.
+  - Sent standard RFC 4918 `PROPFIND` XML body (`Content-Type: application/xml; charset=utf-8`), with automatic fallback to `Depth: 1`, `OPTIONS`, and target `remoteDirectory` probe.
+  - Normalized `davs://` -> `https://`, `dav://` -> `http://`, schemeless URLs, percent-encoded Chinese directory segments, and iterative multi-level `MKCOL` creation; added clear Chinese `URLError` diagnostics and inline error/success banners in `SettingsView`.
+- **Full Reader Backup & Restore**: `BackupToWebDAVUseCase` / `RestoreFromWebDAVUseCase` now back up and restore actual `ReplaceRuleStore`, `TxtTocRuleStore`, `ReadRecordStore`, and `ReaderConfigStore` alongside bookshelf progress.
+- **TTS Preferences & Audio Session**: Fixed Settings TTS speech rate slider mismatch (`0.5 ... 2.0x`), deferred `AVAudioSession` activation until playback starts (preventing background music ducking when opening Settings), applied purification/Chinese conversion on cross-chapter TTS, skipped empty volume headers, and guarded empty chapters.
+- **Local Book Storage & Progress Sync**: Migrated `local://` book chapters to persistent `Application Support/LegadoLocalBooks` (with transparent legacy fallback), excluded local books from online cache size calculations, refreshed local book reading progress when returning to `BookDetailView`, clamped out-of-range search/bookmark offsets near chapter ends, and bundled offline text for chapters 2–3 of the built-in sample book.
+
 ## [1.0.0] - 2026-11-21
 
 ### Added

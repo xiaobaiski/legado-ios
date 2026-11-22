@@ -213,6 +213,8 @@ extension SettingsView {
             }
         } header: {
             Label("存储与离线缓存", systemImage: "internaldrive")
+        } footer: {
+            Text("本地导入的 TXT / EPUB 电子书存储在独立持久化目录中，清理离线缓存不会影响本地书籍。")
         }
     }
 
@@ -245,7 +247,7 @@ extension SettingsView {
             HStack {
                 Text("版本")
                 Spacer()
-                Text("1.0.0 (iOS 18+ 原生)")
+                Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.1") (iOS 18+ 原生)")
                     .foregroundStyle(.secondary)
             }
             HStack {

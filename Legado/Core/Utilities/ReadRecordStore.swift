@@ -77,6 +77,31 @@ public final class ReadRecordStore: @unchecked Sendable {
         savePayloadUnlocked(StoragePayload(records: [], dailySeconds: [:]))
     }
 
+    /// 合并远端备份的阅读时长记录（按书名+作者取较大累计值，不丢失已有记录）
+    public func mergeRecords(_ incoming: [ReadRecord]) {
+        guard !incoming.isEmpty else { return }
+        lock.lock()
+        defer { lock.unlock() }
+
+        var payload = loadPayloadUnlocked()
+        for remote in incoming {
+            if let idx = payload.records.firstIndex(where: { $0.id == remote.id }) {
+                payload.records[idx].readTimeSeconds = max(
+                    payload.records[idx].readTimeSeconds,
+                    remote.readTimeSeconds)
+                payload.records[idx].wordsRead = max(
+                    payload.records[idx].wordsRead,
+                    remote.wordsRead)
+                if remote.lastReadDate > payload.records[idx].lastReadDate {
+                    payload.records[idx].lastReadDate = remote.lastReadDate
+                }
+            } else {
+                payload.records.append(remote)
+            }
+        }
+        savePayloadUnlocked(payload)
+    }
+
     public static func formatDuration(_ seconds: TimeInterval) -> String {
         let totalMinutes = Int(seconds / 60)
         if totalMinutes < 1 {

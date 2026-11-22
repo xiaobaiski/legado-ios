@@ -16,9 +16,13 @@ public final class GetBookDetailUseCase: Sendable {
     }
 
     public func execute(book: Book) async throws -> Book {
+        if book.isLocalFile {
+            return (try? await bookRepository.getBook(by: book.bookUrl)) ?? book
+        }
+
         let sources = try await sourceRepository.fetchSources()
         guard let source = sources.first(where: { $0.bookSourceUrl == book.origin }) else {
-            return book
+            return (try? await bookRepository.getBook(by: book.bookUrl)) ?? book
         }
 
         let updatedBook = try await service.fetchBookDetail(book: book, source: source)

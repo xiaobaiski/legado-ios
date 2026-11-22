@@ -19,8 +19,8 @@ settings:
     SWIFT_VERSION: "5.0"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: ""
-    MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "100"
+    MARKETING_VERSION: "1.0.1"
+    CURRENT_PROJECT_VERSION: "101"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
 targets:
@@ -52,6 +52,7 @@ targets:
       properties:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: "用于连接局域网内的 WebDAV 服务器（如 NAS、Alist 等）进行阅读进度与配置云端同步。"
         UIBackgroundModes:
           - audio
         UIFileSharingEnabled: true

@@ -6,6 +6,7 @@ public enum SettingsIntent: ViewIntent {
     case updateWebDAVUsername(String)
     case updateWebDAVPassword(String)
     case updateWebDAVDirectory(String)
+    case updateWebDAVAllowInsecureCert(Bool)
     case testWebDAVConnection
     case backupToWebDAV
     case restoreFromWebDAV

@@ -17,33 +17,12 @@ public struct SettingsView: View {
     public var body: some View {
         NavigationStack {
             Form {
-
-                // MARK: - 阅读与交互偏好分区
-
                 readingPreferencesSection
-
-                // MARK: - 本地字体管理分区
-
                 localFontsSection
-
-                // MARK: - WebDAV 云同步分区
-
                 webDAVSection
-
-                // MARK: - 语音朗读设置分区
-
                 ttsSection
-
-                // MARK: - 存储与离线缓存分区
-
                 storageSection
-
-                // MARK: - 文本净化与规则分区
-
                 purifySection
-
-                // MARK: - 关于与系统架构分区
-
                 aboutSection
             }
             .navigationTitle("设置")
@@ -57,12 +36,6 @@ public struct SettingsView: View {
                 switch effect {
                 case let .showToast(msg):
                     toastMessage = msg
-                    Task {
-                        try? await Task.sleep(nanoseconds: 2_500_000_000)
-                        if toastMessage == msg {
-                            toastMessage = nil
-                        }
-                    }
 
                 case .hapticFeedback:
                     if viewModel.state.readerConfig.isHapticEnabled {
@@ -83,6 +56,12 @@ public struct SettingsView: View {
                         .overlay(Capsule().stroke(Color.white.opacity(0.2), lineWidth: 0.5))
                         .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
                         .padding(.bottom, 24)
+                        .task(id: toastMessage) {
+                            try? await Task.sleep(nanoseconds: 2_500_000_000)
+                            if self.toastMessage == toastMessage {
+                                self.toastMessage = nil
+                            }
+                        }
                 }
             }
             .alert("清空所有离线缓存", isPresented: $isShowingClearAlert) {
@@ -91,7 +70,7 @@ public struct SettingsView: View {
                     viewModel.send(.clearAllCache)
                 }
             } message: {
-                Text("确定要删除所有书籍已下载的离线章节正文吗？此操作可释放 \(viewModel.state.formattedCacheSize) 存储空间。")
+                Text("仅清理在线章节缓存正文，可释放 \(viewModel.state.formattedCacheSize) 空间，不会删除已导入的本地书籍。")
             }
             .sheet(isPresented: $isShowingFontChooser) {
                 FontPickerSheet(
@@ -138,32 +117,43 @@ public struct SettingsView: View {
             }
         }
     }
+}
 
-    // MARK: - WebDAV 分区
+// MARK: - WebDAV 与 TTS 设置分区
 
-    private var webDAVSection: some View {
+private extension SettingsView {
+    var webDAVSection: some View {
         Section {
-            TextField("服务器地址 (如坚果云或自建 NAS)", text: Binding(
+            TextField("服务器地址 (如 https://dav.jianguoyun.com/dav/)", text: Binding(
                 get: { viewModel.state.webDAVConfig.serverUrl },
                 set: { viewModel.send(.updateWebDAVServer($0)) }))
+                .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
 
             TextField("账号 / 邮箱", text: Binding(
                 get: { viewModel.state.webDAVConfig.username },
                 set: { viewModel.send(.updateWebDAVUsername($0)) }))
+                .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
 
-            SecureField("应用独立密码", text: Binding(
+            SecureField("密码 / 应用独立密码", text: Binding(
                 get: { viewModel.state.webDAVConfig.password },
                 set: { viewModel.send(.updateWebDAVPassword($0)) }))
 
-            TextField("远程存放目录", text: Binding(
+            TextField("远程存放目录 (如 /Legado/)", text: Binding(
                 get: { viewModel.state.webDAVConfig.remoteDirectory },
                 set: { viewModel.send(.updateWebDAVDirectory($0)) }))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
 
-            // 测试连接按钮
+            Toggle(
+                "允许自签名证书 (局域网 NAS HTTPS)",
+                isOn: Binding(
+                    get: { viewModel.state.webDAVConfig.allowInsecureCertificate },
+                    set: { viewModel.send(.updateWebDAVAllowInsecureCert($0)) }))
+
             Button {
                 viewModel.send(.testWebDAVConnection)
             } label: {
@@ -181,76 +171,100 @@ public struct SettingsView: View {
             }
             .disabled(viewModel.state.isTestingConnection)
 
-            // 备份与还原操作行
-            HStack(spacing: 12) {
-                Button {
-                    viewModel.send(.backupToWebDAV)
-                } label: {
-                    HStack {
-                        if viewModel.state.isBackingUp {
-                            ProgressView().scaleEffect(0.8)
-                        } else {
-                            Image(systemName: "arrow.clockwise.icloud.fill")
-                        }
-                        Text("立即备份")
-                    }
-                    .font(.footnote.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(Color.accentColor.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-                .disabled(viewModel.state.isBackingUp)
-
-                Button {
-                    viewModel.send(.restoreFromWebDAV)
-                } label: {
-                    HStack {
-                        if viewModel.state.isRestoring {
-                            ProgressView().scaleEffect(0.8)
-                        } else {
-                            Image(systemName: "icloud.and.arrow.down.fill")
-                        }
-                        Text("从云端还原")
-                    }
-                    .font(.footnote.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(Color.primary.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-                .disabled(viewModel.state.isRestoring)
-            }
-            .buttonStyle(.plain)
-            .padding(.vertical, 4)
-
-            if let summary = viewModel.state.lastBackupSummary {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("最近备份已完成")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.green)
-                    Text("包含 \(summary.bookCount) 本书 (\(summary.dataSizeBytes / 1024) KB)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
+            webDAVActionRow
+            webDAVStatusViews
         } header: {
             Label("WebDAV 云备份同步", systemImage: "icloud")
         } footer: {
-            Text("支持坚果云、Nextcloud、群晖 WebDAV 服务，自动无损打包同步书架、阅读进度与净化规则。")
+            Text("支持坚果云、Alist / OpenList、群晖、Nextcloud 等 WebDAV 服务。首次连接局域网 NAS 请允许「本地网络」权限。")
         }
     }
 
-    // MARK: - 朗读设置分区
+    var webDAVActionRow: some View {
+        HStack(spacing: 12) {
+            Button {
+                viewModel.send(.backupToWebDAV)
+            } label: {
+                HStack {
+                    if viewModel.state.isBackingUp {
+                        ProgressView().scaleEffect(0.8)
+                    } else {
+                        Image(systemName: "arrow.clockwise.icloud.fill")
+                    }
+                    Text("立即备份")
+                }
+                .font(.footnote.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(Color.accentColor.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .disabled(viewModel.state.isBackingUp)
 
-    private var ttsSection: some View {
+            Button {
+                viewModel.send(.restoreFromWebDAV)
+            } label: {
+                HStack {
+                    if viewModel.state.isRestoring {
+                        ProgressView().scaleEffect(0.8)
+                    } else {
+                        Image(systemName: "icloud.and.arrow.down.fill")
+                    }
+                    Text("从云端还原")
+                }
+                .font(.footnote.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(Color.primary.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .disabled(viewModel.state.isRestoring)
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    var webDAVStatusViews: some View {
+        if let success = viewModel.state.successMessage, !success.isEmpty {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text(success)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+            }
+        }
+
+        if let error = viewModel.state.errorMessage, !error.isEmpty {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+
+        if let summary = viewModel.state.lastBackupSummary {
+            let sizeKB = max(summary.dataSizeBytes / 1024, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("最近备份：\(summary.bookCount) 本书、\(summary.ruleCount) 条规则 (\(sizeKB) KB)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    var ttsSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("朗读语速")
                         .font(.subheadline)
                     Spacer()
-                    Text(String(format: "%.2fx", viewModel.state.speechRate * 2))
+                    Text(String(format: "%.2fx", viewModel.state.speechRate))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -258,7 +272,7 @@ public struct SettingsView: View {
                     value: Binding(
                         get: { Double(viewModel.state.speechRate) },
                         set: { viewModel.send(.updateSpeechRate(Float($0))) }),
-                    in: 0.2 ... 0.8,
+                    in: 0.5 ... 2.0,
                     step: 0.05)
             }
             .padding(.vertical, 2)
@@ -268,7 +282,7 @@ public struct SettingsView: View {
                     Text("语音音调")
                         .font(.subheadline)
                     Spacer()
-                    Text(String(format: "%.1f", viewModel.state.speechPitch))
+                    Text(String(format: "%.2f", viewModel.state.speechPitch))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -277,7 +291,7 @@ public struct SettingsView: View {
                         get: { Double(viewModel.state.speechPitch) },
                         set: { viewModel.send(.updateSpeechPitch(Float($0))) }),
                     in: 0.5 ... 1.5,
-                    step: 0.1)
+                    step: 0.05)
             }
             .padding(.vertical, 2)
         } header: {

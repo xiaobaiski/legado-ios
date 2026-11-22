@@ -59,4 +59,24 @@ public enum ReaderConfigStore {
     public static var isHapticEnabled: Bool {
         load().isHapticEnabled
     }
+
+    /// 导出当前阅读排版配置 JSON 字符串（供 WebDAV 云端备份）
+    public static func exportJSON(defaults: UserDefaults = .standard) -> String? {
+        let config = load(defaults: defaults)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(config) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// 从 JSON 字符串还原阅读排版配置
+    @discardableResult
+    public static func importJSON(_ json: String, defaults: UserDefaults = .standard) -> Bool {
+        guard let data = json.data(using: .utf8),
+              let config = try? JSONDecoder().decode(ReaderConfig.self, from: data) else {
+            return false
+        }
+        save(config, defaults: defaults)
+        return true
+    }
 }

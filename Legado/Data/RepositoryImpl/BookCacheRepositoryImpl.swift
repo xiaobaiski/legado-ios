@@ -1,9 +1,12 @@
 import Foundation
 
-/// 章节离线缓存数据仓库实现 (基于沙盒 Caches/LegadoChapters)
+/// 章节离线缓存与本地书籍正文持久化仓库实现
+/// - 在线缓存存于 `Caches/LegadoChapters`
+/// - 本地导入书籍（`local://`）优先持久化于 `Application Support/LegadoLocalBooks`，免受系统存储空间自动回收，并兼容读取旧版路径
 public final class BookCacheRepositoryImpl: BookCacheRepository, @unchecked Sendable {
     private let fileManager: FileManager
     private let baseDirectory: URL
+    private let localBooksDirectory: URL?
 
     public init(
         fileManager: FileManager = .default,
@@ -11,9 +14,12 @@ public final class BookCacheRepositoryImpl: BookCacheRepository, @unchecked Send
         self.fileManager = fileManager
         if let baseDirectory {
             self.baseDirectory = baseDirectory
+            self.localBooksDirectory = nil
         } else {
             let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             self.baseDirectory = caches.appendingPathComponent("LegadoChapters", isDirectory: true)
+            let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            self.localBooksDirectory = appSupport.appendingPathComponent("LegadoLocalBooks", isDirectory: true)
         }
     }
 
@@ -21,44 +27,60 @@ public final class BookCacheRepositoryImpl: BookCacheRepository, @unchecked Send
         Data(bookUrl.utf8).map { String(format: "%02x", $0) }.joined()
     }
 
-    private func bookDirectory(for bookUrl: String) -> URL {
+    private func readDirectories(for bookUrl: String) -> [URL] {
         let key = Self.deterministicKey(for: bookUrl)
+        let cacheDir = baseDirectory.appendingPathComponent(key, isDirectory: true)
+        if bookUrl.hasPrefix("local://"), let localBooksDirectory {
+            return [
+                localBooksDirectory.appendingPathComponent(key, isDirectory: true),
+                cacheDir,
+            ]
+        }
+        return [cacheDir]
+    }
+
+    private func writeDirectory(for bookUrl: String) -> URL {
+        let key = Self.deterministicKey(for: bookUrl)
+        if bookUrl.hasPrefix("local://"), let localBooksDirectory {
+            return localBooksDirectory.appendingPathComponent(key, isDirectory: true)
+        }
         return baseDirectory.appendingPathComponent(key, isDirectory: true)
     }
 
-    private func chapterFileUrl(bookUrl: String, index: Int) -> URL {
-        bookDirectory(for: bookUrl).appendingPathComponent("\(index).txt")
-    }
-
     public func isChapterCached(bookUrl: String, index: Int) -> Bool {
-        let url = chapterFileUrl(bookUrl: bookUrl, index: index)
-        return fileManager.fileExists(atPath: url.path)
+        readDirectories(for: bookUrl).contains { dir in
+            fileManager.fileExists(atPath: dir.appendingPathComponent("\(index).txt").path)
+        }
     }
 
     public func getCachedChapterIndices(bookUrl: String) -> Set<Int> {
-        let dir = bookDirectory(for: bookUrl)
-        guard let files = try? fileManager.contentsOfDirectory(atPath: dir.path) else {
-            return []
-        }
-
         var indices = Set<Int>()
-        for file in files where file.hasSuffix(".txt") {
-            let name = (file as NSString).deletingPathExtension
-            if let idx = Int(name) {
-                indices.insert(idx)
+        for dir in readDirectories(for: bookUrl) {
+            guard let files = try? fileManager.contentsOfDirectory(atPath: dir.path) else {
+                continue
+            }
+            for file in files where file.hasSuffix(".txt") {
+                let name = (file as NSString).deletingPathExtension
+                if let idx = Int(name) {
+                    indices.insert(idx)
+                }
             }
         }
         return indices
     }
 
     public func getCachedChapterContent(bookUrl: String, index: Int) -> String? {
-        let url = chapterFileUrl(bookUrl: bookUrl, index: index)
-        guard fileManager.fileExists(atPath: url.path) else { return nil }
-        return try? String(contentsOf: url, encoding: .utf8)
+        for dir in readDirectories(for: bookUrl) {
+            let url = dir.appendingPathComponent("\(index).txt")
+            if fileManager.fileExists(atPath: url.path) {
+                return try? String(contentsOf: url, encoding: .utf8)
+            }
+        }
+        return nil
     }
 
     public func saveChapterContent(bookUrl: String, index: Int, content: String) throws {
-        let dir = bookDirectory(for: bookUrl)
+        let dir = writeDirectory(for: bookUrl)
         if !fileManager.fileExists(atPath: dir.path) {
             try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
         }
@@ -67,22 +89,10 @@ public final class BookCacheRepositoryImpl: BookCacheRepository, @unchecked Send
     }
 
     public func calculateBookCacheSize(bookUrl: String) -> Int64 {
-        let dir = bookDirectory(for: bookUrl)
-        guard let enumerator = fileManager.enumerator(
-            at: dir,
-            includingPropertiesForKeys: [.fileSizeKey],
-            options: [.skipsHiddenFiles]) else {
-            return 0
+        for dir in readDirectories(for: bookUrl) where fileManager.fileExists(atPath: dir.path) {
+            return directorySize(at: dir)
         }
-
-        var totalSize: Int64 = 0
-        for case let url as URL in enumerator {
-            if let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
-               let size = values.fileSize {
-                totalSize += Int64(size)
-            }
-        }
-        return totalSize
+        return 0
     }
 
     public func getBookCacheInfo(bookUrl: String, totalChapters: Int) -> BookCacheInfo {
@@ -96,8 +106,7 @@ public final class BookCacheRepositoryImpl: BookCacheRepository, @unchecked Send
     }
 
     public func clearBookCache(bookUrl: String) throws {
-        let dir = bookDirectory(for: bookUrl)
-        if fileManager.fileExists(atPath: dir.path) {
+        for dir in readDirectories(for: bookUrl) where fileManager.fileExists(atPath: dir.path) {
             try fileManager.removeItem(at: dir)
         }
     }
@@ -106,29 +115,48 @@ public final class BookCacheRepositoryImpl: BookCacheRepository, @unchecked Send
         guard fileManager.fileExists(atPath: baseDirectory.path) else { return }
         let localPrefix = Self.deterministicKey(for: "local://")
         let entries = try fileManager.contentsOfDirectory(at: baseDirectory, includingPropertiesForKeys: nil)
-        for entry in entries {
-            if entry.lastPathComponent.hasPrefix(localPrefix) {
-                continue
-            }
+        for entry in entries where !entry.lastPathComponent.hasPrefix(localPrefix) {
             try fileManager.removeItem(at: entry)
         }
     }
 
     public func calculateTotalCacheSize() -> Int64 {
+        guard fileManager.fileExists(atPath: baseDirectory.path),
+              let entries = try? fileManager.contentsOfDirectory(
+                  at: baseDirectory,
+                  includingPropertiesForKeys: [.fileSizeKey],
+                  options: [.skipsHiddenFiles]) else {
+            return 0
+        }
+
+        let localPrefix = Self.deterministicKey(for: "local://")
+        var totalSize: Int64 = 0
+        for entry in entries where !entry.lastPathComponent.hasPrefix(localPrefix) {
+            totalSize += directorySize(at: entry)
+        }
+        return totalSize
+    }
+
+    private func directorySize(at targetUrl: URL) -> Int64 {
+        var isDir: ObjCBool = false
+        guard fileManager.fileExists(atPath: targetUrl.path, isDirectory: &isDir) else { return 0 }
+        if !isDir.boolValue {
+            let values = try? targetUrl.resourceValues(forKeys: [.fileSizeKey])
+            return Int64(values?.fileSize ?? 0)
+        }
         guard let enumerator = fileManager.enumerator(
-            at: baseDirectory,
+            at: targetUrl,
             includingPropertiesForKeys: [.fileSizeKey],
             options: [.skipsHiddenFiles]) else {
             return 0
         }
-
-        var totalSize: Int64 = 0
+        var sum: Int64 = 0
         for case let url as URL in enumerator {
             if let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
                let size = values.fileSize {
-                totalSize += Int64(size)
+                sum += Int64(size)
             }
         }
-        return totalSize
+        return sum
     }
 }

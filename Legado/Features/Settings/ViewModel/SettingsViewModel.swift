@@ -36,7 +36,8 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
 
     override public func send(_ intent: SettingsIntent) {
         switch intent {
-        case .updateWebDAVServer, .updateWebDAVUsername, .updateWebDAVPassword, .updateWebDAVDirectory:
+        case .updateWebDAVServer, .updateWebDAVUsername, .updateWebDAVPassword,
+             .updateWebDAVDirectory, .updateWebDAVAllowInsecureCert:
             handleConfigIntent(intent)
 
         case .testWebDAVConnection, .backupToWebDAV, .restoreFromWebDAV:
@@ -54,24 +55,32 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
     private func handleConfigIntent(_ intent: SettingsIntent) {
         switch intent {
         case let .updateWebDAVServer(val):
-            updateState { $0.webDAVConfig.serverUrl = val }
-            saveCurrentConfig()
+            mutateWebDAVConfig { $0.serverUrl = val }
 
         case let .updateWebDAVUsername(val):
-            updateState { $0.webDAVConfig.username = val }
-            saveCurrentConfig()
+            mutateWebDAVConfig { $0.username = val }
 
         case let .updateWebDAVPassword(val):
-            updateState { $0.webDAVConfig.password = val }
-            saveCurrentConfig()
+            mutateWebDAVConfig { $0.password = val }
 
         case let .updateWebDAVDirectory(val):
-            updateState { $0.webDAVConfig.remoteDirectory = val }
-            saveCurrentConfig()
+            mutateWebDAVConfig { $0.remoteDirectory = val }
+
+        case let .updateWebDAVAllowInsecureCert(allowed):
+            mutateWebDAVConfig { $0.allowInsecureCertificate = allowed }
 
         default:
             break
         }
+    }
+
+    private func mutateWebDAVConfig(_ mutate: (inout WebDAVConfig) -> Void) {
+        updateState {
+            mutate(&$0.webDAVConfig)
+            $0.errorMessage = nil
+            $0.successMessage = nil
+        }
+        saveCurrentConfig()
     }
 
     private func handleSyncIntent(_ intent: SettingsIntent) {
@@ -128,6 +137,8 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             updateState {
                 $0.readerConfig = ReaderConfigStore.load()
                 $0.importedFonts = LocalFontManager.shared.listImportedFonts()
+                $0.speechRate = TTSPlayer.shared.speechRate
+                $0.speechPitch = TTSPlayer.shared.speechPitch
             }
 
         case let .updateReaderConfig(config):
@@ -217,101 +228,99 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             emitEffect(.showToast("删除字体失败: \(error.localizedDescription)"))
         }
     }
+}
 
-    private func runConnectionTest() {
-        guard state.webDAVConfig.isValid else {
-            emitEffect(.showToast("请填写完整的 WebDAV 服务器地址与凭证"))
-            return
-        }
+// MARK: - WebDAV 同步与配置持久化
 
-        updateState { $0.isTestingConnection = true }
-        let config = state.webDAVConfig
-
-        Task {
-            do {
-                _ = try await webDAVClient.testConnection(config: config)
-                self.updateState { state in
-                    state.isTestingConnection = false
-                    state.successMessage = "WebDAV 服务器连接成功！"
+private extension SettingsViewModel {
+    func runConnectionTest() {
+        runWebDAVTask(
+            setBusy: { $0.isTestingConnection = $1 },
+            failurePrefix: "连接失败") { config in
+                _ = try await self.webDAVClient.testConnection(config: config)
+                self.updateState {
+                    $0.errorMessage = nil
+                    $0.successMessage = "WebDAV 服务器连接成功，认证通过！"
                 }
                 self.emitEffect(.showToast("WebDAV 认证通过，连接成功"))
-                self.emitEffect(.hapticFeedback)
-            } catch {
-                self.updateState { state in
-                    state.isTestingConnection = false
-                    state.errorMessage = error.localizedDescription
-                }
-                self.emitEffect(.showToast("连接失败: \(error.localizedDescription)"))
-            }
         }
     }
 
-    private func runBackup() {
+    func runBackup() {
+        runWebDAVTask(
+            setBusy: { $0.isBackingUp = $1 },
+            failurePrefix: "备份失败") { config in
+                let summary = try await self.backupUseCase.execute(config: config)
+                let sizeKB = max(summary.dataSizeBytes / 1024, 1)
+                let msg = "已备份 \(summary.bookCount) 本书与 \(summary.ruleCount) 条规则 (\(sizeKB) KB)"
+                self.updateState {
+                    $0.lastBackupSummary = summary
+                    $0.errorMessage = nil
+                    $0.successMessage = "云端备份成功：\(msg)"
+                }
+                self.emitEffect(.showToast(msg))
+        }
+    }
+
+    func runRestore() {
+        runWebDAVTask(
+            setBusy: { $0.isRestoring = $1 },
+            failurePrefix: "还原失败") { config in
+                let summary = try await self.restoreUseCase.execute(config: config)
+                let msg = "已恢复 \(summary.bookCount) 本书、\(summary.ruleCount) 条规则与阅读配置"
+                self.updateState {
+                    $0.errorMessage = nil
+                    $0.successMessage = "云端还原成功：\(msg)"
+                }
+                self.send(.refreshReaderConfig)
+                self.emitEffect(.showToast(msg))
+        }
+    }
+
+    func runWebDAVTask(
+        setBusy: @escaping (inout SettingsState, Bool) -> Void,
+        failurePrefix: String,
+        operation: @escaping @MainActor (WebDAVConfig) async throws -> Void) {
         guard state.webDAVConfig.isValid else {
-            emitEffect(.showToast("请先配置并测试 WebDAV 连接"))
+            let msg = "请输入有效的 WebDAV 服务器地址"
+            updateState {
+                $0.errorMessage = msg
+                $0.successMessage = nil
+            }
+            emitEffect(.showToast(msg))
             return
         }
 
-        updateState { $0.isBackingUp = true }
+        updateState {
+            setBusy(&$0, true)
+            $0.errorMessage = nil
+            $0.successMessage = nil
+        }
         let config = state.webDAVConfig
 
         Task {
             do {
-                let summary = try await backupUseCase.execute(config: config)
-                self.updateState { state in
-                    state.isBackingUp = false
-                    state.lastBackupSummary = summary
-                    state.successMessage = "云端备份成功！"
-                }
-                let msg = "已备份 \(summary.bookCount) 本书与 \(summary.sourceCount) 个书源 (\(summary.dataSizeBytes / 1024) KB)"
-                self.emitEffect(.showToast(msg))
+                try await operation(config)
+                self.updateState { setBusy(&$0, false) }
                 self.emitEffect(.hapticFeedback)
             } catch {
-                self.updateState { state in
-                    state.isBackingUp = false
-                    state.errorMessage = error.localizedDescription
+                self.updateState {
+                    setBusy(&$0, false)
+                    $0.successMessage = nil
+                    $0.errorMessage = error.localizedDescription
                 }
-                self.emitEffect(.showToast("备份失败: \(error.localizedDescription)"))
+                self.emitEffect(.showToast("\(failurePrefix): \(error.localizedDescription)"))
             }
         }
     }
 
-    private func runRestore() {
-        guard state.webDAVConfig.isValid else {
-            emitEffect(.showToast("请先配置并测试 WebDAV 连接"))
-            return
-        }
-
-        updateState { $0.isRestoring = true }
-        let config = state.webDAVConfig
-
-        Task {
-            do {
-                let summary = try await restoreUseCase.execute(config: config)
-                self.updateState { state in
-                    state.isRestoring = false
-                    state.successMessage = "云端还原成功！"
-                }
-                let msg = "已恢复 \(summary.bookCount) 本书与 \(summary.sourceCount) 个书源"
-                self.emitEffect(.showToast(msg))
-                self.emitEffect(.hapticFeedback)
-            } catch {
-                self.updateState { state in
-                    state.isRestoring = false
-                    state.errorMessage = error.localizedDescription
-                }
-                self.emitEffect(.showToast("还原失败: \(error.localizedDescription)"))
-            }
-        }
-    }
-
-    private func saveCurrentConfig() {
+    func saveCurrentConfig() {
         if let data = try? JSONEncoder().encode(state.webDAVConfig) {
             UserDefaults.standard.set(data, forKey: SettingsViewModel.webDAVConfigKey)
         }
     }
 
-    private static func loadSavedWebDAVConfig() -> WebDAVConfig {
+    static func loadSavedWebDAVConfig() -> WebDAVConfig {
         guard let data = UserDefaults.standard.data(forKey: webDAVConfigKey),
               let config = try? JSONDecoder().decode(WebDAVConfig.self, from: data) else {
             return WebDAVConfig(

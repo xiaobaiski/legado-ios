@@ -89,7 +89,6 @@ public final class TTSPlayer: NSObject, ObservableObject {
 
         super.init()
         synthesizer.delegate = self
-        setupAudioSession()
         setupRemoteCommands()
         setupAudioNotifications()
         fetchAvailableVoices()
@@ -111,7 +110,7 @@ public final class TTSPlayer: NSObject, ObservableObject {
         chapterTitle: String = "",
         author: String = "",
         startIndex: Int = 0) {
-        stopPlaybackInternal(clearTimer: false)
+        stopPlaybackInternal(clearTimer: false, deactivateSession: false)
 
         self.currentBookTitle = bookTitle
         self.currentChapterTitle = chapterTitle
@@ -121,9 +120,11 @@ public final class TTSPlayer: NSObject, ObservableObject {
         self.totalSentences = sentences.count
         guard !sentences.isEmpty else {
             state = .idle
+            deactivateAudioSession()
             return
         }
 
+        activateAudioSession()
         let targetIndex = max(0, min(startIndex, sentences.count - 1))
         self.currentSentenceIndex = targetIndex
         playSentence(at: targetIndex)
@@ -140,20 +141,23 @@ public final class TTSPlayer: NSObject, ObservableObject {
     /// 恢复朗读
     public func resume() {
         if state == .paused {
+            activateAudioSession()
             synthesizer.continueSpeaking()
             state = .playing
             updateNowPlayingInfo()
         } else if state == .idle, !sentences.isEmpty {
+            activateAudioSession()
             playSentence(at: currentSentenceIndex)
         }
     }
 
     /// 停止朗读并清理定时器
     public func stop() {
-        stopPlaybackInternal(clearTimer: true)
+        stopPlaybackInternal(clearTimer: true, deactivateSession: true)
     }
 
-    func stopPlaybackInternal(clearTimer: Bool) {
+    func stopPlaybackInternal(clearTimer: Bool, deactivateSession: Bool = true) {
+        let hadActivePlayback = state != .idle || synthesizer.isSpeaking
         synthesizer.stopSpeaking(at: .immediate)
         state = .idle
         currentSentence = ""
@@ -164,6 +168,9 @@ public final class TTSPlayer: NSObject, ObservableObject {
             self.clearTimer()
         }
         clearNowPlayingInfo()
+        if deactivateSession && hadActivePlayback {
+            deactivateAudioSession()
+        }
     }
 
     /// 跳转到指定句子

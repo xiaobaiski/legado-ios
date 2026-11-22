@@ -249,9 +249,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
 
                 let safePageIndex: Int
                 if let offset = targetOffset {
-                    safePageIndex = pages.firstIndex { page in
-                        offset >= page.textRange.location && offset < (page.textRange.location + page.textRange.length)
-                    } ?? 0
+                    safePageIndex = Self.pageIndex(forOffset: offset, in: pages)
                 } else {
                     safePageIndex = min(max(targetPageIndex, 0), max(pages.count - 1, 0))
                 }
@@ -347,15 +345,26 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
             }.value
             guard !Task.isCancelled else { return }
 
-            let preservedPage = pages.firstIndex { page in
-                currentOffset >= page.textRange.location &&
-                    currentOffset < (page.textRange.location + max(page.textRange.length, 1))
-            } ?? min(state.currentPageIndex, max(pages.count - 1, 0))
+            let preservedPage = Self.pageIndex(forOffset: currentOffset, in: pages)
             self.updateState { state in
                 state.pages = pages
                 state.currentPageIndex = preservedPage
             }
         }
+    }
+
+    static func pageIndex(forOffset offset: Int, in pages: [ReaderPage]) -> Int {
+        guard !pages.isEmpty else { return 0 }
+        if let exact = pages.firstIndex(where: { page in
+            offset >= page.textRange.location &&
+                offset < (page.textRange.location + max(page.textRange.length, 1))
+        }) {
+            return exact
+        }
+        if let last = pages.last, offset >= last.textRange.location {
+            return pages.count - 1
+        }
+        return 0
     }
 
     func applyNewConfig(_ newConfig: ReaderConfig, triggerHaptic: Bool = true) {
