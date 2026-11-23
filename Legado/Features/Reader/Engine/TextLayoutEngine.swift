@@ -6,6 +6,7 @@ import UIKit
 public final class TextLayoutEngine: Sendable {
     public static let shared = TextLayoutEngine()
     public static let verticalCanvasPadding: CGFloat = 6
+    private static let paragraphTrimChars = CharacterSet(charactersIn: " \t\u{3000}\u{00A0}\r")
 
     public init() {}
 
@@ -39,11 +40,10 @@ public final class TextLayoutEngine: Sendable {
 
         let converted = config.chineseConversion.convert(purified)
         let indentPrefix = String(repeating: "\u{3000}", count: max(0, min(config.paragraphIndent, 4)))
-        let trimChars = CharacterSet(charactersIn: " \t\u{3000}\u{00A0}\r")
 
         let paragraphs = converted
             .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: trimChars) }
+            .map { $0.trimmingCharacters(in: Self.paragraphTrimChars) }
             .filter { !$0.isEmpty }
 
         if paragraphs.isEmpty {

@@ -206,14 +206,16 @@ public final class PurifyContentUseCase: @unchecked Sendable {
         bookName: String?,
         sourceUrl: String?) -> String {
         var result = text
-        let activeRules = rules
-            .sorted { $0.order < $1.order }
-            .filter { rule in
-                guard rule.isEnabled, rule.isValid else { return false }
-                if isTitle && !rule.scopeTitle { return false }
-                if !isTitle && !rule.scopeContent { return false }
-                return rule.matches(bookName: bookName, sourceUrl: sourceUrl)
+        let orderedRules = rulesAlreadySorted(rules) ? rules : rules.sorted { $0.order < $1.order }
+        let activeRules = orderedRules.filter { rule in
+            guard rule.isEnabled, !rule.pattern.isEmpty else { return false }
+            if rule.isRegex, rule.pattern.hasSuffix("|"), !rule.pattern.hasSuffix("\\|") {
+                return false
             }
+            if isTitle && !rule.scopeTitle { return false }
+            if !isTitle && !rule.scopeContent { return false }
+            return rule.matches(bookName: bookName, sourceUrl: sourceUrl)
+        }
 
         for rule in activeRules {
             if rule.isRegex {
@@ -235,6 +237,14 @@ public final class PurifyContentUseCase: @unchecked Sendable {
             }
         }
         return result
+    }
+
+    private func rulesAlreadySorted(_ rules: [ReplaceRule]) -> Bool {
+        guard rules.count > 1 else { return true }
+        for index in 1 ..< rules.count where rules[index].order < rules[index - 1].order {
+            return false
+        }
+        return true
     }
 
     private func cachedRegex(pattern: String, caseSensitive: Bool) -> NSRegularExpression? {

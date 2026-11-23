@@ -5,6 +5,30 @@ import Foundation
 enum WebDAVSyncHelper {
     static let genericAuthors: Set<String> = ["", "本地导入", "未知", "未知作者"]
     static let maxCoverArchiveBytes = 4 * 1024 * 1024
+    static let allowedImageExtensions: Set<String> = ["jpg", "jpeg", "png", "webp", "gif", "heic"]
+
+    /// 校验归档文件名是否为安全的单层文件名（禁止路径穿越）
+    static func isSafeSingleFileName(_ name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              trimmed != ".",
+              trimmed != "..",
+              !trimmed.contains("/"),
+              !trimmed.contains("\\"),
+              !trimmed.contains("\0"),
+              !trimmed.contains("..") else {
+            return false
+        }
+        return true
+    }
+
+    /// 过滤并白名单化图片扩展名，杜绝外部文件名注入目录层级
+    static func sanitizeImageExtension(_ raw: String?) -> String {
+        let ext = (raw ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return allowedImageExtensions.contains(ext) ? ext : "jpg"
+    }
 
     static func normalize(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -73,9 +97,10 @@ enum WebDAVSyncHelper {
         return (data, ext.isEmpty ? "jpg" : ext.lowercased())
     }
 
-    /// 将归档内的封面写入本机 Documents/BookCovers 目录并更新路径
+    /// 将归档内的封面写入本机 Documents/BookCovers 目录并更新路径（严格校验图片扩展名防路径穿越）
     static func saveRestoredCoverData(_ data: Data, fileExtension: String?, seed: String) -> String? {
         guard !data.isEmpty,
+              data.count <= maxCoverArchiveBytes,
               let docDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
             return nil
         }
@@ -84,7 +109,7 @@ enum WebDAVSyncHelper {
             try FileManager.default.createDirectory(at: coversDir, withIntermediateDirectories: true)
             let digest = SHA256.hash(data: Data(seed.utf8))
             let hex = digest.prefix(12).map { String(format: "%02x", $0) }.joined()
-            let ext = (fileExtension?.isEmpty == false ? fileExtension : nil) ?? "jpg"
+            let ext = sanitizeImageExtension(fileExtension)
             let fileUrl = coversDir.appendingPathComponent("\(hex).\(ext)")
             try data.write(to: fileUrl, options: .atomic)
             return fileUrl.absoluteString

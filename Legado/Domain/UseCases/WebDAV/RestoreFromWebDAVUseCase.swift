@@ -60,6 +60,10 @@ public final class RestoreFromWebDAVUseCase: @unchecked Sendable {
 
         if options.syncBookFiles, let entries = bundle.bookFiles, !entries.isEmpty {
             for entry in entries {
+                guard WebDAVSyncHelper.isSafeSingleFileName(entry.archiveFileName) else {
+                    failedFileCount += 1
+                    continue
+                }
                 do {
                     let archiveData = try await webDAVClient.download(
                         subdirectories: ["books"],

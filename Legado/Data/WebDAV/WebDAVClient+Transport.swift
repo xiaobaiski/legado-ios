@@ -149,24 +149,7 @@ extension WebDAVClient {
     func performRequest(
         _ request: URLRequest,
         config: WebDAVConfig) async throws -> (Data, HTTPURLResponse) {
-        let session: URLSession
-        let ownsSession: Bool
-        if let customSession {
-            session = customSession
-            ownsSession = false
-        } else {
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 25
-            configuration.timeoutIntervalForResource = 120
-            let delegate = WebDAVSessionDelegate(config: config)
-            session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
-            ownsSession = true
-        }
-        defer {
-            if ownsSession {
-                session.finishTasksAndInvalidate()
-            }
-        }
+        let session = customSession ?? WebDAVSessionPool.shared.session(for: config)
 
         do {
             let (data, response) = try await session.data(for: request)
@@ -189,7 +172,7 @@ extension WebDAVClient {
                 request.setValue("Basic \(base64)", forHTTPHeaderField: "Authorization")
             }
         }
-        request.setValue("Legado-iOS/1.2.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("Legado-iOS/1.3.0", forHTTPHeaderField: "User-Agent")
     }
 
     static func mapNetworkError(_ error: Error, url: URL?) -> WebDAVError {
@@ -226,84 +209,5 @@ extension WebDAVClient {
         default:
             return .networkError("\(urlError.localizedDescription) (\(urlError.errorCode))")
         }
-    }
-}
-
-/// WebDAV 会话代理：处理 HTTP 重定向方法与凭证保留、Basic/Digest 质询与可选自签名 TLS 证书放行
-private final class WebDAVSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    private let config: WebDAVConfig
-
-    init(config: WebDAVConfig) {
-        self.config = config
-    }
-
-    func urlSession(
-        _: URLSession,
-        task: URLSessionTask,
-        willPerformHTTPRedirection _: HTTPURLResponse,
-        newRequest request: URLRequest,
-        completionHandler: @escaping (URLRequest?) -> Void) {
-        var updated = request
-        if let original = task.originalRequest {
-            if let method = original.httpMethod, !method.isEmpty {
-                updated.httpMethod = method
-            }
-            if let body = original.httpBody, updated.httpBody == nil {
-                updated.httpBody = body
-            }
-            for header in ["Depth", "Content-Type", "User-Agent"] {
-                if let value = original.value(forHTTPHeaderField: header) {
-                    updated.setValue(value, forHTTPHeaderField: header)
-                }
-            }
-            if shouldPreserveAuth(from: original.url, to: updated.url) {
-                if let auth = original.value(forHTTPHeaderField: "Authorization") {
-                    updated.setValue(auth, forHTTPHeaderField: "Authorization")
-                } else {
-                    WebDAVClient.applyBasicAuth(to: &updated, config: config)
-                }
-            }
-        }
-        completionHandler(updated)
-    }
-
-    func urlSession(
-        _: URLSession,
-        task _: URLSessionTask,
-        didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        let method = challenge.protectionSpace.authenticationMethod
-        if method == NSURLAuthenticationMethodServerTrust {
-            if config.allowInsecureCertificate,
-               let serverTrust = challenge.protectionSpace.serverTrust {
-                completionHandler(.useCredential, URLCredential(trust: serverTrust))
-            } else {
-                completionHandler(.performDefaultHandling, nil)
-            }
-            return
-        }
-
-        let isBasicOrDigest = method == NSURLAuthenticationMethodHTTPBasic
-            || method == NSURLAuthenticationMethodHTTPDigest
-        if isBasicOrDigest,
-           challenge.previousFailureCount == 0,
-           config.hasCredentials {
-            let credential = URLCredential(
-                user: config.trimmedUsername,
-                password: config.password,
-                persistence: .forSession)
-            completionHandler(.useCredential, credential)
-            return
-        }
-
-        completionHandler(.performDefaultHandling, nil)
-    }
-
-    private func shouldPreserveAuth(from originalUrl: URL?, to redirectedUrl: URL?) -> Bool {
-        guard let oldHost = originalUrl?.host?.lowercased(),
-              let newHost = redirectedUrl?.host?.lowercased() else {
-            return false
-        }
-        return oldHost == newHost
     }
 }

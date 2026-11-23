@@ -59,7 +59,7 @@ public struct AutoScrollReaderView: UIViewRepresentable {
         var parent: AutoScrollReaderView
         weak var textView: UITextView?
         var lastChapterIndex = -1
-        private var lastRenderSignature = ""
+        private var lastRenderKey: ScrollRenderKey?
         nonisolated(unsafe) private var displayLink: CADisplayLink?
         private var lastTimestamp: CFTimeInterval = 0
         private var reachedBottomTriggered = false
@@ -80,16 +80,20 @@ public struct AutoScrollReaderView: UIViewRepresentable {
         }
 
         func applyContentIfNeeded(to textView: UITextView, resetOffset: Bool) {
-            let signature = "\(parent.chapterIndex)|\(parent.contentText.hashValue)|\(parent.config)|" +
-                "\(parent.highlightedSentence ?? "")"
+            let renderKey = ScrollRenderKey(
+                chapterIndex: parent.chapterIndex,
+                titlePrefixLength: parent.titlePrefixLength,
+                contentText: parent.contentText,
+                config: parent.config,
+                highlightedSentence: parent.highlightedSentence)
             textView.textContainerInset = UIEdgeInsets(
                 top: max(parent.config.topMargin, 16),
                 left: parent.config.leftMargin,
                 bottom: max(parent.config.bottomMargin, 16) + 72,
                 right: parent.config.rightMargin)
 
-            guard signature != lastRenderSignature else { return }
-            lastRenderSignature = signature
+            guard renderKey != lastRenderKey else { return }
+            lastRenderKey = renderKey
             lastChapterIndex = parent.chapterIndex
 
             textView.attributedText = TextLayoutEngine.shared.createAttributedString(
@@ -182,4 +186,12 @@ private final class WeakDisplayLinkProxy: NSObject, @unchecked Sendable {
             target.stepScrollTick(timestamp: timestamp)
         }
     }
+}
+
+private struct ScrollRenderKey: Equatable {
+    let chapterIndex: Int
+    let titlePrefixLength: Int
+    let contentText: String
+    let config: ReaderConfig
+    let highlightedSentence: String?
 }

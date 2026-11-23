@@ -5,6 +5,7 @@ public final class CacheManager: @unchecked Sendable {
     public static let shared = CacheManager()
 
     private let lock = NSLock()
+    private let maxMemoryEntries = 512
     private var memoryCache: [String: Any] = [:]
     private var expirationMap: [String: Date] = [:]
     private let userDefaultsKey = "legado_persistent_cache_manager"
@@ -14,6 +15,7 @@ public final class CacheManager: @unchecked Sendable {
     public func putMemory(_ key: String, _ value: Any) {
         lock.lock()
         defer { lock.unlock() }
+        enforceCapacityUnlocked(incomingKey: key)
         memoryCache[key] = value
     }
 
@@ -32,6 +34,7 @@ public final class CacheManager: @unchecked Sendable {
     public func put(_ key: String, _ value: Any, saveTime: Int = 0) {
         lock.lock()
         defer { lock.unlock() }
+        enforceCapacityUnlocked(incomingKey: key)
         memoryCache[key] = value
         if saveTime > 0 {
             expirationMap[key] = Date().addingTimeInterval(TimeInterval(saveTime))
@@ -55,10 +58,26 @@ public final class CacheManager: @unchecked Sendable {
             return "\(memVal)"
         }
         if let saved = UserDefaults.standard.string(forKey: "\(userDefaultsKey)_\(key)") {
+            enforceCapacityUnlocked(incomingKey: key)
             memoryCache[key] = saved
             return saved
         }
         return nil
+    }
+
+    private func enforceCapacityUnlocked(incomingKey: String) {
+        guard memoryCache[incomingKey] == nil, memoryCache.count >= maxMemoryEntries else { return }
+        let now = Date()
+        for (expKey, expDate) in expirationMap where expDate < now {
+            expirationMap.removeValue(forKey: expKey)
+            memoryCache.removeValue(forKey: expKey)
+        }
+        if memoryCache.count >= maxMemoryEntries {
+            for key in Array(memoryCache.keys.prefix(maxMemoryEntries / 2)) {
+                memoryCache.removeValue(forKey: key)
+                expirationMap.removeValue(forKey: key)
+            }
+        }
     }
 
     public func delete(_ key: String) {

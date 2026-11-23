@@ -15,6 +15,12 @@ public struct ParsedTxtChapter: Equatable, Sendable {
 
 /// 本地 TXT 小说智能目录与正则分卷解析引擎（对标 Legado Android `TextFile.kt` 多规则优选算法）
 public enum TxtTocParser {
+    private static let regexCache: NSCache<NSString, NSRegularExpression> = {
+        let cache = NSCache<NSString, NSRegularExpression>()
+        cache.countLimit = 64
+        return cache
+    }()
+
     /// 默认通用章节标题正则表达式 (对标 Legado Android 官方 txtTocRule)
     public static let defaultChapterPattern =
         "^[ \\t　]{0,4}(?:序章|楔子|正文(?!完|结)|终章|后记|尾声|番外|" +
@@ -26,7 +32,7 @@ public enum TxtTocParser {
         for text: String,
         rules: [TxtTocRule]? = nil) -> TxtTocRule? {
         let candidateRules = (rules ?? TxtTocRuleStore.shared.enabledRules())
-            .filter { $0.enable && $0.isValid }
+            .filter { $0.enable && !$0.rule.isEmpty }
         guard !candidateRules.isEmpty else { return nil }
 
         // 取前 260K 字符采样评估匹配度（O(260k) 有界切片，避免对整本小说做 O(N) count 扫描）
@@ -58,13 +64,23 @@ public enum TxtTocParser {
         return bestRule ?? firstMatchedRule
     }
 
+    private static func cachedRegex(for pattern: String) -> NSRegularExpression? {
+        let key = pattern as NSString
+        if let cached = regexCache.object(forKey: key) {
+            return cached
+        }
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]) else {
+            return nil
+        }
+        regexCache.setObject(regex, forKey: key)
+        return regex
+    }
+
     private static func scoreRule(
         _ tocRule: TxtTocRule,
         in sample: String,
         fullRange: NSRange) -> (valid: Int, noise: Int) {
-        guard let regex = try? NSRegularExpression(
-            pattern: tocRule.rule,
-            options: [.anchorsMatchLines]) else {
+        guard let regex = cachedRegex(for: tocRule.rule) else {
             return (0, 0)
         }
         let matches = regex.matches(in: sample, options: [], range: fullRange)
@@ -98,7 +114,7 @@ public enum TxtTocParser {
             chosenPattern = defaultChapterPattern
         }
 
-        guard let regex = try? NSRegularExpression(pattern: chosenPattern, options: [.anchorsMatchLines]) else {
+        guard let regex = cachedRegex(for: chosenPattern) else {
             return fallbackChunkSplit(text: text)
         }
 

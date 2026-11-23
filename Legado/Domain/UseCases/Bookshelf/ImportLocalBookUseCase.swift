@@ -23,6 +23,18 @@ public enum LocalBookImportError: LocalizedError, Sendable {
 /// 本地书籍导入用例 (支持 TXT 智能分卷解析与 EPUB 元数据/封面/目录解析持久化)
 public final class ImportLocalBookUseCase: Sendable {
     private static let supportedExtensions: Set<String> = ["", "txt", "text", "md", "log", "epub"]
+    private static let maxLocalFileBytes = 150 * 1024 * 1024
+    private static let titleTagRegexes: [NSRegularExpression] = [
+        "\\[.*?\\]",
+        "\\(.*?\\)",
+        "【.*?】",
+        "（.*?）",
+        "全本",
+        "精校",
+        "校对版",
+        "完整版",
+        "精校版",
+    ].compactMap { try? NSRegularExpression(pattern: $0) }
 
     private let bookRepository: BookRepository
     private let bookCacheRepository: BookCacheRepository
@@ -130,14 +142,15 @@ public final class ImportLocalBookUseCase: Sendable {
     }
 
     private func saveCoverImageIfPresent(data: Data?, ext: String, bookUrl: String) -> String? {
-        guard let data, !data.isEmpty else { return nil }
+        guard let data, !data.isEmpty, data.count <= WebDAVSyncHelper.maxCoverArchiveBytes else { return nil }
         let fileManager = FileManager.default
         let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let coversDir = docs.appendingPathComponent("BookCovers", isDirectory: true)
         try? fileManager.createDirectory(at: coversDir, withIntermediateDirectories: true)
 
         let key = BookCacheRepositoryImpl.deterministicKey(for: bookUrl)
-        let coverFile = coversDir.appendingPathComponent("\(key).\(ext)")
+        let safeExt = WebDAVSyncHelper.sanitizeImageExtension(ext)
+        let coverFile = coversDir.appendingPathComponent("\(key).\(safeExt)")
         do {
             try data.write(to: coverFile, options: .atomic)
             return coverFile.absoluteString
@@ -157,6 +170,11 @@ public final class ImportLocalBookUseCase: Sendable {
             }
         }
 
+        if let size = (try? fileUrl.resourceValues(forKeys: [.fileSizeKey]))?.fileSize,
+           size > Self.maxLocalFileBytes {
+            throw LocalBookImportError.unreadableFile
+        }
+
         do {
             return try Data(contentsOf: fileUrl)
         } catch {
@@ -174,25 +192,12 @@ public final class ImportLocalBookUseCase: Sendable {
     /// 净化书名文件名 (剔除常见网文标签如 [全本]、(校对版))
     private func cleanBookTitle(_ rawName: String) -> String {
         var name = rawName
-        let tagsToRemove = [
-            "\\[.*?\\]",
-            "\\(.*?\\)",
-            "【.*?】",
-            "（.*?）",
-            "全本",
-            "精校",
-            "校对版",
-            "完整版",
-            "精校版",
-        ]
-        for pattern in tagsToRemove {
-            if let regex = try? NSRegularExpression(pattern: pattern) {
-                name = regex.stringByReplacingMatches(
-                    in: name,
-                    options: [],
-                    range: NSRange(location: 0, length: name.utf16.count),
-                    withTemplate: "")
-            }
+        for regex in Self.titleTagRegexes {
+            name = regex.stringByReplacingMatches(
+                in: name,
+                options: [],
+                range: NSRange(location: 0, length: name.utf16.count),
+                withTemplate: "")
         }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? rawName : trimmed

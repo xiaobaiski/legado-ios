@@ -1626,6 +1626,213 @@ struct TTSAndWebDAVSyncTests {
         #expect(WebDAVConfigStore.isEffectivelyConfigured(
             WebDAVConfig(serverUrl: "http://nas.local:8080/dav")))
     }
+
+    // MARK: - v1.3.0 安全性与运行效率加固回归测试
+
+    @Test("WebDAVConfigStore stores passwords in Keychain store and migrates legacy plaintext")
+    func webDAVKeychainMigrationAndNoPlaintextInDefaults() throws {
+        let suite = "legado_keychain_test_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let secretStore = MockWebDAVSecretStore()
+        let config = WebDAVConfig(
+            serverUrl: "https://dav.jianguoyun.com/dav/",
+            username: "alice@example.com",
+            password: "super-secret-password")
+
+        WebDAVConfigStore.save(config, defaults: defaults, secretStore: secretStore)
+        let rawDefaultsData = try #require(defaults.data(forKey: WebDAVConfigStore.storageKey))
+        let persistedInDefaults = try JSONDecoder().decode(WebDAVConfig.self, from: rawDefaultsData)
+        #expect(persistedInDefaults.password.isEmpty)
+
+        let restored = WebDAVConfigStore.loadSavedIfConfigured(defaults: defaults, secretStore: secretStore)
+        #expect(restored?.password == "super-secret-password")
+
+        // 模拟旧版 UserDefaults 中残留的明文密码，读取时自动迁移至 Keychain 并擦除 UserDefaults 明文
+        let legacyStore = MockWebDAVSecretStore()
+        let legacyConfig = WebDAVConfig(
+            serverUrl: "https://dav.jianguoyun.com/dav/",
+            username: "bob@example.com",
+            password: "legacy-plaintext-password")
+        defaults.set(try JSONEncoder().encode(legacyConfig), forKey: WebDAVConfigStore.storageKey)
+
+        let migrated = WebDAVConfigStore.loadForEditing(defaults: defaults, secretStore: legacyStore)
+        #expect(migrated.password == "legacy-plaintext-password")
+        let scrubbedData = try #require(defaults.data(forKey: WebDAVConfigStore.storageKey))
+        let scrubbedConfig = try JSONDecoder().decode(WebDAVConfig.self, from: scrubbedData)
+        #expect(scrubbedConfig.password.isEmpty)
+        #expect(legacyStore.loadPassword(account: "webdav_primary_password") == "legacy-plaintext-password")
+    }
+
+    @Test("WebDAV redirect auth preservation blocks HTTPS downgrade, cross-port and cross-host")
+    func webDAVRedirectAuthProtection() {
+        let httpsOrigin = URL(string: "https://dav.example.com/dav/legado_backup.json")
+        let httpsSameHost = URL(string: "https://dav.example.com:443/v2/legado_backup.json")
+        let httpDowngrade = URL(string: "http://dav.example.com/dav/legado_backup.json")
+        let crossPort = URL(string: "https://dav.example.com:8443/dav/legado_backup.json")
+        let crossHost = URL(string: "https://evil.example.org/dav/legado_backup.json")
+        let fileScheme = URL(string: "file:///etc/passwd")
+
+        #expect(WebDAVClient.shouldPreserveAuth(from: httpsOrigin, to: httpsSameHost))
+        #expect(!WebDAVClient.shouldPreserveAuth(from: httpsOrigin, to: httpDowngrade))
+        #expect(!WebDAVClient.shouldPreserveAuth(from: httpsOrigin, to: crossPort))
+        #expect(!WebDAVClient.shouldPreserveAuth(from: httpsOrigin, to: crossHost))
+        #expect(!WebDAVClient.shouldPreserveAuth(from: httpsOrigin, to: fileScheme))
+    }
+
+    @Test("ZipArchiveReader, WebDAVSyncHelper and LocalFontManager reject path traversal and oversized blobs")
+    func zipArchiveAndPathTraversalSecurityGuards() throws {
+        let zipData = makeMinimalZipArchive(entries: [
+            (name: "safe.txt", payload: Data("hello".utf8), forgedUncompressedSize: nil),
+            (name: "../../escape.txt", payload: Data("bad".utf8), forgedUncompressedSize: nil),
+            (name: "bomb.bin", payload: Data("boom".utf8), forgedUncompressedSize: 64 * 1024 * 1024),
+        ])
+        let reader = try ZipArchiveReader(data: zipData)
+        #expect(reader.readFile(at: "safe.txt") == Data("hello".utf8))
+        #expect(reader.readFile(at: "../../escape.txt") == nil)
+        #expect(reader.readFile(at: "bomb.bin") == nil)
+        #expect(!reader.entries.contains { $0.path.contains("..") })
+
+        #expect(!WebDAVSyncHelper.isSafeSingleFileName("../secret.legadobook"))
+        #expect(!WebDAVSyncHelper.isSafeSingleFileName("sub/file.legadobook"))
+        #expect(WebDAVSyncHelper.isSafeSingleFileName("abc123.legadobook"))
+        #expect(WebDAVSyncHelper.sanitizeImageExtension("png") == "png")
+        #expect(WebDAVSyncHelper.sanitizeImageExtension("jpg/../../x") == "jpg")
+
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FontSec_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let outsideFile = tempRoot.appendingPathComponent("outside.txt")
+        try Data("keep".utf8).write(to: outsideFile)
+        let manager = LocalFontManager(fontsDirectory: tempRoot.appendingPathComponent("Fonts", isDirectory: true))
+        try manager.deleteFont(ImportedFont(
+            id: "evil",
+            displayName: "evil",
+            postScriptName: "evil",
+            fileName: "../outside.txt"))
+        #expect(FileManager.default.fileExists(atPath: outsideFile.path))
+    }
+
+    @Test("HTTPClient and JSEngine block file:// SSRF schemes")
+    func httpClientAndJSEngineBlockFileSchemeSSRF() async {
+        do {
+            _ = try await HTTPClient.shared.get(url: URL(fileURLWithPath: "/etc/hosts"))
+            Issue.record("Expected HTTPClient to reject file:// URL")
+        } catch let urlError as URLError {
+            #expect(urlError.code == .unsupportedURL)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        let jsOutput = JSEngine().evaluate(script: "java.ajax('file:///etc/hosts')")
+        #expect((jsOutput ?? "").isEmpty)
+    }
+
+    @Test("PurifyContentUseCase and TxtTocParser cache regexes and handle invalid rules safely")
+    func purifyAndTxtTocPerformanceConsistency() {
+        let purify = PurifyContentUseCase()
+        let invalidRule = ReplaceRule(name: "Bad", pattern: "[unclosed", replacement: "", isRegex: true)
+        let validRule = ReplaceRule(name: "Ad", pattern: "广告文本", replacement: "", isRegex: false)
+        let cleaned = purify.processContent(
+            "第一章 初见\n正文第一段广告文本。",
+            chapterTitle: "第一章 初见",
+            rules: [invalidRule, validRule],
+            enableReplace: true,
+            removeSameTitle: true,
+            reSegment: false)
+        #expect(cleaned.contains("正文第一段。"))
+        #expect(!cleaned.contains("广告文本"))
+
+        let tocText = "第一章 开始\n第一段正文内容。\n第二章 转折\n第二段正文内容。"
+        let chaptersA = TxtTocParser.parse(text: tocText)
+        let chaptersB = TxtTocParser.parse(text: tocText)
+        #expect(chaptersA == chaptersB)
+        #expect(chaptersA.count == 2)
+    }
+}
+
+private final class MockWebDAVSecretStore: WebDAVSecretStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var secrets: [String: String] = [:]
+
+    func savePassword(_ password: String, account: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if password.isEmpty {
+            secrets.removeValue(forKey: account)
+        } else {
+            secrets[account] = password
+        }
+        return true
+    }
+
+    func loadPassword(account: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return secrets[account]
+    }
+
+    func deletePassword(account: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        secrets.removeValue(forKey: account)
+    }
+}
+
+private func makeMinimalZipArchive(
+    entries: [(name: String, payload: Data, forgedUncompressedSize: UInt32?)]) -> Data {
+    var body = Data()
+    var centralDir = Data()
+
+    func appendUInt16(_ target: inout Data, _ val: UInt16) {
+        var little = val.littleEndian
+        withUnsafeBytes(of: &little) { target.append(contentsOf: $0) }
+    }
+
+    func appendUInt32(_ target: inout Data, _ val: UInt32) {
+        var little = val.littleEndian
+        withUnsafeBytes(of: &little) { target.append(contentsOf: $0) }
+    }
+
+    for entry in entries {
+        let nameData = Data(entry.name.utf8)
+        let localOffset = UInt32(body.count)
+
+        appendUInt32(&body, 0x0403_4B50)
+        body.append(Data(count: 22))
+        appendUInt16(&body, UInt16(nameData.count))
+        appendUInt16(&body, 0)
+        body.append(nameData)
+        body.append(entry.payload)
+
+        appendUInt32(&centralDir, 0x0201_4B50)
+        centralDir.append(Data(count: 6))
+        appendUInt16(&centralDir, 0)
+        centralDir.append(Data(count: 8))
+        appendUInt32(&centralDir, UInt32(entry.payload.count))
+        appendUInt32(&centralDir, entry.forgedUncompressedSize ?? UInt32(entry.payload.count))
+        appendUInt16(&centralDir, UInt16(nameData.count))
+        appendUInt16(&centralDir, 0)
+        appendUInt16(&centralDir, 0)
+        centralDir.append(Data(count: 8))
+        appendUInt32(&centralDir, localOffset)
+        centralDir.append(nameData)
+    }
+
+    let cdOffset = UInt32(body.count)
+    let cdSize = UInt32(centralDir.count)
+    var archive = body
+    archive.append(centralDir)
+
+    appendUInt32(&archive, 0x0605_4B50)
+    archive.append(Data(count: 8))
+    appendUInt32(&archive, cdSize)
+    appendUInt32(&archive, cdOffset)
+    appendUInt16(&archive, 0)
+    return archive
 }
 
 private final class LockedStringBox: @unchecked Sendable {

@@ -185,8 +185,11 @@ public struct WebDAVLocalBookArchive: Codable, Sendable {
         return try (rawData as NSData).compressed(using: .zlib) as Data
     }
 
-    /// 解压并反序列化本地书籍归档
+    /// 解压并反序列化本地书籍归档（限制最大体积防解压炸弹）
     public static func decompress(from data: Data) throws -> WebDAVLocalBookArchive {
+        guard data.count <= 64 * 1024 * 1024 else {
+            throw CocoaError(.fileReadTooLarge)
+        }
         if let rawData = try? (data as NSData).decompressed(using: .zlib) as Data,
            let decoded = try? JSONDecoder().decode(WebDAVLocalBookArchive.self, from: rawData) {
             return decoded
@@ -212,7 +215,7 @@ public struct WebDAVBackupBundle: Codable, Sendable {
     public init(
         version: Int = 2,
         backupTime: Date = Date(),
-        appVersion: String = "1.2.0",
+        appVersion: String = "1.3.0",
         books: [Book] = [],
         sources: [BookSource] = [],
         replaceRules: [ReplaceRule] = [],

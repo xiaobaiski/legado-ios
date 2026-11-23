@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.3.0] - 2026-11-23
+
+### 安全
+- **WebDAV 密码迁移至 iOS Keychain（`WebDAVKeychainStore`）**：通过 `kSecClassGenericPassword`（`AfterFirstUnlockThisDeviceOnly`）安全托管 WebDAV 密码，读写时自动将历史 `UserDefaults` 明文密码迁移并擦除；同时新增 `isEffectivelyConfigured` 校验过滤未填完整的配置，防止误发后台请求。
+- **重定向凭证防泄漏与 `file://` SSRF 阻断**：`WebDAVClient` 新增 `shouldPreserveAuth` 校验，严格拦截 HTTPS 降级、跨主机与跨端口重定向携带 `Authorization` 凭据，并改用原生 `async` 会话代理清除 Swift 6 Sendable 警告；`HTTPClient` 与 `JSEngine` 统一仅放行 `http` / `https` 协议并在同步请求超时后主动 `cancel()` 任务。
+- **解压炸弹与路径穿越防护**：
+  - `ZipArchiveReader` 新增 10,000 条目数上限与单文件 32 MB 解压上限，校验并拒绝含 `..` / 前导斜杠 / NUL 字符的恶意路径；`WebDAVLocalBookArchive.decompress` 限制归档上限为 64 MB。
+  - `ImportLocalBookUseCase` 与 `LocalFontManager` 对导入电子书/字体预先校验文件体积，对封面扩展名执行白名单清洗，并对 `LocalFontManager.deleteFont` / `RestoreFromWebDAVUseCase` 归档文件名实施单层安全路径校验。
+- **防云端覆盖保护与缓存上限收敛**：`WebDAVRealtimeSyncService` 与 `BackupToWebDAVUseCase` 严格区分 HTTP 404 与其它网络/限流/解析错误，异常时立即中止 `PUT` 覆盖并保留重试队列；收敛 `CookieStore`（256 域名）与 `CacheManager`（512 条内存键值）上限，并仅在 HTTPS 请求写入系统 Cookie 时标记 `Secure`。
+
+### 性能
+- **WebDAV 会话连接池与降频上传**：新增 `WebDAVSessionPool`（LRU 复用最多 4 组会话，复用 HTTP/2 与 TLS 连接）；稳态实时推送将 `ensureDirectory` 设为 `false`，先直接 `PUT` 仅遇 404/409 再自动补建目录，减少大量冗余 `MKCOL` 请求。
+- **净化规则与分章正则零冗余编译**：`PurifyContentUseCase` 与 `TxtTocParser` 直接复用 `NSCache` 正则缓存，移除每章/每次优选前触发 `rule.isValid` 的重复正则编译开销；`ImportLocalBookUseCase`、`ReplaceRule` 与 `TextLayoutEngine` 静态预编译常用正则与 `CharacterSet`。
+- **字体列表缓存与滚动对比优化**：`LocalFontManager` 进程内缓存系统可用字体与已注册字体文件；`AutoScrollReaderView` 改用 `ScrollRenderKey` 结构体对比替代高开销反射字符串拼接。
+
+### 修复
+- **WebDAV 实时同步可靠性闭环**：
+  - 完善「实时同步规则与排版」双向闭环，新增独立 `rules_sync.json` 按时间戳双向推送与拉取，接入冷启动、App 回前台、阅读器切回 `.active` 与规则编辑/快捷净化变更触发链。
+  - 阅读器采用 `navigationGeneration` 防拉取竞态覆盖，退后台与退出阅读接入 `UIApplication` 后台任务保活与串行推送队列；设置页新增 `WebDAVRealtimeSyncStatus` 同步状态与错误显示，同步清理 SwiftLint `control_statement` 告警。
+
+### 验证
+- 在 `TTSAndWebDAVSyncTests` 补全 WebDAV 防覆盖/规则双向同步/降频 `MKCOL` 回归测试，以及 Keychain 迁移、重定向凭证防泄漏、ZIP 炸弹/路径穿越、本地 HTTP/JS `file://` SSRF 阻断与净化/分章性能一致性测试；版本号升级至 `1.3.0 (130)`。
+
 ## [1.2.0] - 2026-11-22
 
 ### 性能

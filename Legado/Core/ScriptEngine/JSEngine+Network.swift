@@ -304,6 +304,16 @@ extension JSEngine {
         body: Data? = nil,
         headers: [String: String] = [:],
         timeout: TimeInterval = 15.0) -> SyncHTTPResponse {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+            return SyncHTTPResponse(
+                body: "",
+                headers: [:],
+                cookies: [:],
+                data: nil,
+                statusCode: 0,
+                url: url.absoluteString)
+        }
+
         let request = createSyncURLRequest(
             url: url,
             method: method,
@@ -321,7 +331,9 @@ extension JSEngine {
             semaphore.signal()
         }
         task.resume()
-        _ = semaphore.wait(timeout: .now() + timeout)
+        if semaphore.wait(timeout: .now() + timeout) == .timedOut {
+            task.cancel()
+        }
 
         let (headerDict, cookieDict) = extractResponseHeadersAndCookies(response: httpResponse, url: url)
         let statusCode = httpResponse?.statusCode ?? (resultData != nil ? 200 : 0)

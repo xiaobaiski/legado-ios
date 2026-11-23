@@ -72,6 +72,7 @@ public final class HTTPClient: HTTPClientProtocol, Sendable {
         url: URL,
         headers: [String: String]? = nil,
         timeout: TimeInterval = 15) async throws -> String {
+        try Self.validateHttpUrl(url)
         var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "GET"
         applyHeaders(to: &request, customHeaders: headers)
@@ -103,6 +104,7 @@ public final class HTTPClient: HTTPClientProtocol, Sendable {
         body: Data?,
         headers: [String: String]? = nil,
         timeout: TimeInterval = 15) async throws -> String {
+        try Self.validateHttpUrl(url)
         var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.httpBody = body
@@ -193,6 +195,7 @@ public final class HTTPClient: HTTPClientProtocol, Sendable {
     }
 
     private func executeHttpStrResponse(analyzeUrl: AnalyzeUrl, startTime: Date) async throws -> StrResponse {
+        try Self.validateHttpUrl(analyzeUrl.url)
         var request = URLRequest(url: analyzeUrl.url, timeoutInterval: 15)
         request.httpMethod = analyzeUrl.method
         request.httpBody = analyzeUrl.body
@@ -247,6 +250,12 @@ public final class HTTPClient: HTTPClientProtocol, Sendable {
             headers: resHeaders,
             isRedirect: isRedirect,
             callTime: duration)
+    }
+
+    private static func validateHttpUrl(_ url: URL) throws {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+            throw URLError(.unsupportedURL)
+        }
     }
 
     private func applyHeaders(to request: inout URLRequest, customHeaders: [String: String]?) {

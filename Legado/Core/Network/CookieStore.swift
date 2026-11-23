@@ -6,6 +6,7 @@ public final class CookieStore: @unchecked Sendable {
 
     private let lock = NSLock()
     private let userDefaultsKey = "legado_persistent_cookies_store"
+    private let maxHosts = 256
     private var cookieCache: [String: String] = [:]
 
     private init() {
@@ -78,10 +79,16 @@ public final class CookieStore: @unchecked Sendable {
             cookieMap[key] = val
         }
         let serialized = cookieMap.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
+        if cookieCache[host] == nil, cookieCache.count >= maxHosts {
+            for oldHost in Array(cookieCache.keys.prefix(maxHosts / 2)) {
+                cookieCache.removeValue(forKey: oldHost)
+            }
+        }
         cookieCache[host] = serialized
         UserDefaults.standard.set(cookieCache, forKey: userDefaultsKey)
 
-        syncToSystemCookieStorage(host: host, cookieMap: cookieMap)
+        let isSecureScheme = url.lowercased().hasPrefix("https://")
+        syncToSystemCookieStorage(host: host, cookieMap: cookieMap, isSecure: isSecureScheme)
     }
 
     public func removeCookie(url: String) {
@@ -126,16 +133,19 @@ public final class CookieStore: @unchecked Sendable {
         return map
     }
 
-    private func syncToSystemCookieStorage(host: String, cookieMap: [String: String]) {
+    private func syncToSystemCookieStorage(host: String, cookieMap: [String: String], isSecure: Bool) {
+        let expires = Date().addingTimeInterval(365 * 24 * 3600)
         for (name, val) in cookieMap {
-            let properties: [HTTPCookiePropertyKey: Any] = [
+            var properties: [HTTPCookiePropertyKey: Any] = [
                 .domain: host,
                 .path: "/",
                 .name: name,
                 .value: val,
-                .secure: "TRUE",
-                .expires: Date().addingTimeInterval(365 * 24 * 3600),
+                .expires: expires,
             ]
+            if isSecure {
+                properties[.secure] = "TRUE"
+            }
             if let cookie = HTTPCookie(properties: properties) {
                 HTTPCookieStorage.shared.setCookie(cookie)
             }

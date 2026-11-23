@@ -1,8 +1,11 @@
 import Compression
 import Foundation
 
-/// 轻量纯 Swift ZIP 归档读取器（基于系统 Compression 框架，专用于本地 EPUB 解析，零第三方依赖）
+/// 轻量纯 Swift ZIP 归档读取器（基于系统 Compression 框架，专用于本地 EPUB 解析，含路径穿越与解压炸弹防护）
 public final class ZipArchiveReader: Sendable {
+    private static let maxEntries = 10_000
+    private static let maxEntryUncompressedBytes = 32 * 1024 * 1024
+
     public struct Entry: Sendable {
         public let path: String
         public let compressionMethod: UInt16
@@ -26,16 +29,29 @@ public final class ZipArchiveReader: Sendable {
         self.entriesMap = map
     }
 
-    /// 按路径读取归档内文件原始字节（自动忽略前导 `/`）
+    /// 按路径读取归档内文件原始字节（自动忽略前导 `/` 并拦截路径穿越）
     public func readFile(at rawPath: String) -> Data? {
         let normalized = rawPath.hasPrefix("/") ? String(rawPath.dropFirst()) : rawPath
+        guard Self.isSafeArchivePath(normalized) else { return nil }
         let entry = entriesMap[normalized]
             ?? entries.first(where: { $0.path.caseInsensitiveCompare(normalized) == .orderedSame })
         guard let entry else { return nil }
         return extract(entry: entry)
     }
 
+    private static func isSafeArchivePath(_ path: String) -> Bool {
+        guard !path.isEmpty,
+              !path.contains("\0"),
+              !path.hasPrefix("/"),
+              !path.hasPrefix("\\") else {
+            return false
+        }
+        let segments = path.split(whereSeparator: { $0 == "/" || $0 == "\\" })
+        return !segments.contains("..")
+    }
+
     private func extract(entry: Entry) -> Data? {
+        guard Int(entry.uncompressedSize) <= Self.maxEntryUncompressedBytes else { return nil }
         let headerOffset = Int(entry.localHeaderOffset)
         guard headerOffset + 30 <= data.count else { return nil }
         guard readUInt32(at: headerOffset) == 0x0403_4B50 else { return nil }
@@ -44,7 +60,11 @@ public final class ZipArchiveReader: Sendable {
         let extraLength = Int(readUInt16(at: headerOffset + 28))
         let dataStart = headerOffset + 30 + nameLength + extraLength
         let compressedLength = Int(entry.compressedSize)
-        guard dataStart >= 0, dataStart + compressedLength <= data.count else { return nil }
+        guard dataStart >= 0,
+              compressedLength <= Self.maxEntryUncompressedBytes,
+              dataStart + compressedLength <= data.count else {
+            return nil
+        }
 
         let slice = data.subdata(in: dataStart ..< (dataStart + compressedLength))
         switch entry.compressionMethod {
@@ -63,8 +83,9 @@ public final class ZipArchiveReader: Sendable {
         if compressed.isEmpty {
             return Data()
         }
-        var capacity = max(expectedSize, compressed.count * 4, 4096)
-        for _ in 0 ..< 6 {
+        guard expectedSize >= 0, expectedSize <= maxEntryUncompressedBytes else { return nil }
+        var capacity = min(max(expectedSize, compressed.count * 4, 4096), maxEntryUncompressedBytes)
+        for _ in 0 ..< 8 {
             var destination = Data(count: capacity)
             let decodedSize = destination.withUnsafeMutableBytes { dstPtr in
                 compressed.withUnsafeBytes { srcPtr in
@@ -89,7 +110,10 @@ public final class ZipArchiveReader: Sendable {
                 destination.count = decodedSize
                 return destination
             }
-            capacity *= 2
+            if capacity >= maxEntryUncompressedBytes {
+                return nil
+            }
+            capacity = min(capacity * 2, maxEntryUncompressedBytes)
         }
         return nil
     }
@@ -109,7 +133,7 @@ public final class ZipArchiveReader: Sendable {
         let end = cdOffset + cdSize
         var result: [Entry] = []
 
-        while cursor + 46 <= end {
+        while cursor + 46 <= end, result.count < maxEntries {
             guard readUInt32(in: data, at: cursor) == 0x0201_4B50 else { break }
 
             let method = readUInt16(in: data, at: cursor + 10)
@@ -127,7 +151,7 @@ public final class ZipArchiveReader: Sendable {
                 ?? String(data: nameData, encoding: CharsetDetector.gbkEncoding)
                 ?? ""
 
-            if !path.isEmpty && !path.hasSuffix("/") {
+            if !path.isEmpty && !path.hasSuffix("/"), isSafeArchivePath(path) {
                 result.append(Entry(
                     path: path,
                     compressionMethod: method,

@@ -190,8 +190,10 @@ public struct ReplaceRule: Identifiable, Codable, Equatable, Sendable {
         return Self.tokensMatch(includeTokens, bookName: bookName, sourceUrl: sourceUrl)
     }
 
+    private static let scopeSeparators = CharacterSet(charactersIn: ",，;\n")
+
     private static func splitScopeTokens(_ raw: String) -> [String] {
-        raw.components(separatedBy: CharacterSet(charactersIn: ",，;\n"))
+        raw.components(separatedBy: scopeSeparators)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }

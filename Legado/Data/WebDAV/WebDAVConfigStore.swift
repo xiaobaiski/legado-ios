@@ -4,10 +4,14 @@ import Foundation
 public enum WebDAVConfigStore {
     public static let storageKey = "legado_webdav_config"
     public static let defaultTemplateServerUrl = "https://dav.jianguoyun.com/dav/"
+    private static let passwordAccount = "webdav_primary_password"
 
     /// 用于设置页编辑展示：若尚未保存配置，则返回坚果云模板供用户填写
-    public static func loadForEditing(defaults: UserDefaults = .standard) -> WebDAVConfig {
-        if let saved = loadRawSaved(defaults: defaults) {
+    public static func loadForEditing(
+        defaults: UserDefaults = .standard,
+        secretStore: WebDAVSecretStore? = nil) -> WebDAVConfig {
+        let resolvedStore = resolveSecretStore(secretStore, defaults: defaults)
+        if let saved = loadRawSaved(defaults: defaults, secretStore: resolvedStore) {
             return saved
         }
         return WebDAVConfig(
@@ -16,8 +20,12 @@ public enum WebDAVConfigStore {
     }
 
     /// 仅当用户确实配置了可用 WebDAV 账号或完整的自定义服务器时返回配置；否则返回 nil（防止未配置或输入中途静默请求）
-    public static func loadSavedIfConfigured(defaults: UserDefaults = .standard) -> WebDAVConfig? {
-        guard let saved = loadRawSaved(defaults: defaults), isEffectivelyConfigured(saved) else {
+    public static func loadSavedIfConfigured(
+        defaults: UserDefaults = .standard,
+        secretStore: WebDAVSecretStore? = nil) -> WebDAVConfig? {
+        let resolvedStore = resolveSecretStore(secretStore, defaults: defaults)
+        guard let saved = loadRawSaved(defaults: defaults, secretStore: resolvedStore),
+              isEffectivelyConfigured(saved) else {
             return nil
         }
         return saved
@@ -34,23 +42,61 @@ public enum WebDAVConfigStore {
             return false
         }
         let normalizedTemplate = WebDAVClient.normalizeBaseUrl(defaultTemplateServerUrl)?.absoluteString
-        if (url.absoluteString == normalizedTemplate || host.hasSuffix("jianguoyun.com")),
-           !config.hasCredentials {
+        let isJianguoyun = url.absoluteString == normalizedTemplate || host.hasSuffix("jianguoyun.com")
+        if isJianguoyun, !config.hasCredentials {
             return false
         }
         return true
     }
 
-    public static func save(_ config: WebDAVConfig, defaults: UserDefaults = .standard) {
-        if let data = try? JSONEncoder().encode(config) {
+    public static func save(
+        _ config: WebDAVConfig,
+        defaults: UserDefaults = .standard,
+        secretStore: WebDAVSecretStore? = nil) {
+        let resolvedStore = resolveSecretStore(secretStore, defaults: defaults)
+        var configToPersist = config
+        if let resolvedStore {
+            if config.password.isEmpty {
+                resolvedStore.deletePassword(account: passwordAccount)
+            } else if resolvedStore.savePassword(config.password, account: passwordAccount) {
+                configToPersist.password = ""
+            }
+        }
+        if let data = try? JSONEncoder().encode(configToPersist) {
             defaults.set(data, forKey: storageKey)
         }
     }
 
-    private static func loadRawSaved(defaults: UserDefaults) -> WebDAVConfig? {
+    private static func resolveSecretStore(
+        _ explicit: WebDAVSecretStore?,
+        defaults: UserDefaults) -> WebDAVSecretStore? {
+        if let explicit {
+            return explicit
+        }
+        return defaults === UserDefaults.standard ? WebDAVKeychainStore.shared : nil
+    }
+
+    private static func loadRawSaved(
+        defaults: UserDefaults,
+        secretStore: WebDAVSecretStore?) -> WebDAVConfig? {
         guard let data = defaults.data(forKey: storageKey),
-              let config = try? JSONDecoder().decode(WebDAVConfig.self, from: data) else {
+              var config = try? JSONDecoder().decode(WebDAVConfig.self, from: data) else {
             return nil
+        }
+        if let secretStore {
+            if !config.password.isEmpty {
+                // 兼容迁移旧版 UserDefaults 中的明文密码至 Keychain 并立即擦除明文
+                if secretStore.savePassword(config.password, account: passwordAccount) {
+                    var scrubbed = config
+                    scrubbed.password = ""
+                    if let scrubbedData = try? JSONEncoder().encode(scrubbed) {
+                        defaults.set(scrubbedData, forKey: storageKey)
+                    }
+                }
+            } else if let keychainPassword = secretStore.loadPassword(account: passwordAccount),
+                      !keychainPassword.isEmpty {
+                config.password = keychainPassword
+            }
         }
         return config
     }
