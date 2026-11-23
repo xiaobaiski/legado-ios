@@ -1686,7 +1686,7 @@ struct TTSAndWebDAVSyncTests {
         let zipData = makeMinimalZipArchive(entries: [
             (name: "safe.txt", payload: Data("hello".utf8), forgedUncompressedSize: nil),
             (name: "../../escape.txt", payload: Data("bad".utf8), forgedUncompressedSize: nil),
-            (name: "bomb.bin", payload: Data("boom".utf8), forgedUncompressedSize: 64 * 1024 * 1024),
+            (name: "bomb.bin", payload: Data("boom".utf8), forgedUncompressedSize: UInt32(64 * 1024 * 1024)),
         ])
         let reader = try ZipArchiveReader(data: zipData)
         #expect(reader.readFile(at: "safe.txt") == Data("hello".utf8))
