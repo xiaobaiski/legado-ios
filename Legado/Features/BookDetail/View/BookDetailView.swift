@@ -8,7 +8,6 @@ public struct BookDetailView: View {
     @State private var toastMessage: String?
     @State private var hapticTrigger = false
     @State private var readerDestination: ReaderDestination?
-    @State private var isChangeSourcePresented = false
 
     public init(viewModel: BookDetailViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -20,7 +19,7 @@ public struct BookDetailView: View {
                 // 顶部卡片：封面、书名、作者与关键标签
                 headerCard
 
-                // 操作按钮栏：阅读、加入书架、换源
+                // 操作按钮栏：阅读、加入/移出书架
                 actionButtons
 
                 // 书籍详细简介
@@ -34,7 +33,7 @@ public struct BookDetailView: View {
             .padding(16)
         }
         .background {
-            // 背景渐变与毛玻璃环境光（兼容本地 EPUB 封面与网络封面）
+            // 背景渐变与毛玻璃环境光
             ZStack {
                 if viewModel.state.book.coverUrl != nil {
                     BookCoverImage(coverUrl: viewModel.state.book.coverUrl) {
@@ -50,42 +49,16 @@ public struct BookDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 8) {
-                    if !viewModel.state.book.isLocalFile {
-                        Button {
-                            viewModel.send(.toggleCacheSheet(true))
-                        } label: {
-                            Image(systemName: "arrow.down.circle")
-                        }
-
-                        Button {
-                            isChangeSourcePresented = true
-                        } label: {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                        }
-                    }
-
-                    Button {
-                        viewModel.send(.loadDetail)
-                    } label: {
-                        if viewModel.state.isLoading {
-                            ProgressView()
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                        }
+                Button {
+                    viewModel.send(.loadDetail)
+                } label: {
+                    if viewModel.state.isLoading {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "arrow.clockwise")
                     }
                 }
             }
-        }
-        .sheet(isPresented: $isChangeSourcePresented) {
-            ChangeSourceSheet(
-                viewModel: environment.makeChangeSourceViewModel(
-                    book: viewModel.state.book,
-                    currentChapterTitle: viewModel.state.book.durChapterTitle,
-                    currentChapterIndex: viewModel.state.book.durChapterIndex),
-                onSwitched: { updatedBook, newToc, _ in
-                    viewModel.send(.updateBook(updatedBook, newToc))
-                })
         }
         .sheet(isPresented: Binding(
             get: { viewModel.state.isTocPresented },
@@ -102,19 +75,6 @@ public struct BookDetailView: View {
                     onToggleReverse: { viewModel.send(.toggleTocReverse) },
                     onSearchChange: { viewModel.send(.updateTocSearch($0)) },
                     onSelectChapter: { viewModel.send(.selectChapter($0)) })
-        }
-        .sheet(isPresented: Binding(
-            get: { viewModel.state.isCacheSheetPresented },
-            set: { viewModel.send(.toggleCacheSheet($0)) })) {
-                BookCacheSheet(
-                    book: viewModel.state.book,
-                    chapters: viewModel.state.chapters,
-                    cacheInfo: viewModel.state.cacheInfo,
-                    downloadProgress: viewModel.state.downloadProgress,
-                    onStartDownload: { viewModel.send(.startBatchDownload($0)) },
-                    onCancelDownload: { viewModel.send(.cancelBatchDownload) },
-                    onClearCache: { viewModel.send(.clearBookCache) },
-                    onDismiss: { viewModel.send(.toggleCacheSheet(false)) })
         }
         .sensoryFeedback(.impact(weight: .light), trigger: hapticTrigger)
         .onReceive(viewModel.effectPublisher) { effect in
@@ -216,27 +176,17 @@ public struct BookDetailView: View {
 
                 Spacer()
 
-                HStack(spacing: 8) {
-                    HStack(spacing: 4) {
-                        Image(systemName: viewModel.state.book.isLocalFile ? "doc.text" : "network")
-                            .font(.caption2)
-                        Text(
-                            viewModel.state.book.isLocalFile
-                                ? "来源: \(viewModel.state.book.originName)"
-                                : "书源: \(viewModel.state.book.originName)")
-                            .font(.caption2)
-                            .lineLimit(1)
-                    }
-                    .foregroundStyle(.tertiary)
-
-                    if !viewModel.state.book.isLocalFile {
-                        Button("换源") {
-                            isChangeSourcePresented = true
-                        }
-                        .font(.caption2.weight(.semibold))
-                        .buttonStyle(.glassCapsule)
-                    }
+                HStack(spacing: 4) {
+                    Image(systemName: "doc.text")
+                        .font(.caption2)
+                    let originLabel = viewModel.state.book.originName.isEmpty
+                        ? "本地导入"
+                        : viewModel.state.book.originName
+                    Text("来源: \(originLabel)")
+                        .font(.caption2)
+                        .lineLimit(1)
                 }
+                .foregroundStyle(.tertiary)
             }
         }
         .padding(16)
@@ -275,21 +225,7 @@ public struct BookDetailView: View {
             }
             .buttonStyle(.glassProminent(tint: .accentColor, cornerRadius: 14))
 
-            // 离线缓存按钮（仅网络书源显示）
-            if !viewModel.state.book.isLocalFile {
-                Button {
-                    viewModel.send(.toggleCacheSheet(true))
-                } label: {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
-                }
-                .buttonStyle(.glass(cornerRadius: 14))
-            }
-
-            // 加入书架按钮
+            // 加入/移出书架按钮
             Button {
                 viewModel.send(.toggleBookshelf)
             } label: {

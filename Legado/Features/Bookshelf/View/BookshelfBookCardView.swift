@@ -5,7 +5,6 @@ public struct BookshelfBookCardView: View {
     public let book: Book
     public let isBatchMode: Bool
     public let isSelected: Bool
-    public let isUpdated: Bool
     public let allGroups: [String]
     public let onTap: () -> Void
     public let onShowDetail: () -> Void
@@ -17,7 +16,6 @@ public struct BookshelfBookCardView: View {
         book: Book,
         isBatchMode: Bool,
         isSelected: Bool,
-        isUpdated: Bool,
         allGroups: [String],
         onTap: @escaping () -> Void,
         onShowDetail: @escaping () -> Void,
@@ -27,7 +25,6 @@ public struct BookshelfBookCardView: View {
         self.book = book
         self.isBatchMode = isBatchMode
         self.isSelected = isSelected
-        self.isUpdated = isUpdated
         self.allGroups = allGroups
         self.onTap = onTap
         self.onShowDetail = onShowDetail
@@ -104,20 +101,6 @@ public struct BookshelfBookCardView: View {
                         .foregroundStyle(.white)
                 }
                 .padding(6)
-            } else if isUpdated {
-                Text("更新")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background {
-                        Capsule(style: .continuous)
-                            .fill(Color.red.gradient)
-                    }
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .stroke(Color.white.opacity(0.35), lineWidth: 0.5))
-                    .padding(6)
             }
 
             // 底部进度药丸

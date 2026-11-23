@@ -29,7 +29,8 @@ extension ReaderViewModel {
                 guard !Task.isCancelled else { return }
             }
 
-            if toc.isEmpty, book.isLocalFile {
+            if toc.isEmpty, book.isLocalFile,
+               !self.getChapterContentUseCase.isChapterCached(bookUrl: book.bookUrl, index: 0) {
                 let message = "本机未找到该本地书籍的正文文件，请在本机重新导入或开启 WebDAV「本地书籍文件」同步恢复"
                 self.updateState { state in
                     state.isLoading = false
@@ -44,7 +45,7 @@ extension ReaderViewModel {
             if toc.isEmpty {
                 toc = [
                     Chapter(
-                        url: book.bookUrl,
+                        url: "\(book.bookUrl)/0",
                         title: book.durChapterTitle ?? "第一章 宿命之始",
                         bookUrl: book.bookUrl,
                         index: 0),

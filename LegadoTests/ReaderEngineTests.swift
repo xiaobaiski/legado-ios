@@ -7,36 +7,6 @@ import UIKit
 
 @Suite("Reader Engine Suite")
 struct ReaderEngineTests {
-    @Test("Test ContentParser Text Cleaning and Chinese Indentation")
-    func contentParserCleaning() {
-        let parser = ContentParser.shared
-        let rawHtmlContent = """
-        <p>第一段：这里是小说正文内容。<br/>中间包含了换行标签。</p>
-        <div>第二段：&nbsp;&nbsp;包含HTML实体 &quot;引号&quot; 和 &amp; 符号。</div>
-        <script>alert("ad");</script>
-        <p>第三段：最后一段内容。</p>
-        """
-
-        let cleaned = parser.cleanContent(rawHtmlContent)
-
-        // 验证标签已被清理
-        #expect(!cleaned.contains("<p>"))
-        #expect(!cleaned.contains("</p>"))
-        #expect(!cleaned.contains("<br/>"))
-        #expect(!cleaned.contains("alert"))
-
-        // 验证实体替换
-        #expect(cleaned.contains("\"引号\""))
-        #expect(cleaned.contains("&"))
-
-        // 验证中文首行缩进
-        let lines = cleaned.components(separatedBy: "\n\n").filter { !$0.isEmpty }
-        #expect(lines.count == 4)
-        for line in lines {
-            #expect(line.hasPrefix("\u{3000}\u{3000}"))
-        }
-    }
-
     @Test("Test TextLayoutEngine CoreText Pagination")
     func textLayoutEnginePagination() {
         let engine = TextLayoutEngine.shared

@@ -8,8 +8,6 @@ import Testing
 struct LegadoRulesAndLayoutFixTests {
     @Test("Local Book Empty Chapter Never Throws URLError -1008")
     func localEmptyChapterNeverThrows1008() async throws {
-        let provider = ModelContainerProvider(inMemory: true)
-        let sourceRepo = BookSourceRepositoryImpl(modelContainer: provider.container)
         let tempCacheDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("TestLocalEmpty_\(UUID().uuidString)", isDirectory: true)
         let cacheRepo = BookCacheRepositoryImpl(baseDirectory: tempCacheDir)
@@ -18,7 +16,7 @@ struct LegadoRulesAndLayoutFixTests {
         let bookUrl = "local://empty-chapter-test"
         try cacheRepo.saveChapterContent(bookUrl: bookUrl, index: 0, content: "")
 
-        let useCase = GetChapterContentUseCase(sourceRepository: sourceRepo, cacheRepository: cacheRepo)
+        let useCase = GetChapterContentUseCase(cacheRepository: cacheRepo)
         let emptyChapter = Chapter(url: "\(bookUrl)/0", title: "第一卷 序幕", bookUrl: bookUrl, index: 0)
         let missingChapter = Chapter(url: "\(bookUrl)/9", title: "缺失章", bookUrl: bookUrl, index: 9)
 

@@ -9,7 +9,6 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
     let chapterIndex: Int
     let totalChapters: Int
     let config: ReaderConfig
-    let highlightedSentence: String?
     let isDualPage: Bool
     let maxSingleWidth: CGFloat?
     let onPageChanged: (Int) -> Void
@@ -51,7 +50,6 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
         context.coordinator.lastRenderedPageIndex = context.coordinator.alignedIndex(currentPageIndex)
         context.coordinator.lastConfig = config
         context.coordinator.lastPageCount = pages.count
-        context.coordinator.lastHighlight = highlightedSentence
         return controller
     }
 
@@ -64,7 +62,6 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
         let chapterChanged = coordinator.lastRenderedChapter != chapterIndex
         let layoutChanged = coordinator.lastConfig != config
             || coordinator.lastPageCount != pages.count
-            || coordinator.lastHighlight != highlightedSentence
         let pageChanged = coordinator.lastRenderedPageIndex != targetAligned
 
         guard chapterChanged || layoutChanged || pageChanged else { return }
@@ -80,7 +77,6 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
         coordinator.lastRenderedPageIndex = targetAligned
         coordinator.lastConfig = config
         coordinator.lastPageCount = pages.count
-        coordinator.lastHighlight = highlightedSentence
 
         uiViewController.setViewControllers(controllers, direction: direction, animated: shouldAnimate)
     }
@@ -92,7 +88,6 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
         var lastRenderedPageIndex = -1
         var lastPageCount = -1
         var lastConfig: ReaderConfig?
-        var lastHighlight: String?
         private var lastChapterRequestAt: Date = .distantPast
 
         init(parent: PageCurlReaderView) {
@@ -149,7 +144,6 @@ public struct PageCurlReaderView: UIViewControllerRepresentable {
                 totalPages: parent.pages.count,
                 totalChapters: parent.totalChapters,
                 config: parent.config,
-                highlightedSentence: parent.highlightedSentence,
                 maxContentWidth: parent.isDualPage ? nil : parent.maxSingleWidth,
                 spineEdge: spineEdge)
             let controller = IndexedPageHostingController(pageIndex: index, rootView: view)

@@ -1,7 +1,7 @@
 import UIKit
 import XCTest
 
-/// 阅读器核心与高级特性 UI 自动化测试（对齐 Issue #14、#16、#17：目录/书签、全文搜索、一键换源、离线缓存与听书面板）
+/// 阅读器核心与纯粹本地阅读特性 UI 自动化测试（目录/书签、正文全文搜索与排版面板）
 final class ReaderAndFeaturesUITests: XCTestCase {
     private var app: XCUIApplication!
 
@@ -16,7 +16,7 @@ final class ReaderAndFeaturesUITests: XCTestCase {
         app = nil
     }
 
-    func testReaderHUDTocBookmarksSearchAndTTS() {
+    func testReaderHUDTocBookmarksSearchAndTypography() {
 
         // MARK: - 步骤 1: 验证阅读器 HUD 成功展现
 
@@ -24,7 +24,7 @@ final class ReaderAndFeaturesUITests: XCTestCase {
         XCTAssertTrue(bookTitle.waitForExistence(timeout: 8), "阅读器 HUD 顶部应展示书名【宿命之环】")
         captureScreenshot(name: "reader_01_hud_active")
 
-        // MARK: - 步骤 2: 打开目录抽屉并切换至书签栏目 (Issue #14)
+        // MARK: - 步骤 2: 打开目录抽屉并切换至书签栏目
 
         let tocButton = app.buttons["目录"]
         if tocButton.waitForExistence(timeout: 4) {
@@ -45,7 +45,7 @@ final class ReaderAndFeaturesUITests: XCTestCase {
             }
         }
 
-        // MARK: - 步骤 3: 打开正文全文搜索面板 (Issue #14)
+        // MARK: - 步骤 3: 打开正文全文搜索面板
 
         let searchButton = app.buttons["搜索"]
         if searchButton.waitForExistence(timeout: 4) {
@@ -66,40 +66,12 @@ final class ReaderAndFeaturesUITests: XCTestCase {
             }
         }
 
-        // MARK: - 步骤 4: 打开一键换源面板 (Issue #14)
+        // MARK: - 步骤 4: 打开排版面板
 
-        let changeSourceButton = app.buttons["换源"]
-        if changeSourceButton.waitForExistence(timeout: 4) {
-            tapElementSafely(changeSourceButton)
-
-            let closeChangeSource = app.buttons.matching(identifier: "完成").firstMatch
-            if closeChangeSource.waitForExistence(timeout: 4) {
-                captureScreenshot(name: "reader_06_change_source_sheet")
-                closeChangeSource.tap()
-                _ = closeChangeSource.waitForNonExistence(timeout: 3)
-            }
-        }
-
-        // MARK: - 步骤 5: 打开离线章节缓存面板 (Issue #16)
-
-        let cacheTopButton = app.buttons["arrow.down.circle"]
-        if cacheTopButton.waitForExistence(timeout: 4) {
-            tapElementSafely(cacheTopButton)
-
-            let closeCache = app.buttons.matching(identifier: "完成").firstMatch
-            if closeCache.waitForExistence(timeout: 4) {
-                captureScreenshot(name: "reader_07_book_cache_sheet")
-                closeCache.tap()
-                _ = closeCache.waitForNonExistence(timeout: 3)
-            }
-        }
-
-        // MARK: - 步骤 6: 唤起听书控制 (Issue #17)
-
-        let ttsButton = app.buttons["听书"]
-        if ttsButton.waitForExistence(timeout: 4) {
-            tapElementSafely(ttsButton)
-            captureScreenshot(name: "reader_08_tts_floating_active")
+        let typographyButton = app.buttons["排版"]
+        if typographyButton.waitForExistence(timeout: 4) {
+            tapElementSafely(typographyButton)
+            captureScreenshot(name: "reader_06_typography_panel")
         }
     }
 

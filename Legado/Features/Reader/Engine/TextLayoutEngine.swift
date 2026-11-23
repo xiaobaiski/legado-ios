@@ -176,7 +176,6 @@ public final class TextLayoutEngine: Sendable {
         title _: String = "",
         content: String,
         config: ReaderConfig,
-        highlightedSentence: String? = nil,
         titlePrefixLength: Int = 0) -> NSAttributedString {
         let font = config.resolvedUIFont()
         let paragraphStyle = NSMutableParagraphStyle()
@@ -211,16 +210,6 @@ public final class TextLayoutEngine: Sendable {
                 .font: titleFont,
                 .paragraphStyle: titleParagraph,
             ], range: NSRange(location: 0, length: clampedTitleLen))
-        }
-
-        if let target = highlightedSentence, !target.isEmpty {
-            let range = (content as NSString).range(of: target)
-            if range.location != NSNotFound {
-                mutable.addAttributes([
-                    .backgroundColor: UIColor.tintColor.withAlphaComponent(0.18),
-                    .foregroundColor: UIColor.tintColor,
-                ], range: range)
-            }
         }
         return mutable
     }

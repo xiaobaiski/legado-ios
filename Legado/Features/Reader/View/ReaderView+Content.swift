@@ -42,7 +42,6 @@ extension ReaderView {
         let isPaused = viewModel.state.isHUDVisible
             || viewModel.state.isMoreSettingsVisible
             || viewModel.state.isTocSheetVisible
-            || isTTSSpeaking
         let chapterTitle = viewModel.state.currentChapter?.title ?? ""
 
         return ZStack(alignment: .bottom) {
@@ -52,7 +51,6 @@ extension ReaderView {
                 contentText: viewModel.state.currentChapterText,
                 titlePrefixLength: viewModel.state.pages.first?.titlePrefixLength ?? 0,
                 config: config,
-                highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil,
                 isAutoScrolling: autoScroll,
                 isPaused: isPaused,
                 onTapCenter: {
@@ -80,7 +78,6 @@ extension ReaderView {
             chapterIndex: viewModel.state.currentChapterIndex,
             totalChapters: viewModel.state.chapters.count,
             config: config,
-            highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil,
             isDualPage: isDual,
             maxSingleWidth: nil,
             onPageChanged: { newIndex in
@@ -117,8 +114,7 @@ extension ReaderView {
                     bookTitle: viewModel.state.book.name,
                     totalPages: viewModel.state.pages.count,
                     totalChapters: viewModel.state.chapters.count,
-                    config: viewModel.state.config,
-                    highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil)
+                    config: viewModel.state.config)
                     .id("dual_\(leftPage.chapterIndex)_\(leftPage.pageIndex)")
                     .transition(animated ? .opacity : .identity)
             } else if let page = viewModel.state.currentPage {
@@ -128,7 +124,6 @@ extension ReaderView {
                     totalPages: viewModel.state.pages.count,
                     totalChapters: viewModel.state.chapters.count,
                     config: viewModel.state.config,
-                    highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil,
                     maxContentWidth: nil)
                     .id("\(page.chapterIndex)_\(page.pageIndex)")
                     .transition(animated ? .opacity : .identity)
@@ -174,8 +169,7 @@ extension ReaderView {
                                 bookTitle: viewModel.state.book.name,
                                 totalPages: viewModel.state.pages.count,
                                 totalChapters: viewModel.state.chapters.count,
-                                config: viewModel.state.config,
-                                highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil)
+                                config: viewModel.state.config)
                                 .tag(leftIdx)
                         }
                     }
@@ -191,7 +185,6 @@ extension ReaderView {
                                 totalPages: viewModel.state.pages.count,
                                 totalChapters: viewModel.state.chapters.count,
                                 config: viewModel.state.config,
-                                highlightedSentence: ttsPlayer.state != .idle ? ttsPlayer.currentSentence : nil,
                                 maxContentWidth: nil)
                                 .tag(page.pageIndex)
                         }

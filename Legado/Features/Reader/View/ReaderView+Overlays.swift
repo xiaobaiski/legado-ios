@@ -35,31 +35,6 @@ extension ReaderView {
             .preferredColorScheme(readerColorScheme)
     }
 
-    var cacheSheetView: some View {
-        BookCacheSheet(
-            book: viewModel.state.book,
-            chapters: viewModel.state.chapters,
-            cacheInfo: cacheInfo ?? environment.manageBookCacheUseCase.getBookCacheInfo(
-                bookUrl: viewModel.state.book.bookUrl,
-                totalChapters: viewModel.state.chapters.count),
-            downloadProgress: cacheDownloadProgress,
-            onStartDownload: { startReaderCacheDownload(option: $0) },
-            onCancelDownload: {
-                cacheDownloadTask?.cancel()
-                cacheDownloadTask = nil
-                cacheDownloadProgress?.status = .idle
-            },
-            onClearCache: {
-                guard !viewModel.state.book.isLocalFile else { return }
-                try? environment.manageBookCacheUseCase.clearBookCache(bookUrl: viewModel.state.book.bookUrl)
-                cacheInfo = environment.manageBookCacheUseCase.getBookCacheInfo(
-                    bookUrl: viewModel.state.book.bookUrl,
-                    totalChapters: viewModel.state.chapters.count)
-            },
-            onDismiss: { isCachePresented = false })
-            .preferredColorScheme(readerColorScheme)
-    }
-
     @ViewBuilder var toastOverlayView: some View {
         if let toast = toastMessage {
             Text(toast)
@@ -98,7 +73,6 @@ extension ReaderView {
             safeAreaTop: safeAreaTop,
             isConfigOpen: viewModel.state.isConfigSheetVisible,
             isAutoPaging: viewModel.state.isAutoPaging,
-            isLocalFile: viewModel.state.book.isLocalFile,
             onBack: { dismiss() },
             onPreviousChapter: { viewModel.send(.loadChapter(viewModel.state.currentChapterIndex - 1)) },
             onNextChapter: { viewModel.send(.loadChapter(viewModel.state.currentChapterIndex + 1)) },
@@ -126,11 +100,8 @@ extension ReaderView {
             onResetConfig: { viewModel.send(.resetConfig) },
             onOpenMoreSettings: { viewModel.send(.openMoreSettings) },
             onToggleAutoPage: { viewModel.send(.toggleAutoPage) },
-            onStartTTS: { startTTSReading() },
-            onOpenChangeSource: { openChangeSourceSheet() },
             onOpenSearch: { openSearchContentSheet() },
             isBookmarked: viewModel.state.isCurrentPageBookmarked,
-            onToggleBookmark: { viewModel.send(.toggleBookmark) },
-            onOpenCache: { openCacheSheet() })
+            onToggleBookmark: { viewModel.send(.toggleBookmark) })
     }
 }

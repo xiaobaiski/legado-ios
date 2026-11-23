@@ -1,7 +1,6 @@
-import CryptoKit
 import Foundation
 
-/// 章节领域模型 (对齐 Android Legado BookChapter.kt)
+/// 章节领域模型
 public struct Chapter: Identifiable, Hashable, Codable, Sendable {
     public var id: String {
         "\(bookUrl)_\(index)"
@@ -122,44 +121,8 @@ public struct Chapter: Identifiable, Hashable, Codable, Sendable {
             isCached: isCached)
     }
 
-    /// 获取解析后的完整绝对 URL
-    public func getAbsoluteURL() -> String {
-        if url.hasPrefix(title) && isVolume {
-            return baseUrl
-        }
-        if let commaIndex = url.firstIndex(of: ",") {
-            let before = String(url[..<commaIndex])
-            let after = String(url[commaIndex...])
-            let absBefore = AnalyzeUrl.resolveAbsoluteUrl(before, baseUrl: baseUrl)
-            return "\(absBefore)\(after)"
-        }
-        return AnalyzeUrl.resolveAbsoluteUrl(url, baseUrl: baseUrl)
-    }
-
     /// 唯一主键字符
     public func primaryStr() -> String {
         bookUrl + url
     }
-
-    /// 获取缓存文件名 (对齐 Android Legado getFileName)
-    public mutating func getFileName(suffix: String = "nb") -> String {
-        ensureTitleMD5Init()
-        return String(format: "%05d-%@.%@", index, titleMD5 ?? "", suffix)
-    }
-
-    /// 获取章节对应混淆字体名
-    public mutating func getFontName() -> String {
-        ensureTitleMD5Init()
-        return String(format: "%05d-%@.ttf", index, titleMD5 ?? "")
-    }
-
-    private mutating func ensureTitleMD5Init() {
-        if titleMD5 == nil || titleMD5?.isEmpty == true {
-            let digest = Insecure.MD5.hash(data: Data(title.utf8))
-            titleMD5 = digest.map { String(format: "%02hhx", $0) }.joined()
-        }
-    }
 }
-
-/// 兼容 Android 命名习惯的领域别名
-public typealias BookChapter = Chapter

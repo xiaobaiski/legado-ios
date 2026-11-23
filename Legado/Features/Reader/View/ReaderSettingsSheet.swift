@@ -136,7 +136,7 @@ private extension ReaderSettingsSheet {
         } header: {
             Label("交互与夜间模式", systemImage: "hand.tap")
         } footer: {
-            Text("支持 3×3 九宫格自定义点按区域与屏幕常亮倒计时；音量键翻页在朗读听书时自动恢复音量调节。")
+            Text("支持 3×3 九宫格自定义点按区域、实体音量键翻页与屏幕常亮倒计时。")
         }
     }
 

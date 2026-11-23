@@ -204,7 +204,6 @@ public struct WebDAVBackupBundle: Codable, Sendable {
     public let backupTime: Date
     public let appVersion: String
     public let books: [Book]
-    public let sources: [BookSource]
     public let replaceRules: [ReplaceRule]
     public let txtTocRules: [TxtTocRule]?
     public let readRecords: [ReadRecord]?
@@ -217,7 +216,6 @@ public struct WebDAVBackupBundle: Codable, Sendable {
         backupTime: Date = Date(),
         appVersion: String = "1.3.0",
         books: [Book] = [],
-        sources: [BookSource] = [],
         replaceRules: [ReplaceRule] = [],
         txtTocRules: [TxtTocRule]? = nil,
         readRecords: [ReadRecord]? = nil,
@@ -228,7 +226,6 @@ public struct WebDAVBackupBundle: Codable, Sendable {
         self.backupTime = backupTime
         self.appVersion = appVersion
         self.books = books
-        self.sources = sources
         self.replaceRules = replaceRules
         self.txtTocRules = txtTocRules
         self.readRecords = readRecords

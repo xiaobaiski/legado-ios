@@ -20,7 +20,6 @@ public struct SettingsView: View {
                 readingPreferencesSection
                 localFontsSection
                 cloudAndStorageSection
-                ttsSection
                 purifySection
                 aboutSection
             }
@@ -63,13 +62,13 @@ public struct SettingsView: View {
                         }
                 }
             }
-            .alert("清空所有离线缓存", isPresented: $isShowingClearAlert) {
+            .alert("清理临时章节缓存", isPresented: $isShowingClearAlert) {
                 Button("取消", role: .cancel) {}
-                Button("确定清空", role: .destructive) {
+                Button("确定清理", role: .destructive) {
                     viewModel.send(.clearAllCache)
                 }
             } message: {
-                Text("仅清理在线章节缓存正文，可释放 \(viewModel.state.formattedCacheSize) 空间，不会删除已导入的本地书籍。")
+                Text("仅清理临时章节缓存（共 \(viewModel.state.formattedCacheSize)），不会删除已导入的本地书籍。")
             }
             .sheet(isPresented: $isShowingFontChooser) {
                 FontPickerSheet(
@@ -118,7 +117,7 @@ public struct SettingsView: View {
     }
 }
 
-// MARK: - 云同步、存储与 TTS 分区
+// MARK: - 云同步与存储分区
 
 private extension SettingsView {
     var cloudAndStorageSection: some View {
@@ -136,7 +135,7 @@ private extension SettingsView {
             }
 
             HStack {
-                Label("离线章节缓存", systemImage: "internaldrive")
+                Label("临时章节缓存", systemImage: "internaldrive")
                 Spacer()
                 Text(viewModel.state.formattedCacheSize)
                     .foregroundStyle(.secondary)
@@ -145,54 +144,12 @@ private extension SettingsView {
             Button(role: .destructive) {
                 isShowingClearAlert = true
             } label: {
-                Label("清空所有离线章节正文", systemImage: "trash")
+                Label("清理临时章节缓存正文", systemImage: "trash")
             }
         } header: {
             Label("云同步与存储", systemImage: "icloud.and.arrow.up")
         } footer: {
             Text("仅在配置有效 WebDAV 服务器后支持手动或可选实时同步；本地导入的 TXT / EPUB 电子书独立保存，清理缓存不会删除本地书籍。")
-        }
-    }
-
-    var ttsSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("朗读语速")
-                        .font(.subheadline)
-                    Spacer()
-                    Text(String(format: "%.2fx", viewModel.state.speechRate))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                Slider(
-                    value: Binding(
-                        get: { Double(viewModel.state.speechRate) },
-                        set: { viewModel.send(.updateSpeechRate(Float($0))) }),
-                    in: 0.5 ... 2.0,
-                    step: 0.05)
-            }
-            .padding(.vertical, 2)
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("语音音调")
-                        .font(.subheadline)
-                    Spacer()
-                    Text(String(format: "%.2f", viewModel.state.speechPitch))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                Slider(
-                    value: Binding(
-                        get: { Double(viewModel.state.speechPitch) },
-                        set: { viewModel.send(.updateSpeechPitch(Float($0))) }),
-                    in: 0.5 ... 1.5,
-                    step: 0.05)
-            }
-            .padding(.vertical, 2)
-        } header: {
-            Label("语音朗读偏好 (TTS)", systemImage: "headphones")
         }
     }
 }

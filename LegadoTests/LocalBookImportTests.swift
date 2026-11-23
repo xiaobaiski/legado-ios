@@ -2,8 +2,8 @@ import Foundation
 @testable import Legado
 import Testing
 
-@Suite("Local Import, TXT TOC Parser and Source Health Suite")
-struct LocalImportAndHealthCheckTests {
+@Suite("Local Import and TXT TOC Parser Suite")
+struct LocalBookImportTests {
     @Test("Test TxtTocParser with Standard Chinese Chapters")
     func txtTocParserStandardChapters() {
         let sampleTxt = """
@@ -274,63 +274,6 @@ struct LocalImportAndHealthCheckTests {
         output.appendLE(cdOffset)
         output.appendLE(UInt16(0))
         return output
-    }
-
-    @Test("Test SourceHealthReport Model Properties")
-    func sourceHealthReportModel() {
-        let report = SourceHealthReport(
-            sourceUrl: "https://biquge.example.com",
-            sourceName: "笔趣阁",
-            isHealthy: true,
-            responseTimeMs: 120,
-            statusCode: 200,
-            errorMessage: nil)
-
-        #expect(report.sourceUrl == "https://biquge.example.com")
-        #expect(report.sourceName == "笔趣阁")
-        #expect(report.isHealthy == true)
-        #expect(report.responseTimeMs == 120)
-        #expect(report.statusCode == 200)
-        #expect(report.errorMessage == nil)
-    }
-
-    @Test("Test CheckBookSourceHealthUseCase Invalid URL")
-    func checkBookSourceHealthInvalidUrl() async {
-        let useCase = CheckBookSourceHealthUseCase()
-        let source = BookSource(
-            bookSourceUrl: "invalid://url with spaces %%%",
-            bookSourceName: "非法书源")
-
-        let report = await useCase.check(source: source)
-        #expect(report.isHealthy == false)
-        #expect(report.sourceName == "非法书源")
-    }
-
-    private actor ProgressTracker {
-        var count = 0
-        func increment() {
-            count += 1
-        }
-    }
-
-    @Test("Test CheckBookSourceHealthUseCase Batch Callback")
-    func checkBookSourceHealthBatch() async {
-        let useCase = CheckBookSourceHealthUseCase()
-        let sources = [
-            BookSource(bookSourceUrl: "https://httpbin.org/status/200", bookSourceName: "源1"),
-            BookSource(bookSourceUrl: "invalid://test", bookSourceName: "源2"),
-        ]
-
-        let tracker = ProgressTracker()
-        let reports = await useCase.checkBatch(sources: sources, concurrency: 2) { _, completed, total in
-            Task { await tracker.increment() }
-            #expect(total == 2)
-            #expect(completed >= 1 && completed <= 2)
-        }
-
-        #expect(reports.count == 2)
-        let totalProgressCalls = await tracker.count
-        #expect(totalProgressCalls >= 0)
     }
 }
 

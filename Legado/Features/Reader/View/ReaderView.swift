@@ -7,18 +7,11 @@ public struct ReaderView: View {
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject var environment: AppEnvironment
     @StateObject var viewModel: ReaderViewModel
-    @ObservedObject var ttsPlayer: TTSPlayer = .shared
     @State var toastMessage: String?
     @State var hapticTrigger = false
-    @State var isTTSSpeaking = false
-    @State var isChangeSourcePresented = false
     @State var isSearchContentPresented = false
-    @State var isCachePresented = false
     @State var isTocReversed = false
     @State var tocSearchText = ""
-    @State var cacheInfo: BookCacheInfo?
-    @State var cacheDownloadProgress: BatchDownloadProgress?
-    @State var cacheDownloadTask: Task<Void, Never>?
     @State var originalBrightness: CGFloat?
     @State var isFontPickerPresented = false
     @State var isFontChooserPresented = false
@@ -65,21 +58,7 @@ public struct ReaderView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 }
 
-                if isTTSSpeaking {
-                    VStack {
-                        Spacer()
-                        TTSFloatingBar {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                                isTTSSpeaking = false
-                            }
-                        }
-                        .frame(maxWidth: 520)
-                        .padding(.bottom, 24)
-                    }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-
-                if viewModel.state.isAutoPaging && !viewModel.state.isHUDVisible && !isTTSSpeaking {
+                if viewModel.state.isAutoPaging && !viewModel.state.isHUDVisible {
                     autoPageFloatingBar
                 }
             }
@@ -91,16 +70,9 @@ public struct ReaderView: View {
             .onDisappear {
                 flushReadingSession()
                 viewModel.flushRealtimeProgressSync()
-                cacheDownloadTask?.cancel()
-                cacheDownloadTask = nil
                 viewModel.stopAutoPageTimer()
                 volumeHandler.stop()
                 restoreSystemDisplaySettings()
-                TTSPlayer.shared.onSentenceChanged = nil
-                TTSPlayer.shared.onChapterFinished = nil
-                TTSPlayer.shared.onRequestNextChapter = nil
-                TTSPlayer.shared.onRequestNextChapterAsync = nil
-                TTSPlayer.shared.stop()
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
@@ -121,9 +93,6 @@ public struct ReaderView: View {
             }
             .onChange(of: viewModel.state.config) { _, _ in
                 applySystemDisplaySettings()
-                updateVolumeButtonBinding()
-            }
-            .onChange(of: isTTSSpeaking) { _, _ in
                 updateVolumeButtonBinding()
             }
         }
@@ -216,20 +185,6 @@ public struct ReaderView: View {
                 })
                 .preferredColorScheme(readerColorScheme)
         }
-        .sheet(isPresented: $isChangeSourcePresented) {
-            ChangeSourceSheet(
-                viewModel: environment.makeChangeSourceViewModel(
-                    book: viewModel.state.book,
-                    currentChapterTitle: viewModel.state.currentChapter?.title,
-                    currentChapterIndex: viewModel.state.currentChapterIndex),
-                onSwitched: { updatedBook, newToc, matchedIndex in
-                    viewModel.send(.switchSource(
-                        updatedBook: updatedBook,
-                        newToc: newToc,
-                        matchedChapterIndex: matchedIndex))
-                })
-                .preferredColorScheme(readerColorScheme)
-        }
         .sheet(isPresented: $isSearchContentPresented) {
             BookSearchContentSheet(
                 viewModel: environment.makeBookSearchContentViewModel(
@@ -245,9 +200,6 @@ public struct ReaderView: View {
         }
         .sheet(isPresented: tocPresentationBinding) {
             tocSheetView
-        }
-        .sheet(isPresented: $isCachePresented) {
-            cacheSheetView
         }
         .onReceive(viewModel.effectPublisher) { effect in
             switch effect {
@@ -265,13 +217,6 @@ public struct ReaderView: View {
         }
         .overlay(alignment: .bottom) {
             toastOverlayView
-        }
-        .onChange(of: ttsPlayer.state) { _, newState in
-            if newState == .idle && isTTSSpeaking {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                    isTTSSpeaking = false
-                }
-            }
         }
     }
 }

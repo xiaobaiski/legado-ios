@@ -104,7 +104,7 @@ extension ReaderView {
     }
 
     func updateVolumeButtonBinding() {
-        let shouldEnable = viewModel.state.config.volumeKeyPageTurn && !isTTSSpeaking
+        let shouldEnable = viewModel.state.config.volumeKeyPageTurn
         if shouldEnable {
             volumeHandler.start(
                 onVolumeUp: { [weak viewModel] in viewModel?.send(.prevPage) },
@@ -167,108 +167,10 @@ extension ReaderView {
         return (scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first)?.screen
     }
 
-    func setupTTSCallbacks() {
-        ttsPlayer.onSentenceChanged = { [weak viewModel] _, sentence in
-            guard let viewModel else { return }
-            if let targetPageIndex = viewModel.state.pages.firstIndex(where: { $0.contentText.contains(sentence) }),
-               targetPageIndex != viewModel.state.currentPageIndex {
-                viewModel.send(.jumpToPage(targetPageIndex))
-            }
-        }
-        ttsPlayer.onRequestNextChapterAsync = { [weak viewModel] in
-            guard let viewModel else { return nil }
-            return await viewModel.fetchNextChapterForTTS()
-        }
-    }
-
-    func startReaderCacheDownload(option: BatchDownloadOption) {
-        guard !viewModel.state.book.isLocalFile else { return }
-        cacheDownloadTask?.cancel()
-        cacheDownloadProgress = BatchDownloadProgress(
-            bookUrl: viewModel.state.book.bookUrl,
-            bookName: viewModel.state.book.name,
-            totalChaptersToDownload: 0,
-            completedChaptersCount: 0,
-            status: .downloading)
-
-        let book = viewModel.state.book
-        let chapters = viewModel.state.chapters
-        cacheDownloadTask = Task {
-            do {
-                try await environment.batchDownloadChaptersUseCase.execute(
-                    book: book,
-                    chapters: chapters,
-                    option: option,
-                    concurrency: 3) { progress in
-                        Task { @MainActor in
-                            guard !Task.isCancelled else { return }
-                            cacheDownloadProgress = progress
-                        }
-                    }
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    cacheInfo = environment.manageBookCacheUseCase.getBookCacheInfo(
-                        bookUrl: book.bookUrl,
-                        totalChapters: chapters.count)
-                    toastMessage = "离线缓存完成！"
-                }
-            } catch is CancellationError {
-                await MainActor.run {
-                    cacheDownloadProgress?.status = .paused
-                }
-            } catch {
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    cacheDownloadProgress?.status = .failed(error.localizedDescription)
-                    toastMessage = "缓存失败: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
-
-    func startTTSReading() {
-        let cleanText = viewModel.state.currentChapterText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanText.isEmpty else {
-            toastMessage = "当前章节无可朗读正文"
-            return
-        }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-            viewModel.send(.toggleHUD)
-            isTTSSpeaking = true
-        }
-        setupTTSCallbacks()
-        ttsPlayer.startReading(
-            content: cleanText,
-            bookTitle: viewModel.state.book.name,
-            chapterTitle: viewModel.state.currentChapter?.title ?? "",
-            author: viewModel.state.book.author)
-    }
-
-    func openChangeSourceSheet() {
-        if viewModel.state.book.isLocalFile {
-            toastMessage = "本地书籍无需换源"
-            return
-        }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-            viewModel.send(.hideHUD)
-            isChangeSourcePresented = true
-        }
-    }
-
     func openSearchContentSheet() {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
             viewModel.send(.hideHUD)
             isSearchContentPresented = true
-        }
-    }
-
-    func openCacheSheet() {
-        cacheInfo = environment.manageBookCacheUseCase.getBookCacheInfo(
-            bookUrl: viewModel.state.book.bookUrl,
-            totalChapters: viewModel.state.chapters.count)
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-            viewModel.send(.hideHUD)
-            isCachePresented = true
         }
     }
 }

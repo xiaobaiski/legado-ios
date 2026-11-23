@@ -8,9 +8,6 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
     private let saveBookToShelfUseCase: SaveBookToShelfUseCase
     private let removeBookFromShelfUseCase: RemoveBookFromShelfUseCase
     private let bookRepository: BookRepository
-    private let batchDownloadChaptersUseCase: BatchDownloadChaptersUseCase?
-    private let manageBookCacheUseCase: ManageBookCacheUseCase?
-    nonisolated(unsafe) private var downloadTask: Task<Void, Never>?
     nonisolated(unsafe) private var checkShelfTask: Task<Void, Never>?
     nonisolated(unsafe) private var detailLoadTask: Task<Void, Never>?
     nonisolated(unsafe) private var shelfToggleTask: Task<Void, Never>?
@@ -21,16 +18,12 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
         getBookTocUseCase: GetBookTocUseCase,
         saveBookToShelfUseCase: SaveBookToShelfUseCase,
         removeBookFromShelfUseCase: RemoveBookFromShelfUseCase,
-        bookRepository: BookRepository,
-        batchDownloadChaptersUseCase: BatchDownloadChaptersUseCase? = nil,
-        manageBookCacheUseCase: ManageBookCacheUseCase? = nil) {
+        bookRepository: BookRepository) {
         self.getBookDetailUseCase = getBookDetailUseCase
         self.getBookTocUseCase = getBookTocUseCase
         self.saveBookToShelfUseCase = saveBookToShelfUseCase
         self.removeBookFromShelfUseCase = removeBookFromShelfUseCase
         self.bookRepository = bookRepository
-        self.batchDownloadChaptersUseCase = batchDownloadChaptersUseCase
-        self.manageBookCacheUseCase = manageBookCacheUseCase
 
         super.init(initialState: BookDetailState(book: book))
 
@@ -39,7 +32,6 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
     }
 
     deinit {
-        downloadTask?.cancel()
         checkShelfTask?.cancel()
         detailLoadTask?.cancel()
         shelfToggleTask?.cancel()
@@ -68,24 +60,6 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
 
         case .openToc, .closeToc, .toggleTocReverse, .updateTocSearch, .selectChapter:
             handleTocIntent(intent)
-
-        case .openSourceSwitch:
-            updateState { $0.isSourceSwitchPresented = true }
-            emitEffect(.hapticFeedback)
-
-        case let .switchSource(newSource):
-            handleSwitchSource(newSource)
-
-        case let .updateBook(updatedBook, newToc):
-            updateState {
-                $0.book = updatedBook
-                $0.chapters = newToc
-            }
-            checkShelfStatus()
-
-        case .toggleCacheSheet, .refreshCacheInfo, .startBatchDownload,
-             .cancelBatchDownload, .clearBookCache:
-            handleCacheIntent(intent)
         }
     }
 
@@ -111,102 +85,6 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
 
         default:
             break
-        }
-    }
-
-    private func handleCacheIntent(_ intent: BookDetailIntent) {
-        switch intent {
-        case let .toggleCacheSheet(isOpen):
-            updateState { $0.isCacheSheetPresented = isOpen }
-            if isOpen {
-                send(.refreshCacheInfo)
-            }
-            emitEffect(.hapticFeedback)
-
-        case .refreshCacheInfo:
-            refreshCacheStatus()
-
-        case let .startBatchDownload(option):
-            startDownload(option: option)
-
-        case .cancelBatchDownload:
-            cancelDownload()
-
-        case .clearBookCache:
-            clearCache()
-
-        default:
-            break
-        }
-    }
-
-    private func refreshCacheStatus() {
-        guard let manageBookCacheUseCase else { return }
-        let info = manageBookCacheUseCase.getBookCacheInfo(
-            bookUrl: state.book.bookUrl,
-            totalChapters: state.chapters.count)
-        updateState { $0.cacheInfo = info }
-    }
-
-    private func startDownload(option: BatchDownloadOption) {
-        guard let batchDownloadChaptersUseCase else { return }
-        downloadTask?.cancel()
-
-        updateState {
-            $0.downloadProgress = BatchDownloadProgress(
-                bookUrl: state.book.bookUrl,
-                bookName: state.book.name,
-                totalChaptersToDownload: 0,
-                completedChaptersCount: 0,
-                status: .downloading)
-        }
-
-        downloadTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await batchDownloadChaptersUseCase.execute(
-                    book: state.book,
-                    chapters: state.chapters,
-                    option: option,
-                    concurrency: 3) { [weak self] progress in
-                        Task { @MainActor [weak self] in
-                            self?.updateState { $0.downloadProgress = progress }
-                        }
-                    }
-                self.refreshCacheStatus()
-                self.emitEffect(.showToast("离线缓存完成！"))
-                self.emitEffect(.hapticFeedback)
-            } catch is CancellationError {
-                self.updateState { $0.downloadProgress?.status = .paused }
-                self.emitEffect(.showToast("已暂停/取消下载"))
-            } catch {
-                self.updateState { $0.downloadProgress?.status = .failed(error.localizedDescription) }
-                self.emitEffect(.showToast("下载出现异常: \(error.localizedDescription)"))
-            }
-        }
-    }
-
-    private func cancelDownload() {
-        downloadTask?.cancel()
-        downloadTask = nil
-        updateState { $0.downloadProgress?.status = .idle }
-        emitEffect(.showToast("已取消下载任务"))
-        emitEffect(.hapticFeedback)
-    }
-
-    private func clearCache() {
-        guard !state.book.isLocalFile else {
-            emitEffect(.showToast("本地书籍不支持清空正文缓存"))
-            return
-        }
-        guard let manageBookCacheUseCase else { return }
-        do {
-            try manageBookCacheUseCase.clearBookCache(bookUrl: state.book.bookUrl)
-            refreshCacheStatus()
-            emitEffect(.showToast("已清空《\(state.book.name)》离线缓存"))
-            emitEffect(.hapticFeedback)
-        } catch {
-            emitEffect(.showToast("清理缓存失败: \(error.localizedDescription)"))
         }
     }
 
@@ -260,20 +138,5 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
                 self.emitEffect(.showToast("操作失败: \(error.localizedDescription)"))
             }
         }
-    }
-
-    private func handleSwitchSource(_ sourceItem: SearchResult) {
-        var updated = state.book
-        updated.bookUrl = sourceItem.bookUrl
-        updated.origin = sourceItem.origin
-        updated.originName = sourceItem.originName
-        updated.tocUrl = sourceItem.tocUrl
-
-        updateState { state in
-            state.book = updated
-            state.isSourceSwitchPresented = false
-        }
-        emitEffect(.showToast("已切换至书源: \(sourceItem.originName)"))
-        send(.loadDetail)
     }
 }

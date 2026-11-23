@@ -28,16 +28,12 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
         self.onBookshelfUpdated = onBookshelfUpdated
 
         let savedConfig = WebDAVConfigStore.loadForEditing()
-        let initialSpeechRate = TTSPlayer.shared.speechRate
-        let initialSpeechPitch = TTSPlayer.shared.speechPitch
         let initialCacheSize = manageBookCacheUseCase?.calculateTotalCacheSize() ?? 0
         let initialSyncStatus = realtimeSyncService?.status ?? WebDAVRealtimeSyncStatus()
 
         super.init(initialState: SettingsState(
             webDAVConfig: savedConfig,
             realtimeSyncStatus: initialSyncStatus,
-            speechRate: initialSpeechRate,
-            speechPitch: initialSpeechPitch,
             cacheSizeBytes: initialCacheSize,
             readerConfig: ReaderConfigStore.load(),
             importedFonts: LocalFontManager.shared.listImportedFonts()))
@@ -70,7 +66,7 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
         case .testWebDAVConnection, .backupToWebDAV, .restoreFromWebDAV:
             handleSyncIntent(intent)
 
-        case .updateSpeechRate, .updateSpeechPitch, .refreshCacheSize, .clearAllCache, .clearNotice:
+        case .refreshCacheSize, .clearAllCache, .clearNotice:
             handleGeneralIntent(intent)
 
         case .refreshReaderConfig, .updateReaderConfig, .resetReaderConfig,
@@ -131,14 +127,6 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
 
     private func handleGeneralIntent(_ intent: SettingsIntent) {
         switch intent {
-        case let .updateSpeechRate(rate):
-            updateState { $0.speechRate = rate }
-            TTSPlayer.shared.speechRate = rate
-
-        case let .updateSpeechPitch(pitch):
-            updateState { $0.speechPitch = pitch }
-            TTSPlayer.shared.speechPitch = pitch
-
         case .refreshCacheSize:
             let size = manageBookCacheUseCase?.calculateTotalCacheSize() ?? 0
             updateState { $0.cacheSizeBytes = size }
@@ -147,7 +135,7 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             try? manageBookCacheUseCase?.clearAllCache()
             let size = manageBookCacheUseCase?.calculateTotalCacheSize() ?? 0
             updateState { $0.cacheSizeBytes = size }
-            emitEffect(.showToast("已清理所有离线正文缓存"))
+            emitEffect(.showToast("已清理临时缓存正文"))
             emitEffect(.hapticFeedback)
 
         case .clearNotice:
@@ -167,8 +155,6 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             updateState {
                 $0.readerConfig = ReaderConfigStore.load()
                 $0.importedFonts = LocalFontManager.shared.listImportedFonts()
-                $0.speechRate = TTSPlayer.shared.speechRate
-                $0.speechPitch = TTSPlayer.shared.speechPitch
             }
 
         case let .updateReaderConfig(config):

@@ -1,76 +1,56 @@
 import Foundation
 
-/// 章节正文多级缓存与抓取用例 (L1内存 -> L2磁盘 -> L3网络)
+/// 章节正文两级本地缓存与读取用例 (L1 内存 -> L2 磁盘)
 public final class GetChapterContentUseCase: @unchecked Sendable {
-    private let sourceRepository: BookSourceRepository
     private let cacheRepository: BookCacheRepository
-    private let contentParser: ContentParser
     private let memoryCache = NSCache<NSString, NSString>()
 
-    public init(
-        sourceRepository: BookSourceRepository,
-        cacheRepository: BookCacheRepository = BookCacheRepositoryImpl(),
-        contentParser: ContentParser = .shared) {
-        self.sourceRepository = sourceRepository
+    public init(cacheRepository: BookCacheRepository = BookCacheRepositoryImpl()) {
         self.cacheRepository = cacheRepository
-        self.contentParser = contentParser
         memoryCache.countLimit = 24
         memoryCache.totalCostLimit = 8 * 1024 * 1024
     }
 
-    /// 获取章节正文内容，自动走三级缓存体系 (L1内存 -> L2磁盘 -> L3网络)
+    /// 获取章节正文内容（先查 L1 内存，未命中时读取 L2 磁盘持久化）
     public func execute(
         chapter: Chapter,
-        origin: String,
+        origin _: String = "local",
         forceRefresh: Bool = false) async throws -> String {
         let cacheKey = "\(chapter.bookUrl)_\(chapter.index)" as NSString
-        let isLocalBook = chapter.bookUrl.hasPrefix("local://")
 
-        // 1. L1 内存缓存命中
         if !forceRefresh, let cachedMemory = memoryCache.object(forKey: cacheKey) {
             return cachedMemory as String
         }
 
-        // 2. L2 磁盘持久化命中
-        if !forceRefresh, let diskContent = cacheRepository.getCachedChapterContent(
+        if let diskContent = cacheRepository.getCachedChapterContent(
             bookUrl: chapter.bookUrl,
             index: chapter.index) {
-            if !diskContent.isEmpty || isLocalBook {
-                memoryCache.setObject(
-                    diskContent as NSString,
-                    forKey: cacheKey,
-                    cost: max(diskContent.utf8.count, 1))
-                return diskContent
-            }
+            memoryCache.setObject(
+                diskContent as NSString,
+                forKey: cacheKey,
+                cost: max(diskContent.utf8.count, 1))
+            return diskContent
         }
 
-        // 本地导入书籍严禁回落至网络抓源，避免空卷章节或快速拖动进度条触发 NSURLError -1008
-        if isLocalBook {
-            return ""
-        }
-
-        // 3. L3 网络抓取
-        let sources = try await sourceRepository.fetchSources()
-        guard let source = sources.first(where: { $0.bookSourceUrl == origin }) else {
-            throw URLError(.resourceUnavailable)
-        }
-
-        let content = try await contentParser.fetchAndParseContent(
-            chapterUrl: chapter.url,
-            source: source,
-            baseUrl: origin)
-
-        // 写入 L1 内存与 L2 磁盘缓存
-        memoryCache.setObject(content as NSString, forKey: cacheKey, cost: max(content.utf8.count, 1))
-        try? cacheRepository.saveChapterContent(bookUrl: chapter.bookUrl, index: chapter.index, content: content)
-
-        return content
+        return ""
     }
 
-    /// 预加载下一章正文至本地缓存
-    public func preload(chapter: Chapter, origin: String) {
-        Task {
-            _ = try? await self.execute(chapter: chapter, origin: origin, forceRefresh: false)
+    /// 预热下一章正文至内存缓存
+    public func preload(chapter: Chapter, origin _: String = "local") {
+        let keyString = "\(chapter.bookUrl)_\(chapter.index)"
+        guard memoryCache.object(forKey: keyString as NSString) == nil else { return }
+        let bookUrl = chapter.bookUrl
+        let index = chapter.index
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            if let diskContent = self.cacheRepository.getCachedChapterContent(
+                bookUrl: bookUrl,
+                index: index) {
+                self.memoryCache.setObject(
+                    diskContent as NSString,
+                    forKey: keyString as NSString,
+                    cost: max(diskContent.utf8.count, 1))
+            }
         }
     }
 

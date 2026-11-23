@@ -15,7 +15,6 @@ public struct ReaderPageView: View {
     let totalPages: Int
     let totalChapters: Int
     let config: ReaderConfig
-    let highlightedSentence: String?
     let maxContentWidth: CGFloat?
     let spineEdge: SpineEdge
 
@@ -25,7 +24,6 @@ public struct ReaderPageView: View {
         totalPages: Int,
         totalChapters: Int = 1,
         config: ReaderConfig,
-        highlightedSentence: String? = nil,
         maxContentWidth: CGFloat? = nil,
         spineEdge: SpineEdge = .none) {
         self.page = page
@@ -33,7 +31,6 @@ public struct ReaderPageView: View {
         self.totalPages = totalPages
         self.totalChapters = totalChapters
         self.config = config
-        self.highlightedSentence = highlightedSentence
         self.maxContentWidth = maxContentWidth
         self.spineEdge = spineEdge
     }
@@ -81,8 +78,7 @@ public struct ReaderPageView: View {
                 CoreTextPageCanvas(
                     content: page.contentText,
                     titlePrefixLength: page.titlePrefixLength,
-                    config: config,
-                    highlightedSentence: highlightedSentence)
+                    config: config)
                     .frame(maxWidth: maxContentWidth ?? .infinity, maxHeight: .infinity)
                     .padding(.leading, leadingPadding)
                     .padding(.trailing, trailingPadding)
@@ -271,7 +267,6 @@ private struct CoreTextPageCanvas: UIViewRepresentable {
     let content: String
     let titlePrefixLength: Int
     let config: ReaderConfig
-    let highlightedSentence: String?
 
     func makeUIView(context _: Context) -> CoreTextDrawView {
         let view = CoreTextDrawView()
@@ -285,8 +280,7 @@ private struct CoreTextPageCanvas: UIViewRepresentable {
         uiView.updateIfNeeded(
             content: content,
             titlePrefixLength: titlePrefixLength,
-            config: config,
-            highlightedSentence: highlightedSentence)
+            config: config)
     }
 }
 
@@ -306,7 +300,6 @@ private final class CoreTextDrawView: UIView {
         let theme: ReaderTheme
         let customTextHex: String
         let titleStyle: ChapterTitleStyleConfig
-        let highlightedSentence: String?
     }
 
     private var lastKey: RenderKey?
@@ -317,8 +310,7 @@ private final class CoreTextDrawView: UIView {
     func updateIfNeeded(
         content: String,
         titlePrefixLength: Int,
-        config: ReaderConfig,
-        highlightedSentence: String?) {
+        config: ReaderConfig) {
         let key = RenderKey(
             content: content,
             titlePrefixLength: titlePrefixLength,
@@ -333,14 +325,12 @@ private final class CoreTextDrawView: UIView {
             isTextJustified: config.isTextJustified,
             theme: config.theme,
             customTextHex: config.customTextHex,
-            titleStyle: config.titleStyle,
-            highlightedSentence: highlightedSentence)
+            titleStyle: config.titleStyle)
         guard key != lastKey else { return }
         lastKey = key
         let attributed = TextLayoutEngine.shared.createAttributedString(
             content: content,
             config: config,
-            highlightedSentence: highlightedSentence,
             titlePrefixLength: titlePrefixLength)
         cachedFramesetter = attributed.length > 0
             ? CTFramesetterCreateWithAttributedString(attributed as CFAttributedString)
@@ -381,7 +371,6 @@ public struct ReaderDualPageSpreadView: View {
     let totalPages: Int
     let totalChapters: Int
     let config: ReaderConfig
-    let highlightedSentence: String?
 
     public init(
         leftPage: ReaderPage,
@@ -389,15 +378,13 @@ public struct ReaderDualPageSpreadView: View {
         bookTitle: String = "",
         totalPages: Int,
         totalChapters: Int,
-        config: ReaderConfig,
-        highlightedSentence: String? = nil) {
+        config: ReaderConfig) {
         self.leftPage = leftPage
         self.rightPage = rightPage
         self.bookTitle = bookTitle
         self.totalPages = totalPages
         self.totalChapters = totalChapters
         self.config = config
-        self.highlightedSentence = highlightedSentence
     }
 
     public var body: some View {
@@ -408,7 +395,6 @@ public struct ReaderDualPageSpreadView: View {
                 totalPages: totalPages,
                 totalChapters: totalChapters,
                 config: config,
-                highlightedSentence: highlightedSentence,
                 spineEdge: .trailing)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -419,7 +405,6 @@ public struct ReaderDualPageSpreadView: View {
                     totalPages: totalPages,
                     totalChapters: totalChapters,
                     config: config,
-                    highlightedSentence: highlightedSentence,
                     spineEdge: .leading)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {

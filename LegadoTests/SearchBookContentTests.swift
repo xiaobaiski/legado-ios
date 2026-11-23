@@ -6,20 +6,19 @@ import Testing
 struct SearchBookContentTests {
     @Test("Test SearchBookContentUseCase across chapters and snippet extraction")
     func searchAcrossChapters() async {
-        let dummySourceRepo = BookSourceRepositoryImpl(modelContainer: ModelContainerProvider(inMemory: true).container)
-        let getChapterContentUseCase = GetChapterContentUseCase(sourceRepository: dummySourceRepo)
+        let getChapterContentUseCase = GetChapterContentUseCase()
 
         let book = Book(
-            bookUrl: "https://test.com/book1",
-            tocUrl: "https://test.com/book1/toc",
-            origin: "https://test.com",
-            originName: "测试书源",
+            bookUrl: "local://test/book1",
+            tocUrl: "",
+            origin: "local",
+            originName: "本地导入",
             name: "诡秘探险",
             author: "探险家")
 
         let chapters = [
-            Chapter(url: "https://test.com/c1", title: "第一章 初入秘境", bookUrl: book.bookUrl, index: 0),
-            Chapter(url: "https://test.com/c2", title: "第二章 迷雾中的石碑", bookUrl: book.bookUrl, index: 1),
+            Chapter(url: "local://test/book1/0", title: "第一章 初入秘境", bookUrl: book.bookUrl, index: 0),
+            Chapter(url: "local://test/book1/1", title: "第二章 迷雾中的石碑", bookUrl: book.bookUrl, index: 1),
         ]
 
         let ch1Content = "夜幕降临，微风吹拂。卢米安站在崖顶，眺望着远方的古老石碑。"
@@ -63,19 +62,18 @@ struct SearchBookContentTests {
     @Test("Test SearchBookContentViewModel MVI Flow")
     @MainActor
     func viewModelFlow() async {
-        let dummySourceRepo = BookSourceRepositoryImpl(modelContainer: ModelContainerProvider(inMemory: true).container)
-        let getChapterContentUseCase = GetChapterContentUseCase(sourceRepository: dummySourceRepo)
+        let getChapterContentUseCase = GetChapterContentUseCase()
 
         let book = Book(
-            bookUrl: "https://test.com/book1",
-            tocUrl: "https://test.com/book1/toc",
-            origin: "https://test.com",
-            originName: "测试书源",
+            bookUrl: "local://test/book1",
+            tocUrl: "",
+            origin: "local",
+            originName: "本地导入",
             name: "诡秘探险",
             author: "探险家")
 
         let chapters = [
-            Chapter(url: "https://test.com/c1", title: "第一章 初入秘境", bookUrl: book.bookUrl, index: 0),
+            Chapter(url: "local://test/book1/0", title: "第一章 初入秘境", bookUrl: book.bookUrl, index: 0),
         ]
 
         getChapterContentUseCase.saveChapterCache(
@@ -110,15 +108,14 @@ struct SearchBookContentTests {
     func readerJumpToOffset() async {
         let provider = ModelContainerProvider(inMemory: true)
         let bookRepo = BookRepositoryImpl(modelContainer: provider.container)
-        let sourceRepo = BookSourceRepositoryImpl(modelContainer: provider.container)
-        let getChapterContentUseCase = GetChapterContentUseCase(sourceRepository: sourceRepo)
-        let getBookTocUseCase = GetBookTocUseCase(sourceRepository: sourceRepo, bookRepository: bookRepo)
+        let getChapterContentUseCase = GetChapterContentUseCase()
+        let getBookTocUseCase = GetBookTocUseCase(bookRepository: bookRepo)
 
         let book = Book(
-            bookUrl: "https://test.com/book1",
-            tocUrl: "https://test.com/book1/toc",
-            origin: "https://test.com",
-            originName: "测试书源",
+            bookUrl: "local://test/book1",
+            tocUrl: "",
+            origin: "local",
+            originName: "本地导入",
             name: "诡秘探险",
             author: "探险家")
 

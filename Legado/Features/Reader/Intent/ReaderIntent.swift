@@ -51,10 +51,8 @@ public enum ReaderIntent: ViewIntent, Equatable, Sendable {
     case refreshImportedFonts
     /// 手动重新排版当前章节（例如修改替换净化规则后即时生效）
     case repaginate
-    /// 屏幕尺寸尺寸更新重新排版
+    /// 屏幕尺寸更新重新排版
     case updateScreenBounds(CGRect)
-    /// 切换书源并重载新目录与章节
-    case switchSource(updatedBook: Book, newToc: [Chapter], matchedChapterIndex: Int)
     /// 跳转到指定章节及字符偏移位置 (用于全文搜索定位)
     case jumpToChapterAndOffset(chapterIndex: Int, matchOffset: Int)
     /// 切换当前页面书签状态 (添加或删除书签)

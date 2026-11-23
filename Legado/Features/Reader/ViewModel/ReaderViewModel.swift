@@ -101,18 +101,6 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
                 }
             }
 
-        case let .switchSource(updatedBook, newToc, matchedChapterIndex):
-            updateState {
-                $0.book = updatedBook
-                $0.chapters = newToc
-                $0.currentChapterIndex = matchedChapterIndex
-                $0.pages = []
-                $0.currentPageIndex = 0
-            }
-            loadChapterContent(chapterIndex: matchedChapterIndex, targetPageIndex: 0)
-            emitEffect(.showToast("已成功换源至 [\(updatedBook.originName)]"))
-            emitHapticIfEnabled()
-
         case .toggleBookmark, .addBookmark, .deleteBookmark, .loadBookmarks:
             handleBookmarkIntent(intent)
         }

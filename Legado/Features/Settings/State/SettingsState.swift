@@ -8,8 +8,6 @@ public struct SettingsState: ViewState, Equatable, Sendable {
     public var isRestoring: Bool
     public var lastBackupSummary: WebDAVBackupSummary?
     public var realtimeSyncStatus: WebDAVRealtimeSyncStatus
-    public var speechRate: Float
-    public var speechPitch: Float
     public var cacheSizeBytes: Int64
     public var readerConfig: ReaderConfig
     public var importedFonts: [ImportedFont]
@@ -23,8 +21,6 @@ public struct SettingsState: ViewState, Equatable, Sendable {
         isRestoring: Bool = false,
         lastBackupSummary: WebDAVBackupSummary? = nil,
         realtimeSyncStatus: WebDAVRealtimeSyncStatus = WebDAVRealtimeSyncStatus(),
-        speechRate: Float = 1.0,
-        speechPitch: Float = 1.0,
         cacheSizeBytes: Int64 = 0,
         readerConfig: ReaderConfig = ReaderConfig.defaultConfig,
         importedFonts: [ImportedFont] = [],
@@ -36,8 +32,6 @@ public struct SettingsState: ViewState, Equatable, Sendable {
         self.isRestoring = isRestoring
         self.lastBackupSummary = lastBackupSummary
         self.realtimeSyncStatus = realtimeSyncStatus
-        self.speechRate = speechRate
-        self.speechPitch = speechPitch
         self.cacheSizeBytes = cacheSizeBytes
         self.readerConfig = readerConfig
         self.importedFonts = importedFonts

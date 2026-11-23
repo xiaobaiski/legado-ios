@@ -11,8 +11,6 @@ public enum SettingsIntent: ViewIntent {
     case testWebDAVConnection
     case backupToWebDAV
     case restoreFromWebDAV
-    case updateSpeechRate(Float)
-    case updateSpeechPitch(Float)
     case refreshCacheSize
     case clearAllCache
     case refreshReaderConfig

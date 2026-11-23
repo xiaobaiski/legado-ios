@@ -3,7 +3,6 @@ import Foundation
 /// 从 WebDAV 云端还原数据用例（支持选择性还原、多设备阅读进度对齐与防幽灵书保护）
 public final class RestoreFromWebDAVUseCase: @unchecked Sendable {
     private let bookRepository: BookRepository
-    private let sourceRepository: BookSourceRepository
     private let bookmarkRepository: BookmarkRepository?
     private let bookCacheRepository: BookCacheRepository?
     private let webDAVClient: WebDAVClient
@@ -14,7 +13,6 @@ public final class RestoreFromWebDAVUseCase: @unchecked Sendable {
 
     public init(
         bookRepository: BookRepository,
-        sourceRepository: BookSourceRepository,
         bookmarkRepository: BookmarkRepository? = nil,
         bookCacheRepository: BookCacheRepository? = nil,
         webDAVClient: WebDAVClient = .shared,
@@ -23,7 +21,6 @@ public final class RestoreFromWebDAVUseCase: @unchecked Sendable {
         readRecordStore: ReadRecordStore = .shared,
         readerConfigImporter: @escaping @Sendable (String) -> Void = { _ = ReaderConfigStore.importJSON($0) }) {
         self.bookRepository = bookRepository
-        self.sourceRepository = sourceRepository
         self.bookmarkRepository = bookmarkRepository
         self.bookCacheRepository = bookCacheRepository
         self.webDAVClient = webDAVClient
@@ -135,7 +132,6 @@ private extension RestoreFromWebDAVUseCase {
             backupTime: bundle.backupTime,
             appVersion: bundle.appVersion,
             books: bundle.books,
-            sources: bundle.sources,
             replaceRules: synced.replaceRules.isEmpty ? bundle.replaceRules : synced.replaceRules,
             txtTocRules: synced.txtTocRules.isEmpty ? bundle.txtTocRules : synced.txtTocRules,
             readRecords: bundle.readRecords,
@@ -176,7 +172,6 @@ private extension RestoreFromWebDAVUseCase {
 
         var progressResult = ProgressRestoreResult(
             books: 0,
-            sources: 0,
             bookmarks: 0,
             skipped: payload.initialSkippedCount)
         if options.syncProgress {
@@ -192,7 +187,6 @@ private extension RestoreFromWebDAVUseCase {
 
         return WebDAVBackupSummary(
             bookCount: options.syncProgress ? progressResult.books : 0,
-            sourceCount: options.syncProgress ? progressResult.sources : 0,
             dataSizeBytes: payload.totalBytes,
             backupDate: bundle.backupTime,
             ruleCount: restoredRuleCount,
@@ -287,10 +281,6 @@ private extension RestoreFromWebDAVUseCase {
         remoteProgressItems: [WebDAVBookProgress],
         localBooks: inout [Book],
         handledArchiveUrls: Set<String>) async throws -> ProgressRestoreResult {
-        if !bundle.sources.isEmpty {
-            try await sourceRepository.saveSources(bundle.sources)
-        }
-
         var syncResult = try await syncRemoteBooks(
             bundle.books,
             localBooks: &localBooks,
@@ -314,7 +304,6 @@ private extension RestoreFromWebDAVUseCase {
 
         return ProgressRestoreResult(
             books: syncResult.syncedUrls.count,
-            sources: bundle.sources.count,
             bookmarks: bookmarkCount,
             skipped: syncResult.skipped)
     }
@@ -430,7 +419,6 @@ private extension RestoreFromWebDAVUseCase {
 
 private struct ProgressRestoreResult {
     let books: Int
-    let sources: Int
     let bookmarks: Int
     let skipped: Int
 }

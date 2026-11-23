@@ -5,7 +5,6 @@ public struct BookshelfBookRowView: View {
     public let book: Book
     public let isBatchMode: Bool
     public let isSelected: Bool
-    public let isUpdated: Bool
     public let allGroups: [String]
     public let onTap: () -> Void
     public let onShowDetail: () -> Void
@@ -17,7 +16,6 @@ public struct BookshelfBookRowView: View {
         book: Book,
         isBatchMode: Bool,
         isSelected: Bool,
-        isUpdated: Bool,
         allGroups: [String],
         onTap: @escaping () -> Void,
         onShowDetail: @escaping () -> Void,
@@ -27,7 +25,6 @@ public struct BookshelfBookRowView: View {
         self.book = book
         self.isBatchMode = isBatchMode
         self.isSelected = isSelected
-        self.isUpdated = isUpdated
         self.allGroups = allGroups
         self.onTap = onTap
         self.onShowDetail = onShowDetail
@@ -123,21 +120,6 @@ public struct BookshelfBookRowView: View {
                     .font(.headline)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-
-                if isUpdated {
-                    Text("更新")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1.5)
-                        .background {
-                            Capsule(style: .continuous)
-                                .fill(Color.red.gradient)
-                        }
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(Color.white.opacity(0.35), lineWidth: 0.5))
-                }
 
                 Spacer()
 

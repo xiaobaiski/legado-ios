@@ -89,9 +89,6 @@ struct BookshelfAdvancedTests {
         let vm = BookshelfViewModel(
             getBookshelfUseCase: GetBookshelfUseCase(bookRepository: bookRepo),
             removeBookFromShelfUseCase: RemoveBookFromShelfUseCase(bookRepository: bookRepo),
-            checkBookUpdatesUseCase: CheckBookUpdatesUseCase(
-                bookRepository: bookRepo,
-                sourceRepository: BookSourceRepositoryImpl(modelContainer: provider.container)),
             saveBookToShelfUseCase: SaveBookToShelfUseCase(bookRepository: bookRepo),
             getBookGroupsUseCase: GetBookGroupsUseCase(groupRepository: groupRepo),
             saveBookGroupUseCase: SaveBookGroupUseCase(groupRepository: groupRepo),
@@ -171,9 +168,6 @@ struct BookshelfAdvancedTests {
         let vm1 = BookshelfViewModel(
             getBookshelfUseCase: GetBookshelfUseCase(bookRepository: bookRepo),
             removeBookFromShelfUseCase: RemoveBookFromShelfUseCase(bookRepository: bookRepo),
-            checkBookUpdatesUseCase: CheckBookUpdatesUseCase(
-                bookRepository: bookRepo,
-                sourceRepository: BookSourceRepositoryImpl(modelContainer: provider.container)),
             layoutDefaults: defaults)
         vm1.send(.toggleLayoutMode)
         #expect(vm1.state.layoutMode == .list)
@@ -181,16 +175,13 @@ struct BookshelfAdvancedTests {
         let vm2 = BookshelfViewModel(
             getBookshelfUseCase: GetBookshelfUseCase(bookRepository: bookRepo),
             removeBookFromShelfUseCase: RemoveBookFromShelfUseCase(bookRepository: bookRepo),
-            checkBookUpdatesUseCase: CheckBookUpdatesUseCase(
-                bookRepository: bookRepo,
-                sourceRepository: BookSourceRepositoryImpl(modelContainer: provider.container)),
             layoutDefaults: defaults)
         #expect(vm2.state.layoutMode == .list)
 
         vm2.send(.refresh)
-        for _ in 0 ..< 20 where vm2.state.isRefreshingUpdates {
+        for _ in 0 ..< 20 where vm2.state.isRefreshing {
             try await Task.sleep(nanoseconds: 50_000_000)
         }
-        #expect(!vm2.state.isRefreshingUpdates)
+        #expect(!vm2.state.isRefreshing)
     }
 }

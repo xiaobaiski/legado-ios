@@ -4,7 +4,7 @@ import Foundation
 public enum BookshelfIntent: ViewIntent, Equatable {
     /// 视图初始化加载
     case onAppear
-    /// 下拉刷新检查书籍最新章节更新
+    /// 下拉刷新书架与 WebDAV 实时同步
     case refresh
     /// 搜索过滤词更新
     case updateSearchText(String)
@@ -40,11 +40,9 @@ public enum BookshelfIntent: ViewIntent, Equatable {
     case batchRemoveSelected
     /// 批量移动分组
     case batchMoveSelectedToGroup(groupName: String?)
-    /// 手动全书架检查更新
-    case refreshAllBookUpdates
-    /// 导入本地书籍文件 (TXT)
+    /// 导入本地书籍文件 (TXT / EPUB)
     case importLocalBook(URL)
-    /// 批量导入本地书籍文件 (TXT)
+    /// 批量导入本地书籍文件 (TXT / EPUB)
     case importLocalBooks([URL])
 }
 

@@ -9,30 +9,19 @@ public final class AppEnvironment: ObservableObject {
     public static let shared = AppEnvironment()
 
     public let modelContainerProvider: ModelContainerProvider
-    public let bookSourceRepository: BookSourceRepository
     public let bookRepository: BookRepository
 
     // UseCases
-    public let searchBooksUseCase: SearchBooksUseCase
     public let saveBookToShelfUseCase: SaveBookToShelfUseCase
     public let getBookshelfUseCase: GetBookshelfUseCase
     public let removeBookFromShelfUseCase: RemoveBookFromShelfUseCase
     public let getBookDetailUseCase: GetBookDetailUseCase
     public let getBookTocUseCase: GetBookTocUseCase
-    public let checkBookUpdatesUseCase: CheckBookUpdatesUseCase
     public let getChapterContentUseCase: GetChapterContentUseCase
-    public let getExploreCategoriesUseCase: GetExploreCategoriesUseCase
-    public let exploreBooksUseCase: ExploreBooksUseCase
-    public let toggleBookSourceEnabledUseCase: ToggleBookSourceEnabledUseCase
-    public let deleteBookSourceUseCase: DeleteBookSourceUseCase
-    public let importBookSourcesUseCase: ImportBookSourcesUseCase
-    public let saveBookSourceUseCase: SaveBookSourceUseCase
-    public let debugBookSourceUseCase: DebugBookSourceUseCase
     public let purifyContentUseCase: PurifyContentUseCase
     public let backupToWebDAVUseCase: BackupToWebDAVUseCase
     public let restoreFromWebDAVUseCase: RestoreFromWebDAVUseCase
     public let webDAVRealtimeSyncService: WebDAVRealtimeSyncService
-    public let changeBookSourceUseCase: ChangeBookSourceUseCase
     public let searchBookContentUseCase: SearchBookContentUseCase
     public let bookmarkRepository: BookmarkRepository
     public let getBookmarksUseCase: GetBookmarksUseCase
@@ -43,9 +32,7 @@ public final class AppEnvironment: ObservableObject {
     public let saveBookGroupUseCase: SaveBookGroupUseCase
     public let deleteBookGroupUseCase: DeleteBookGroupUseCase
     public let bookCacheRepository: BookCacheRepository
-    public let batchDownloadChaptersUseCase: BatchDownloadChaptersUseCase
     public let manageBookCacheUseCase: ManageBookCacheUseCase
-    public let checkBookSourceHealthUseCase: CheckBookSourceHealthUseCase
     public let importLocalBookUseCase: ImportLocalBookUseCase
     public let externalFileImportSubject = PassthroughSubject<Void, Never>()
     public let bookshelfRefreshSubject = PassthroughSubject<Void, Never>()
@@ -56,54 +43,40 @@ public final class AppEnvironment: ObservableObject {
         let provider = ModelContainerProvider(inMemory: inMemory)
         self.modelContainerProvider = provider
 
-        let sourceRepo = BookSourceRepositoryImpl(modelContainer: provider.container)
         let bookRepo = BookRepositoryImpl(modelContainer: provider.container)
         let bookmarkRepo = BookmarkRepositoryImpl(modelContainer: provider.container)
         let groupRepo = BookGroupRepositoryImpl(modelContainer: provider.container)
         let cacheRepo = BookCacheRepositoryImpl()
 
-        self.bookSourceRepository = sourceRepo
         self.bookRepository = bookRepo
         self.bookmarkRepository = bookmarkRepo
         self.bookGroupRepository = groupRepo
         self.bookCacheRepository = cacheRepo
 
-        self.searchBooksUseCase = SearchBooksUseCase(sourceRepository: sourceRepo)
         self.saveBookToShelfUseCase = SaveBookToShelfUseCase(bookRepository: bookRepo)
         self.getBookshelfUseCase = GetBookshelfUseCase(bookRepository: bookRepo)
         self.removeBookFromShelfUseCase = RemoveBookFromShelfUseCase(
             bookRepository: bookRepo,
             bookCacheRepository: cacheRepo)
-        self.getBookDetailUseCase = GetBookDetailUseCase(sourceRepository: sourceRepo, bookRepository: bookRepo)
-        self.getBookTocUseCase = GetBookTocUseCase(sourceRepository: sourceRepo, bookRepository: bookRepo)
-        self.checkBookUpdatesUseCase = CheckBookUpdatesUseCase(bookRepository: bookRepo, sourceRepository: sourceRepo)
-        self.getChapterContentUseCase = GetChapterContentUseCase(
-            sourceRepository: sourceRepo,
-            cacheRepository: cacheRepo)
-        self.batchDownloadChaptersUseCase = BatchDownloadChaptersUseCase(
-            getChapterContentUseCase: self.getChapterContentUseCase,
-            bookCacheRepository: cacheRepo)
+        self.getBookDetailUseCase = GetBookDetailUseCase(bookRepository: bookRepo)
+        self.getBookTocUseCase = GetBookTocUseCase(bookRepository: bookRepo)
+        self.getChapterContentUseCase = GetChapterContentUseCase(cacheRepository: cacheRepo)
         self.manageBookCacheUseCase = ManageBookCacheUseCase(bookCacheRepository: cacheRepo)
 
-        self.getExploreCategoriesUseCase = GetExploreCategoriesUseCase(sourceRepository: sourceRepo)
-        self.exploreBooksUseCase = ExploreBooksUseCase(sourceRepository: sourceRepo)
-        self.toggleBookSourceEnabledUseCase = ToggleBookSourceEnabledUseCase(sourceRepository: sourceRepo)
-        self.deleteBookSourceUseCase = DeleteBookSourceUseCase(sourceRepository: sourceRepo)
-        self.importBookSourcesUseCase = ImportBookSourcesUseCase(sourceRepository: sourceRepo)
-        self.saveBookSourceUseCase = SaveBookSourceUseCase(sourceRepository: sourceRepo)
-        self.debugBookSourceUseCase = DebugBookSourceUseCase()
         self.purifyContentUseCase = PurifyContentUseCase()
         self.backupToWebDAVUseCase = BackupToWebDAVUseCase(
-            bookRepository: bookRepo, sourceRepository: sourceRepo,
-            bookmarkRepository: bookmarkRepo, bookCacheRepository: cacheRepo)
+            bookRepository: bookRepo,
+            bookmarkRepository: bookmarkRepo,
+            bookCacheRepository: cacheRepo)
         self.restoreFromWebDAVUseCase = RestoreFromWebDAVUseCase(
-            bookRepository: bookRepo, sourceRepository: sourceRepo,
-            bookmarkRepository: bookmarkRepo, bookCacheRepository: cacheRepo)
+            bookRepository: bookRepo,
+            bookmarkRepository: bookmarkRepo,
+            bookCacheRepository: cacheRepo)
         self.webDAVRealtimeSyncService = WebDAVRealtimeSyncService(
-            bookRepository: bookRepo, backupUseCase: self.backupToWebDAVUseCase,
+            bookRepository: bookRepo,
+            backupUseCase: self.backupToWebDAVUseCase,
             configProvider: { inMemory ? nil : WebDAVConfigStore.loadSavedIfConfigured() },
             backgroundTaskProvider: inMemory ? nil : Self.makeBackgroundTaskStarter())
-        self.changeBookSourceUseCase = ChangeBookSourceUseCase(sourceRepository: sourceRepo, bookRepository: bookRepo)
         self.searchBookContentUseCase = SearchBookContentUseCase()
         self.getBookmarksUseCase = GetBookmarksUseCase(bookmarkRepository: bookmarkRepo)
         self.saveBookmarkUseCase = SaveBookmarkUseCase(bookmarkRepository: bookmarkRepo)
@@ -111,9 +84,9 @@ public final class AppEnvironment: ObservableObject {
         self.getBookGroupsUseCase = GetBookGroupsUseCase(groupRepository: groupRepo)
         self.saveBookGroupUseCase = SaveBookGroupUseCase(groupRepository: groupRepo)
         self.deleteBookGroupUseCase = DeleteBookGroupUseCase(groupRepository: groupRepo)
-        self.checkBookSourceHealthUseCase = CheckBookSourceHealthUseCase()
         self.importLocalBookUseCase = ImportLocalBookUseCase(
-            bookRepository: bookRepo, bookCacheRepository: cacheRepo)
+            bookRepository: bookRepo,
+            bookCacheRepository: cacheRepo)
         configurePostInit(inMemory: inMemory)
     }
 
@@ -132,7 +105,7 @@ public final class AppEnvironment: ObservableObject {
     }
 
     private func primeSampleChapterCache() {
-        let sampleBookUrl = "https://biquge.example.com/book/circle_of_inevitability"
+        let sampleBookUrl = "local://sample/circle_of_inevitability"
         let sampleContent = """
         　　夜幕降临，微凉的晚风吹拂过荒野，带来了远处不知名野兽的低沉吼声。
         　　卢米安站在高耸的崖壁顶端，俯瞰着下方若隐若现的村落灯火。在这个充满神秘与超凡的世界里，每一个看似宁静的黑夜背后，都潜藏着凡人难以窥见的波诡云谲。
@@ -154,14 +127,6 @@ public final class AppEnvironment: ObservableObject {
         }
     }
 
-    /// 创建搜索 ViewModel
-    public func makeSearchViewModel() -> SearchViewModel {
-        SearchViewModel(
-            searchBooksUseCase: searchBooksUseCase,
-            saveBookToShelfUseCase: saveBookToShelfUseCase,
-            getBookshelfUseCase: getBookshelfUseCase)
-    }
-
     /// 创建书籍详情 ViewModel
     public func makeBookDetailViewModel(book: Book) -> BookDetailViewModel {
         BookDetailViewModel(
@@ -170,9 +135,7 @@ public final class AppEnvironment: ObservableObject {
             getBookTocUseCase: getBookTocUseCase,
             saveBookToShelfUseCase: saveBookToShelfUseCase,
             removeBookFromShelfUseCase: removeBookFromShelfUseCase,
-            bookRepository: bookRepository,
-            batchDownloadChaptersUseCase: batchDownloadChaptersUseCase,
-            manageBookCacheUseCase: manageBookCacheUseCase)
+            bookRepository: bookRepository)
     }
 
     /// 创建书架 ViewModel
@@ -180,7 +143,6 @@ public final class AppEnvironment: ObservableObject {
         BookshelfViewModel(
             getBookshelfUseCase: getBookshelfUseCase,
             removeBookFromShelfUseCase: removeBookFromShelfUseCase,
-            checkBookUpdatesUseCase: checkBookUpdatesUseCase,
             saveBookToShelfUseCase: saveBookToShelfUseCase,
             getBookGroupsUseCase: getBookGroupsUseCase,
             saveBookGroupUseCase: saveBookGroupUseCase,
@@ -206,24 +168,6 @@ public final class AppEnvironment: ObservableObject {
             saveBookmarkUseCase: saveBookmarkUseCase,
             deleteBookmarkUseCase: deleteBookmarkUseCase,
             realtimeSyncService: webDAVRealtimeSyncService)
-    }
-
-    /// 创建发现 ViewModel
-    public func makeExploreViewModel() -> ExploreViewModel {
-        ExploreViewModel(
-            getExploreCategoriesUseCase: getExploreCategoriesUseCase,
-            exploreBooksUseCase: exploreBooksUseCase)
-    }
-
-    /// 创建书源管理 ViewModel
-    public func makeSourceManageViewModel() -> SourceManageViewModel {
-        SourceManageViewModel(
-            sourceRepository: bookSourceRepository,
-            toggleEnabledUseCase: toggleBookSourceEnabledUseCase,
-            deleteSourceUseCase: deleteBookSourceUseCase,
-            importSourcesUseCase: importBookSourcesUseCase,
-            debugSourceUseCase: debugBookSourceUseCase,
-            checkHealthUseCase: checkBookSourceHealthUseCase)
     }
 
     /// 创建系统设置 ViewModel
@@ -262,18 +206,6 @@ public final class AppEnvironment: ObservableObject {
                 state.end()
             }
         }
-    }
-
-    /// 创建换源 ViewModel
-    public func makeChangeSourceViewModel(
-        book: Book,
-        currentChapterTitle: String? = nil,
-        currentChapterIndex: Int = 0) -> ChangeSourceViewModel {
-        ChangeSourceViewModel(
-            book: book,
-            currentChapterTitle: currentChapterTitle,
-            currentChapterIndex: currentChapterIndex,
-            changeBookSourceUseCase: changeBookSourceUseCase)
     }
 
     /// 创建正文全文搜索 ViewModel

@@ -80,25 +80,24 @@ struct BookmarkTests {
     func readerViewModelBookmarkFlow() async {
         let provider = ModelContainerProvider(inMemory: true)
         let bookRepo = BookRepositoryImpl(modelContainer: provider.container)
-        let sourceRepo = BookSourceRepositoryImpl(modelContainer: provider.container)
         let bookmarkRepo = BookmarkRepositoryImpl(modelContainer: provider.container)
 
-        let getChapterContentUseCase = GetChapterContentUseCase(sourceRepository: sourceRepo)
-        let getBookTocUseCase = GetBookTocUseCase(sourceRepository: sourceRepo, bookRepository: bookRepo)
+        let getChapterContentUseCase = GetChapterContentUseCase()
+        let getBookTocUseCase = GetBookTocUseCase(bookRepository: bookRepo)
         let getBookmarksUseCase = GetBookmarksUseCase(bookmarkRepository: bookmarkRepo)
         let saveBookmarkUseCase = SaveBookmarkUseCase(bookmarkRepository: bookmarkRepo)
         let deleteBookmarkUseCase = DeleteBookmarkUseCase(bookmarkRepository: bookmarkRepo)
 
         let book = Book(
-            bookUrl: "https://test.com/book_bm",
-            tocUrl: "https://test.com/book_bm/toc",
-            origin: "https://test.com",
-            originName: "测试书源",
+            bookUrl: "local://test/book_bm",
+            tocUrl: "",
+            origin: "local",
+            originName: "本地导入",
             name: "书签测试书",
             author: "作者X")
 
         let chapters = [
-            Chapter(url: "https://test.com/c1", title: "第一章 序幕", bookUrl: book.bookUrl, index: 0),
+            Chapter(url: "local://test/book_bm/0", title: "第一章 序幕", bookUrl: book.bookUrl, index: 0),
         ]
 
         try? await bookRepo.saveBook(book)

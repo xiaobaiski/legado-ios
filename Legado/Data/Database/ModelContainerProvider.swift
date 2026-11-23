@@ -9,7 +9,6 @@ public final class ModelContainerProvider: @unchecked Sendable {
 
     public init(inMemory: Bool = false) {
         let schema = Schema([
-            BookSourceEntity.self,
             BookEntity.self,
             ChapterEntity.self,
             ReadRecordEntity.self,

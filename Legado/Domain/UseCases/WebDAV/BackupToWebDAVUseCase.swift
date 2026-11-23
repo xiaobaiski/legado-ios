@@ -3,7 +3,6 @@ import Foundation
 /// 备份至 WebDAV 云端存储用例（支持按进度/规则/本地书籍文件独立选择性同步）
 public final class BackupToWebDAVUseCase: @unchecked Sendable {
     private let bookRepository: BookRepository
-    private let sourceRepository: BookSourceRepository
     private let bookmarkRepository: BookmarkRepository?
     private let bookCacheRepository: BookCacheRepository?
     private let webDAVClient: WebDAVClient
@@ -14,7 +13,6 @@ public final class BackupToWebDAVUseCase: @unchecked Sendable {
 
     public init(
         bookRepository: BookRepository,
-        sourceRepository: BookSourceRepository,
         bookmarkRepository: BookmarkRepository? = nil,
         bookCacheRepository: BookCacheRepository? = nil,
         webDAVClient: WebDAVClient = .shared,
@@ -23,7 +21,6 @@ public final class BackupToWebDAVUseCase: @unchecked Sendable {
         readRecordStore: ReadRecordStore = .shared,
         readerConfigExporter: @escaping @Sendable () -> String? = { ReaderConfigStore.exportJSON() }) {
         self.bookRepository = bookRepository
-        self.sourceRepository = sourceRepository
         self.bookmarkRepository = bookmarkRepository
         self.bookCacheRepository = bookCacheRepository
         self.webDAVClient = webDAVClient
@@ -36,7 +33,6 @@ public final class BackupToWebDAVUseCase: @unchecked Sendable {
     /// 生成完整备份数据包 Bundle
     public func generateBackupBundle() async throws -> WebDAVBackupBundle {
         let books = try await bookRepository.getBookshelf()
-        let sources = try await sourceRepository.fetchSources()
         let replaceRules = replaceRuleStore.loadRules()
         let txtTocRules = txtTocRuleStore.loadRules()
         let readRecords = readRecordStore.allRecordsSorted()
@@ -49,7 +45,6 @@ public final class BackupToWebDAVUseCase: @unchecked Sendable {
             backupTime: Date(),
             appVersion: appVersion,
             books: books,
-            sources: sources,
             replaceRules: replaceRules,
             txtTocRules: txtTocRules,
             readRecords: readRecords,
@@ -186,9 +181,6 @@ private extension BackupToWebDAVUseCase {
         remoteBundle: WebDAVBackupBundle?,
         uploadedEntries: [WebDAVBookFileEntry]) async throws -> WebDAVBackupBundle {
         let books = options.syncProgress ? localBooks : (remoteBundle?.books ?? [])
-        let sources = options.syncProgress
-            ? try await sourceRepository.fetchSources()
-            : (remoteBundle?.sources ?? [])
         let readRecords = options.syncProgress
             ? readRecordStore.allRecordsSorted()
             : remoteBundle?.readRecords
@@ -216,7 +208,6 @@ private extension BackupToWebDAVUseCase {
             backupTime: Date(),
             appVersion: appVersion,
             books: books,
-            sources: sources,
             replaceRules: replaceRules,
             txtTocRules: txtTocRules,
             readRecords: readRecords,
@@ -316,7 +307,6 @@ private extension BackupToWebDAVUseCase {
             : 0
         return WebDAVBackupSummary(
             bookCount: options.syncProgress ? bundle.books.count : 0,
-            sourceCount: options.syncProgress ? bundle.sources.count : 0,
             dataSizeBytes: jsonSize + archiveBytes,
             backupDate: bundle.backupTime,
             ruleCount: totalRuleCount,
@@ -328,7 +318,6 @@ private extension BackupToWebDAVUseCase {
 /// 备份与恢复摘要信息
 public struct WebDAVBackupSummary: Sendable, Equatable {
     public let bookCount: Int
-    public let sourceCount: Int
     public let dataSizeBytes: Int
     public let backupDate: Date
     public let ruleCount: Int
@@ -338,7 +327,6 @@ public struct WebDAVBackupSummary: Sendable, Equatable {
 
     public init(
         bookCount: Int,
-        sourceCount: Int,
         dataSizeBytes: Int,
         backupDate: Date,
         ruleCount: Int = 0,
@@ -346,7 +334,6 @@ public struct WebDAVBackupSummary: Sendable, Equatable {
         bookFileCount: Int = 0,
         skippedBookCount: Int = 0) {
         self.bookCount = bookCount
-        self.sourceCount = sourceCount
         self.dataSizeBytes = dataSizeBytes
         self.backupDate = backupDate
         self.ruleCount = ruleCount

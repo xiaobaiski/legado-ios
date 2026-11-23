@@ -162,18 +162,6 @@ public struct Book: Identifiable, Hashable, Codable, Sendable {
         self.config = config
     }
 
-    public var isAudio: Bool {
-        (type & 1) != 0
-    }
-
-    public var isImage: Bool {
-        (type & 2) != 0
-    }
-
-    public var isVideo: Bool {
-        (type & 4) != 0
-    }
-
     public var isLocal: Bool {
         origin == "local" || origin.hasPrefix("webdav")
     }
@@ -181,18 +169,6 @@ public struct Book: Identifiable, Hashable, Codable, Sendable {
     /// 是否为本机导入的本地文件书籍（正文仅存于本地磁盘，不可通过联网重新下载）
     public var isLocalFile: Bool {
         bookUrl.hasPrefix("local://")
-    }
-
-    public var isOnLineTxt: Bool {
-        !isLocal && type == 0
-    }
-
-    public mutating func removeAllBookType() {
-        type = 0
-    }
-
-    public mutating func addType(_ newType: Int) {
-        type |= newType
     }
 }
 

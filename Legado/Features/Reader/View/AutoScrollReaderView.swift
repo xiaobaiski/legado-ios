@@ -8,7 +8,6 @@ public struct AutoScrollReaderView: UIViewRepresentable {
     let contentText: String
     let titlePrefixLength: Int
     let config: ReaderConfig
-    let highlightedSentence: String?
     let isAutoScrolling: Bool
     let isPaused: Bool
     let onTapCenter: () -> Void
@@ -84,8 +83,7 @@ public struct AutoScrollReaderView: UIViewRepresentable {
                 chapterIndex: parent.chapterIndex,
                 titlePrefixLength: parent.titlePrefixLength,
                 contentText: parent.contentText,
-                config: parent.config,
-                highlightedSentence: parent.highlightedSentence)
+                config: parent.config)
             textView.textContainerInset = UIEdgeInsets(
                 top: max(parent.config.topMargin, 16),
                 left: parent.config.leftMargin,
@@ -99,7 +97,6 @@ public struct AutoScrollReaderView: UIViewRepresentable {
             textView.attributedText = TextLayoutEngine.shared.createAttributedString(
                 content: parent.contentText,
                 config: parent.config,
-                highlightedSentence: parent.highlightedSentence,
                 titlePrefixLength: parent.titlePrefixLength)
 
             if resetOffset {
@@ -193,5 +190,4 @@ private struct ScrollRenderKey: Equatable {
     let titlePrefixLength: Int
     let contentText: String
     let config: ReaderConfig
-    let highlightedSentence: String?
 }

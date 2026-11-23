@@ -17,7 +17,6 @@ public struct ReaderHUDView: View {
     let safeAreaTop: CGFloat
     let isConfigOpen: Bool
     let isAutoPaging: Bool
-    let isLocalFile: Bool
     let onBack: () -> Void
     let onPreviousChapter: () -> Void
     let onNextChapter: () -> Void
@@ -33,12 +32,9 @@ public struct ReaderHUDView: View {
     let onResetConfig: () -> Void
     let onOpenMoreSettings: () -> Void
     let onToggleAutoPage: () -> Void
-    let onStartTTS: () -> Void
-    let onOpenChangeSource: () -> Void
     let onOpenSearch: () -> Void
     let isBookmarked: Bool
     let onToggleBookmark: () -> Void
-    public let onOpenCache: () -> Void
 
     public init(
         bookTitle: String,
@@ -53,7 +49,6 @@ public struct ReaderHUDView: View {
         safeAreaTop: CGFloat = 48,
         isConfigOpen: Bool,
         isAutoPaging: Bool = false,
-        isLocalFile: Bool = false,
         onBack: @escaping () -> Void,
         onPreviousChapter: @escaping () -> Void,
         onNextChapter: @escaping () -> Void,
@@ -69,12 +64,9 @@ public struct ReaderHUDView: View {
         onResetConfig: @escaping () -> Void = {},
         onOpenMoreSettings: @escaping () -> Void = {},
         onToggleAutoPage: @escaping () -> Void = {},
-        onStartTTS: @escaping () -> Void = {},
-        onOpenChangeSource: @escaping () -> Void = {},
         onOpenSearch: @escaping () -> Void = {},
         isBookmarked: Bool = false,
-        onToggleBookmark: @escaping () -> Void = {},
-        onOpenCache: @escaping () -> Void = {}) {
+        onToggleBookmark: @escaping () -> Void = {}) {
         self.bookTitle = bookTitle
         self.currentChapterTitle = currentChapterTitle
         self.currentChapterIndex = currentChapterIndex
@@ -87,7 +79,6 @@ public struct ReaderHUDView: View {
         self.safeAreaTop = safeAreaTop
         self.isConfigOpen = isConfigOpen
         self.isAutoPaging = isAutoPaging
-        self.isLocalFile = isLocalFile
         self.onBack = onBack
         self.onPreviousChapter = onPreviousChapter
         self.onNextChapter = onNextChapter
@@ -103,12 +94,9 @@ public struct ReaderHUDView: View {
         self.onResetConfig = onResetConfig
         self.onOpenMoreSettings = onOpenMoreSettings
         self.onToggleAutoPage = onToggleAutoPage
-        self.onStartTTS = onStartTTS
-        self.onOpenChangeSource = onOpenChangeSource
         self.onOpenSearch = onOpenSearch
         self.isBookmarked = isBookmarked
         self.onToggleBookmark = onToggleBookmark
-        self.onOpenCache = onOpenCache
     }
 
     public var body: some View {
@@ -208,12 +196,6 @@ private extension ReaderHUDView {
                 Label(
                     isAutoPaging ? "停止自动翻页" : "开启自动翻页",
                     systemImage: isAutoPaging ? "pause.circle.fill" : "play.circle")
-            }
-
-            if !isLocalFile {
-                Button(action: onOpenCache) {
-                    Label("离线章节缓存", systemImage: "arrow.down.circle")
-                }
             }
 
             Button(action: onOpenMoreSettings) {
@@ -336,17 +318,12 @@ private extension ReaderHUDView {
                 systemImage: "textformat.size",
                 isActive: isConfigOpen,
                 action: onToggleConfig)
-            quickActionButton(title: "听书", systemImage: "headphones", action: onStartTTS)
             quickActionButton(
                 title: config.isEffectiveDark ? "日间" : "夜间",
                 systemImage: config.isEffectiveDark ? "sun.max.fill" : "moon.fill",
                 isActive: config.isEffectiveDark,
                 action: onToggleNightMode)
-            if isLocalFile {
-                quickActionButton(title: "设置", systemImage: "slider.horizontal.3", action: onOpenMoreSettings)
-            } else {
-                quickActionButton(title: "换源", systemImage: "arrow.triangle.2.circlepath", action: onOpenChangeSource)
-            }
+            quickActionButton(title: "设置", systemImage: "slider.horizontal.3", action: onOpenMoreSettings)
         }
         .tint(.primary)
         .padding(.vertical, 4)

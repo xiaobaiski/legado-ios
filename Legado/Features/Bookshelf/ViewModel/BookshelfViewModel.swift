@@ -5,7 +5,6 @@ import Foundation
 public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, BookshelfIntent, BookshelfEffect> {
     let getBookshelfUseCase: GetBookshelfUseCase
     let removeBookFromShelfUseCase: RemoveBookFromShelfUseCase
-    private let checkBookUpdatesUseCase: CheckBookUpdatesUseCase
     let saveBookToShelfUseCase: SaveBookToShelfUseCase?
     private let getBookGroupsUseCase: GetBookGroupsUseCase?
     let saveBookGroupUseCase: SaveBookGroupUseCase?
@@ -29,7 +28,6 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
     public init(
         getBookshelfUseCase: GetBookshelfUseCase,
         removeBookFromShelfUseCase: RemoveBookFromShelfUseCase,
-        checkBookUpdatesUseCase: CheckBookUpdatesUseCase,
         saveBookToShelfUseCase: SaveBookToShelfUseCase? = nil,
         getBookGroupsUseCase: GetBookGroupsUseCase? = nil,
         saveBookGroupUseCase: SaveBookGroupUseCase? = nil,
@@ -39,7 +37,6 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         realtimeSyncService: WebDAVRealtimeSyncService? = nil) {
         self.getBookshelfUseCase = getBookshelfUseCase
         self.removeBookFromShelfUseCase = removeBookFromShelfUseCase
-        self.checkBookUpdatesUseCase = checkBookUpdatesUseCase
         self.saveBookToShelfUseCase = saveBookToShelfUseCase
         self.getBookGroupsUseCase = getBookGroupsUseCase
         self.saveBookGroupUseCase = saveBookGroupUseCase
@@ -61,7 +58,7 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         case .onAppear:
             loadData()
 
-        case .refresh, .refreshAllBookUpdates:
+        case .refresh:
             refreshUpdates()
 
         case .updateSearchText, .selectGroup, .toggleLayoutMode, .selectSortOrder,
@@ -219,7 +216,7 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         refreshTask?.cancel()
         updateState {
             $0.isLoading = true
-            $0.isRefreshingUpdates = true
+            $0.isRefreshing = true
         }
 
         refreshTask = Task { [weak self] in
@@ -228,44 +225,23 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
                 _ = await self.realtimeSyncService?.pullLatestProgressIfNeeded(force: true)
                 _ = await self.realtimeSyncService?.pullLatestRulesIfNeeded(force: true)
                 let currentBooks = try await self.getBookshelfUseCase.execute()
+                let customGroups = (try? await self.getBookGroupsUseCase?.execute()) ?? []
                 guard !Task.isCancelled else { return }
-                if currentBooks.allSatisfy({ $0.isLocalFile || $0.origin == "local" }) {
-                    let customGroups = (try? await self.getBookGroupsUseCase?.execute()) ?? []
-                    let defaultGroups = ["全部", "在读", "未读", "完结"]
-                    self.updateState { state in
-                        state.isLoading = false
-                        state.isRefreshingUpdates = false
-                        state.books = currentBooks
-                        state.customGroups = customGroups
-                        state.groups = defaultGroups + customGroups.map(\.name)
-                    }
-                    self.emitEffect(.showToast("书架已刷新"))
-                    self.emitEffect(.hapticFeedback)
-                    return
-                }
-
-                let updatedCount = try await self.checkBookUpdatesUseCase.execute()
-                let books = try await self.getBookshelfUseCase.execute()
-                guard !Task.isCancelled else { return }
-                let updatedUrls = Set(books.filter { $0.latestChapterTime > $0.durChapterTime }.map(\.bookUrl))
-
+                let defaultGroups = ["全部", "在读", "未读", "完结"]
                 self.updateState { state in
                     state.isLoading = false
-                    state.isRefreshingUpdates = false
-                    state.books = books
-                    state.updatedBookUrls = updatedUrls
+                    state.isRefreshing = false
+                    state.books = currentBooks
+                    state.customGroups = customGroups
+                    state.groups = defaultGroups + customGroups.map(\.name)
                 }
-                if updatedCount > 0 {
-                    self.emitEffect(.showToast("全书架更新完成：\(updatedCount) 本书发现新章节"))
-                } else {
-                    self.emitEffect(.showToast("全部书籍均为最新"))
-                }
+                self.emitEffect(.showToast("书架已刷新"))
                 self.emitEffect(.hapticFeedback)
             } catch {
                 guard !Task.isCancelled else { return }
                 self.updateState {
                     $0.isLoading = false
-                    $0.isRefreshingUpdates = false
+                    $0.isRefreshing = false
                 }
             }
         }

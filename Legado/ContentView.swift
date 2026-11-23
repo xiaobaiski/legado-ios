@@ -50,10 +50,10 @@ struct ContentView: View {
         .preferredColorScheme(resolvedColorScheme)
         .fullScreenCover(isPresented: $demoReaderPresented) {
             let sampleBook = Book(
-                bookUrl: "https://biquge.example.com/book/circle_of_inevitability",
-                tocUrl: "https://biquge.example.com/book/circle_of_inevitability/toc",
-                origin: "https://biquge.example.com",
-                originName: "笔趣阁官方",
+                bookUrl: "local://sample/circle_of_inevitability",
+                tocUrl: "",
+                origin: "local",
+                originName: "内置试读",
                 name: "宿命之环",
                 author: "爱潜水的乌贼",
                 durChapterTitle: "第一章 宿命之始",
