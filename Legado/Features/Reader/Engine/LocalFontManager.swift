@@ -81,7 +81,7 @@ public final class LocalFontManager: @unchecked Sendable {
     private let fileManager: FileManager
     private let fontsDirectory: URL
     private let registeredLock = NSLock()
-    private var registeredFontPaths: Set<String> = []
+    private var registeredFontsByPath: [String: ImportedFont] = [:]
 
     public init(
         fileManager: FileManager = .default,
