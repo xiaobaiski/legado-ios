@@ -54,7 +54,7 @@ public final class GetChapterContentUseCase: @unchecked Sendable {
         }
     }
 
-    /// 写入离线章节缓存
+    /// 写入本地章节正文与缓存
     public func saveChapterCache(content: String, bookUrl: String, index: Int) {
         try? cacheRepository.saveChapterContent(bookUrl: bookUrl, index: index, content: content)
         let cacheKey = "\(bookUrl)_\(index)" as NSString

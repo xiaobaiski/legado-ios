@@ -21,6 +21,9 @@ final class BookshelfUITests: XCTestCase {
 
         let bookshelfTab = app.tabBars.buttons["书架"]
         XCTAssertTrue(bookshelfTab.waitForExistence(timeout: 8), "底栏应包含【书架】导航标签")
+        XCTAssertFalse(app.tabBars.buttons["发现"].exists, "纯净阅读版底栏不应存在【发现】标签")
+        XCTAssertFalse(app.tabBars.buttons["书源"].exists, "纯净阅读版底栏不应存在【书源】标签")
+        XCTAssertFalse(app.tabBars.buttons["搜索"].exists, "纯净阅读版底栏不应存在【搜索】标签")
         bookshelfTab.tap()
 
         let navTitle = app.navigationBars["书架"]

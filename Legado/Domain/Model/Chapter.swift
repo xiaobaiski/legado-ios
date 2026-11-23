@@ -24,7 +24,7 @@ public struct Chapter: Identifiable, Hashable, Codable, Sendable {
     public var isVip: Bool
     /// 是否已购买
     public var isPay: Bool
-    /// 音频真实 URL
+    /// 扩展资源标识（保留字段兼容历史备份）
     public var resourceUrl: String?
     /// 更新时间或其他章节附加信息
     public var tag: String?

@@ -10,9 +10,9 @@ public struct Book: Identifiable, Hashable, Codable, Sendable {
     public var bookUrl: String
     /// 目录页完整 URL
     public var tocUrl: String
-    /// 书源 URL 或特殊标识 (如 local)
+    /// 书籍来源标识（纯净本地版固定为 local，保留字段兼容旧备份）
     public var origin: String
-    /// 书源名称
+    /// 书籍来源名称（如本地导入 / 内置试读）
     public var originName: String
     /// 书名
     public var name: String
@@ -48,7 +48,7 @@ public struct Book: Identifiable, Hashable, Codable, Sendable {
     public var infoHtml: String?
     /// 目录页抓取的原始 HTML
     public var tocHtml: String?
-    /// 书籍类型 (0: 文本, 1: 音频, 2: 图片, 4: 视频)
+    /// 书籍类型（默认 0: 文本，保留字段兼容旧备份）
     public var type: Int
     /// 列表提取的简介 (与详情页 intro 独立)
     public var listIntro: String?
@@ -68,7 +68,7 @@ public struct Book: Identifiable, Hashable, Codable, Sendable {
     public var canUpdate: Bool
     /// 单独为本书关闭阅读记录
     public var disableReadRecord: Bool
-    /// 书源排序
+    /// 来源排序（保留字段兼容旧备份）
     public var originOrder: Int
     /// 最近一次检查新章节时间
     public var lastCheckTime: Int64
@@ -76,7 +76,7 @@ public struct Book: Identifiable, Hashable, Codable, Sendable {
     public var lastCheckCount: Int
     /// 云同步时间
     public var syncTime: Int64
-    /// 批量下载链接列表
+    /// 历史兼容字段（保留以兼容旧备份）
     public var downloadUrls: [String]?
     /// 自定义书籍变量
     public var variable: String?

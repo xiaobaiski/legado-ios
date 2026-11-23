@@ -1,6 +1,6 @@
 import Foundation
 
-/// 离线缓存空间管理与清理用例
+/// 本地章节正文与缓存空间管理与清理用例
 public final class ManageBookCacheUseCase: Sendable {
     private let bookCacheRepository: BookCacheRepository
 
@@ -18,12 +18,12 @@ public final class ManageBookCacheUseCase: Sendable {
         try bookCacheRepository.clearBookCache(bookUrl: bookUrl)
     }
 
-    /// 清空所有书籍的离线缓存
+    /// 清空所有书籍的本地章节正文与缓存
     public func clearAllCache() throws {
         try bookCacheRepository.clearAllCache()
     }
 
-    /// 计算所有书籍占用的总离线缓存大小
+    /// 计算所有书籍占用的总缓存大小
     public func calculateTotalCacheSize() -> Int64 {
         bookCacheRepository.calculateTotalCacheSize()
     }

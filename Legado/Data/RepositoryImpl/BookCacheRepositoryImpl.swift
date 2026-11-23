@@ -1,7 +1,7 @@
 import Foundation
 
-/// 章节离线缓存与本地书籍正文持久化仓库实现
-/// - 在线缓存存于 `Caches/LegadoChapters`
+/// 本地章节正文与缓存持久化仓库实现
+/// - 临时缓存存于 `Caches/LegadoChapters`
 /// - 本地导入书籍（`local://`）优先持久化于 `Application Support/LegadoLocalBooks`，免受系统存储空间自动回收，并兼容读取旧版路径
 public final class BookCacheRepositoryImpl: BookCacheRepository, @unchecked Sendable {
     private let fileManager: FileManager

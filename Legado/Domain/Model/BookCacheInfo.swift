@@ -1,6 +1,6 @@
 import Foundation
 
-/// 书籍离线缓存信息实体
+/// 本地章节正文与缓存信息实体
 public struct BookCacheInfo: Equatable, Sendable, Identifiable {
     public var id: String {
         bookUrl

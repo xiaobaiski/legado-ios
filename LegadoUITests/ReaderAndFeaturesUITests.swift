@@ -22,6 +22,8 @@ final class ReaderAndFeaturesUITests: XCTestCase {
 
         let bookTitle = app.staticTexts["宿命之环"]
         XCTAssertTrue(bookTitle.waitForExistence(timeout: 8), "阅读器 HUD 顶部应展示书名【宿命之环】")
+        XCTAssertFalse(app.buttons["听书"].exists, "纯净阅读版阅读器 HUD 不应存在【听书】按钮")
+        XCTAssertFalse(app.buttons["换源"].exists, "纯净阅读版阅读器 HUD 不应存在【换源】按钮")
         captureScreenshot(name: "reader_01_hud_active")
 
         // MARK: - 步骤 2: 打开目录抽屉并切换至书签栏目

@@ -1,6 +1,6 @@
 import Foundation
 
-/// 章节离线缓存数据仓库协议
+/// 本地章节正文与缓存数据仓库协议
 public protocol BookCacheRepository: Sendable {
     /// 检查指定书籍的指定章节是否已缓存在磁盘
     func isChapterCached(bookUrl: String, index: Int) -> Bool
@@ -20,10 +20,10 @@ public protocol BookCacheRepository: Sendable {
     /// 获取指定书籍的缓存详情
     func getBookCacheInfo(bookUrl: String, totalChapters: Int) -> BookCacheInfo
 
-    /// 清空指定书籍的离线章节缓存
+    /// 清空指定书籍的本地章节正文与缓存
     func clearBookCache(bookUrl: String) throws
 
-    /// 清空所有书籍的离线缓存
+    /// 清空所有书籍的本地章节正文与缓存
     func clearAllCache() throws
 
     /// 计算所有书籍占用的总缓存字节数

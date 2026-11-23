@@ -1,6 +1,6 @@
 # Legado iOS (阅读 iOS 原生重构版)
 
-本项目是开源热门小说阅读器 **[Legado (阅读 3.0)](https://github.com/HapeLee/legado-with-MD3)** 的 iOS 原生重构版本。
+本项目是开源热门小说阅读器 **[Legado (阅读 3.0)](https://github.com/HapeLee/legado-with-MD3)** 的 iOS 原生重构版本，现已精简专注为纯本地 TXT / EPUB 电子书阅读器。
 
 全面遵循 **iOS 18+ 原机人机交互指南 (HIG)** 与 **iOS 原生液态玻璃美学**，基于 **MVI 单向数据流** 与 **Clean Architecture** 构建，采用 **XcodeGen** 驱动工程定义。
 
@@ -17,7 +17,7 @@
    - **不可变 State**：每个模块暴露唯一的 `State: Equatable`。
 3. **数据缓存下沉**：
    - ViewModel 绝不直连数据库；
-   - 缓存作为内部细节封装在 `Data/` 仓储层（L1 内存缓存 -> L2 本地数据库 -> L3 远程抓取），对外提供统一的抽象协议。
+   - 缓存作为内部细节封装在 `Data/` 仓储层（L1 内存缓存 -> L2 本地持久化），对外提供统一的抽象协议。
 
 ---
 
