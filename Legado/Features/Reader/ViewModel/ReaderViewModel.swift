@@ -73,6 +73,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
             currentChapterIndex: startChapter,
             config: ReaderConfigStore.load(),
             isHUDVisible: showHUDInitially,
+            isLoading: true,
             importedFonts: LocalFontManager.shared.listImportedFonts()))
 
         loadTocAndStartReading()

@@ -248,14 +248,16 @@ public final class PurifyContentUseCase: @unchecked Sendable {
         let nsText = text as NSString
         let fullRange = NSRange(location: 0, length: nsText.length)
         let deadline = timeoutMs > 0
-            ? Date().addingTimeInterval(Double(timeoutMs) / 1000.0)
+            ? CFAbsoluteTimeGetCurrent() + Double(timeoutMs) / 1000.0
             : nil
         let output = NSMutableString()
         var lastLocation = 0
         var timedOut = false
+        var progressTicks = 0
 
         regex.enumerateMatches(in: text, options: [.reportProgress], range: fullRange) { match, _, stop in
-            if let deadline, Date() > deadline {
+            progressTicks += 1
+            if let deadline, match != nil || (progressTicks & 63) == 0, CFAbsoluteTimeGetCurrent() > deadline {
                 timedOut = true
                 stop.pointee = true
                 return

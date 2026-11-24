@@ -260,13 +260,15 @@ public enum EpubParser {
         }
         return chapters
     }
+}
 
-    private static let blockTags: Set<String> = [
+private extension EpubParser {
+    static let blockTags: Set<String> = [
         "p", "div", "h1", "h2", "h3", "h4", "h5", "h6",
         "li", "blockquote", "pre", "tr", "section", "article", "header", "footer", "dt", "dd",
     ]
 
-    private static func extractChapterText(from html: String) -> (String?, String) {
+    static func extractChapterText(from html: String) -> (String?, String) {
         guard let doc = try? SwiftSoup.parse(html) else {
             return (nil, html)
         }
@@ -294,7 +296,7 @@ public enum EpubParser {
         return (titleCandidate, paragraphs.joined(separator: "\n"))
     }
 
-    private static func collectText(from node: Node, into output: inout String) {
+    static func collectText(from node: Node, into output: inout String) {
         if let textNode = node as? TextNode {
             output += textNode.text()
             return
@@ -317,7 +319,7 @@ public enum EpubParser {
         }
     }
 
-    private static func extractFirstText(in doc: Document, selectors: [String]) -> String? {
+    static func extractFirstText(in doc: Document, selectors: [String]) -> String? {
         for selector in selectors {
             if let value = try? doc.select(selector).first()?.text() {
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -329,12 +331,12 @@ public enum EpubParser {
         return nil
     }
 
-    private static func directoryPrefix(of path: String) -> String {
+    static func directoryPrefix(of path: String) -> String {
         guard let lastSlash = path.lastIndex(of: "/") else { return "" }
         return String(path[...lastSlash])
     }
 
-    private static func joinPath(base: String, relative: String) -> String {
+    static func joinPath(base: String, relative: String) -> String {
         let combined = base + relative
         var parts: [String] = []
         for component in combined.components(separatedBy: "/") {

@@ -16,9 +16,9 @@ public final class ModelContainerProvider: @unchecked Sendable {
             BookGroupEntity.self,
         ])
 
-        let config = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: inMemory)
+        let config = inMemory
+            ? ModelConfiguration("InMemory_\(UUID().uuidString)", schema: schema, isStoredInMemoryOnly: true)
+            : ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         do {
             self.container = try ModelContainer(for: schema, configurations: [config])

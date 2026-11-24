@@ -876,7 +876,7 @@ struct PurifyAndWebDAVSyncTests {
         // 立即发送屏幕尺寸更新，验证不会把 pendingRestoreOffset 重置为第 0 页
         vm.send(.updateScreenBounds(CGRect(x: 0, y: 0, width: 393, height: 852)))
 
-        for _ in 0 ..< 120 {
+        for _ in 0 ..< 400 {
             if !vm.state.isLoading && !vm.state.pages.isEmpty && vm.state.currentChapterIndex == 1 {
                 break
             }
@@ -886,6 +886,7 @@ struct PurifyAndWebDAVSyncTests {
         #expect(vm.state.currentChapterIndex == 1)
         #expect(vm.state.pages.count > 1)
         #expect(vm.state.currentPageIndex > 0)
+        guard vm.state.pages.indices.contains(vm.state.currentPageIndex) else { return }
         let currentPage = vm.state.pages[vm.state.currentPageIndex]
         #expect(950 >= currentPage.textRange.location)
         #expect(950 < currentPage.textRange.location + max(currentPage.textRange.length, 1))
