@@ -69,13 +69,29 @@ public struct ReaderState: ViewState, Equatable, Sendable {
         pages.map(\.contentText).joined()
     }
 
+    /// 当前页或双页对开范围内任一页是否已被加为书签
+    public var currentSpreadTextRange: NSRange? {
+        guard let page = currentPage else { return nil }
+        let isDual = config.isDualPageActive(for: screenBounds)
+        if isDual {
+            let aligned = currentPageIndex - currentPageIndex % 2
+            let left = aligned < pages.count ? pages[aligned] : page
+            let right = aligned + 1 < pages.count ? pages[aligned + 1] : nil
+            let start = left.textRange.location
+            let end = right.map { $0.textRange.location + max($0.textRange.length, 1) }
+                ?? (left.textRange.location + max(left.textRange.length, 1))
+            return NSRange(location: start, length: max(end - start, 1))
+        }
+        return NSRange(location: page.textRange.location, length: max(page.textRange.length, 1))
+    }
+
     /// 当前章节当前页是否已被加为书签
     public var isCurrentPageBookmarked: Bool {
-        guard let page = currentPage else { return false }
+        guard let range = currentSpreadTextRange else { return false }
         return bookmarks.contains { bookmark in
             bookmark.chapterIndex == currentChapterIndex &&
-                bookmark.chapterPos >= page.textRange.location &&
-                bookmark.chapterPos < (page.textRange.location + max(page.textRange.length, 1))
+                bookmark.chapterPos >= range.location &&
+                bookmark.chapterPos < (range.location + range.length)
         }
     }
 }

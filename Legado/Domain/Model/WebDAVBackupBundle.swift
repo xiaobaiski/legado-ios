@@ -210,18 +210,20 @@ public struct WebDAVBackupBundle: Codable, Sendable {
     public let readerConfigJson: String?
     public let bookmarks: [Bookmark]?
     public let bookFiles: [WebDAVBookFileEntry]?
+    public let bookGroups: [BookGroup]?
 
     public init(
         version: Int = 2,
         backupTime: Date = Date(),
-        appVersion: String = "1.3.0",
+        appVersion: String = "1.4.1",
         books: [Book] = [],
         replaceRules: [ReplaceRule] = [],
         txtTocRules: [TxtTocRule]? = nil,
         readRecords: [ReadRecord]? = nil,
         readerConfigJson: String? = nil,
         bookmarks: [Bookmark]? = nil,
-        bookFiles: [WebDAVBookFileEntry]? = nil) {
+        bookFiles: [WebDAVBookFileEntry]? = nil,
+        bookGroups: [BookGroup]? = nil) {
         self.version = version
         self.backupTime = backupTime
         self.appVersion = appVersion
@@ -232,6 +234,7 @@ public struct WebDAVBackupBundle: Codable, Sendable {
         self.readerConfigJson = readerConfigJson
         self.bookmarks = bookmarks
         self.bookFiles = bookFiles
+        self.bookGroups = bookGroups
     }
 }
 

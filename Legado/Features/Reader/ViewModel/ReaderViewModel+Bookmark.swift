@@ -43,14 +43,19 @@ extension ReaderViewModel {
     }
 
     private func handleToggleBookmark() {
-        guard let page = state.currentPage else { return }
+        guard let page = state.currentPage,
+              let range = state.currentSpreadTextRange else { return }
         let existingBookmark = state.bookmarks.first { bookmark in
             bookmark.chapterIndex == state.currentChapterIndex &&
-                bookmark.chapterPos >= page.textRange.location &&
-                bookmark.chapterPos < (page.textRange.location + max(page.textRange.length, 1))
+                bookmark.chapterPos >= range.location &&
+                bookmark.chapterPos < (range.location + range.length)
         }
 
         if let existing = existingBookmark {
+            if !existing.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                emitEffect(.showToast("当前页含批注书签，请在「目录 -> 书签」中左滑删除"))
+                return
+            }
             handleDeleteBookmark(id: existing.id)
         } else {
             let excerpt = String(page.contentText.prefix(120))

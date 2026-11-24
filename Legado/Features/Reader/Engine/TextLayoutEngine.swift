@@ -52,6 +52,32 @@ public final class TextLayoutEngine: Sendable {
         return paragraphs.map { indentPrefix + $0 }.joined(separator: "\n")
     }
 
+    /// 构造与分页坐标系完全一致的正文全文（供分页器与书内全文搜索共用）
+    public func buildPaginatedFullText(
+        chapterTitle: String,
+        content: String,
+        config: ReaderConfig,
+        bookName: String? = nil,
+        bookOrigin: String? = nil) -> (fullText: String, titlePrefixLength: Int, displayTitle: String) {
+        let displayTitle = PurifyContentUseCase.shared.purifyTitle(
+            chapterTitle,
+            bookName: bookName,
+            sourceUrl: bookOrigin,
+            enableReplace: config.enableReplaceRule)
+        let normalized = normalizeContent(
+            content,
+            chapterTitle: chapterTitle,
+            bookName: bookName,
+            bookOrigin: bookOrigin,
+            config: config)
+        let convertedTitle = config.chineseConversion.convert(displayTitle)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let includeBodyTitle = config.titleStyle.alignment != .hidden && !convertedTitle.isEmpty
+        let fullText = includeBodyTitle ? "\(convertedTitle)\n\(normalized)" : normalized
+        let titlePrefixLength = includeBodyTitle ? ((convertedTitle + "\n") as NSString).length : 0
+        return (fullText, titlePrefixLength, displayTitle)
+    }
+
     /// 将整章文本依据屏幕可视区域和排版配置精确切割为多个 ReaderPage（首部按 `titleStyle` 渲染章节大标题）
     public func paginate(
         chapterTitle: String,
@@ -61,11 +87,13 @@ public final class TextLayoutEngine: Sendable {
         config: ReaderConfig,
         bookName: String? = nil,
         bookOrigin: String? = nil) -> [ReaderPage] {
-        let displayTitle = PurifyContentUseCase.shared.purifyTitle(
-            chapterTitle,
+        let built = buildPaginatedFullText(
+            chapterTitle: chapterTitle,
+            content: content,
+            config: config,
             bookName: bookName,
-            sourceUrl: bookOrigin,
-            enableReplace: config.enableReplaceRule)
+            bookOrigin: bookOrigin)
+        let displayTitle = built.displayTitle
 
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return [
@@ -78,31 +106,22 @@ public final class TextLayoutEngine: Sendable {
             ]
         }
 
-        let normalized = normalizeContent(
-            content,
-            chapterTitle: chapterTitle,
-            bookName: bookName,
-            bookOrigin: bookOrigin,
-            config: config)
-        let convertedTitle = config.chineseConversion.convert(displayTitle)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        let includeBodyTitle = config.titleStyle.alignment != .hidden && !convertedTitle.isEmpty
-        let fullText = includeBodyTitle ? "\(convertedTitle)\n\(normalized)" : normalized
-        let titlePrefixLength = includeBodyTitle ? ((convertedTitle + "\n") as NSString).length : 0
-
         let renderRect = contentRenderRect(for: bounds, config: config)
         let attrString = createAttributedString(
-            content: fullText,
+            content: built.fullText,
             config: config,
-            titlePrefixLength: titlePrefixLength)
+            titlePrefixLength: built.titlePrefixLength)
+        let topOffset = (built.titlePrefixLength > 0 && config.titleStyle.alignment != .hidden)
+            ? config.titleStyle.topSpacing
+            : 0
 
         let pages = slicePages(
             attrString: attrString,
             chapterTitle: displayTitle,
             chapterIndex: chapterIndex,
             renderRect: renderRect,
-            chapterTitlePrefixLength: titlePrefixLength)
+            chapterTitlePrefixLength: built.titlePrefixLength,
+            firstPageTopOffset: topOffset)
 
         if pages.isEmpty {
             return [
@@ -111,7 +130,7 @@ public final class TextLayoutEngine: Sendable {
                     chapterIndex: chapterIndex,
                     chapterTitle: displayTitle,
                     textRange: NSRange(location: 0, length: 0),
-                    contentText: normalized),
+                    contentText: built.fullText),
             ]
         }
         return pages
@@ -122,9 +141,14 @@ public final class TextLayoutEngine: Sendable {
         chapterTitle: String,
         chapterIndex: Int,
         renderRect: CGRect,
-        chapterTitlePrefixLength: Int) -> [ReaderPage] {
+        chapterTitlePrefixLength: Int,
+        firstPageTopOffset: CGFloat) -> [ReaderPage] {
         let framesetter = CTFramesetterCreateWithAttributedString(attrString as CFAttributedString)
         let path = CGPath(rect: renderRect, transform: nil)
+        let firstHeight = max(renderRect.height - max(firstPageTopOffset, 0), 80)
+        let firstPath = firstPageTopOffset > 0
+            ? CGPath(rect: CGRect(x: 0, y: 0, width: renderRect.width, height: firstHeight), transform: nil)
+            : path
         let nsText = attrString.string as NSString
         let totalLength = attrString.length
 
@@ -133,7 +157,8 @@ public final class TextLayoutEngine: Sendable {
         var pageIndex = 0
 
         while textPos < totalLength {
-            let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: textPos, length: 0), path, nil)
+            let activePath = (textPos == 0) ? firstPath : path
+            let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: textPos, length: 0), activePath, nil)
             let visibleRange = CTFrameGetVisibleStringRange(frame)
             if visibleRange.length == 0 {
                 break

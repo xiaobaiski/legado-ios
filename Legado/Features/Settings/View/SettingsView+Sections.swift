@@ -11,7 +11,7 @@ extension SettingsView {
                 HStack {
                     Label("阅读统计与时长记录", systemImage: "chart.bar.xaxis")
                     Spacer()
-                    Text("今日 \(ReadRecordStore.formatDuration(ReadRecordStore.shared.todayReadSeconds()))")
+                    Text("今日 \(ReadRecordStore.formatDuration(viewModel.state.todayReadSeconds))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -223,7 +223,7 @@ extension SettingsView {
             HStack {
                 Text("版本")
                 Spacer()
-                let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.0"
+                let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.1"
                 Text("\(version) (iOS 18+ 纯净阅读版)")
                     .foregroundStyle(.secondary)
             }

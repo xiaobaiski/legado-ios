@@ -112,29 +112,49 @@ public final class BookCacheRepositoryImpl: BookCacheRepository, @unchecked Send
     }
 
     public func clearAllCache() throws {
-        guard fileManager.fileExists(atPath: baseDirectory.path) else { return }
-        let localPrefix = Self.deterministicKey(for: "local://")
-        let entries = try fileManager.contentsOfDirectory(at: baseDirectory, includingPropertiesForKeys: nil)
-        for entry in entries where !entry.lastPathComponent.hasPrefix(localPrefix) {
-            try fileManager.removeItem(at: entry)
+        if fileManager.fileExists(atPath: baseDirectory.path) {
+            let localPrefix = Self.deterministicKey(for: "local://")
+            let entries = try fileManager.contentsOfDirectory(at: baseDirectory, includingPropertiesForKeys: nil)
+            for entry in entries where !entry.lastPathComponent.hasPrefix(localPrefix) {
+                try fileManager.removeItem(at: entry)
+            }
+        }
+        for dir in residualTemporaryDirectories() {
+            if let items = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
+                for item in items {
+                    try? fileManager.removeItem(at: item)
+                }
+            }
         }
     }
 
     public func calculateTotalCacheSize() -> Int64 {
-        guard fileManager.fileExists(atPath: baseDirectory.path),
-              let entries = try? fileManager.contentsOfDirectory(
-                  at: baseDirectory,
-                  includingPropertiesForKeys: [.fileSizeKey],
-                  options: [.skipsHiddenFiles]) else {
-            return 0
-        }
-
         let localPrefix = Self.deterministicKey(for: "local://")
         var totalSize: Int64 = 0
-        for entry in entries where !entry.lastPathComponent.hasPrefix(localPrefix) {
-            totalSize += directorySize(at: entry)
+        if fileManager.fileExists(atPath: baseDirectory.path),
+           let entries = try? fileManager.contentsOfDirectory(
+               at: baseDirectory,
+               includingPropertiesForKeys: [.fileSizeKey],
+               options: [.skipsHiddenFiles]) {
+            for entry in entries where !entry.lastPathComponent.hasPrefix(localPrefix) {
+                totalSize += directorySize(at: entry)
+            }
+        }
+        for dir in residualTemporaryDirectories() {
+            totalSize += directorySize(at: dir)
         }
         return totalSize
+    }
+
+    private func residualTemporaryDirectories() -> [URL] {
+        guard localBooksDirectory != nil else { return [] }
+        var dirs = [
+            fileManager.temporaryDirectory.appendingPathComponent("LegadoImportStaging", isDirectory: true),
+        ]
+        if let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first {
+            dirs.append(docs.appendingPathComponent("Inbox", isDirectory: true))
+        }
+        return dirs
     }
 
     private func directorySize(at targetUrl: URL) -> Int64 {

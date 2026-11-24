@@ -81,7 +81,7 @@ public struct BookCoverImage<Placeholder: View>: View {
 
     public var body: some View {
         let cached: UIImage? = {
-            guard let coverUrl, let url = URL(string: coverUrl), url.isFileURL else { return nil }
+            guard let url = Self.localFileURL(from: coverUrl) else { return nil }
             return LocalCoverImageCache.shared.cachedImage(for: url)
         }()
 
@@ -96,9 +96,7 @@ public struct BookCoverImage<Placeholder: View>: View {
         }
         .task(id: coverUrl) {
             loadedImage = nil
-            guard let coverUrl,
-                  let url = URL(string: coverUrl),
-                  url.isFileURL else {
+            guard let url = Self.localFileURL(from: coverUrl) else {
                 return
             }
             if let immediate = LocalCoverImageCache.shared.cachedImage(for: url) {
@@ -111,6 +109,20 @@ public struct BookCoverImage<Placeholder: View>: View {
             guard !Task.isCancelled else { return }
             loadedImage = decoded
         }
+    }
+
+    private static func localFileURL(from raw: String?) -> URL? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        if trimmed.hasPrefix("/") {
+            return URL(fileURLWithPath: trimmed)
+        }
+        guard let url = URL(string: trimmed), url.isFileURL else {
+            return nil
+        }
+        return url
     }
 }
 

@@ -5,7 +5,16 @@ import Foundation
 extension AppEnvironment {
     func seedSampleBookshelfIfNeeded() async {
         let books = (try? await bookRepository.getBookshelf()) ?? []
-        guard books.isEmpty else { return }
+        guard books.isEmpty else {
+            UserDefaults.standard.set(true, forKey: Self.sampleSeededDefaultsKey)
+            return
+        }
+        if UserDefaults.standard.bool(forKey: Self.sampleSeededDefaultsKey),
+           !ProcessInfo.processInfo.arguments.contains("--open-reader-demo"),
+           !ProcessInfo.processInfo.arguments.contains("--open-reader-hud") {
+            return
+        }
+        UserDefaults.standard.set(true, forKey: Self.sampleSeededDefaultsKey)
 
         let sampleBookUrl = "local://sample/circle_of_inevitability"
         let sampleBook = Book(
@@ -31,7 +40,11 @@ extension AppEnvironment {
             Chapter(url: "\(sampleBookUrl)/2", title: "第三章 恶作剧与神秘客", bookUrl: sampleBookUrl, index: 2),
         ]
         try? await bookRepository.saveChapters(chapters, for: sampleBookUrl)
+        seedSampleChaptersContent(for: sampleBookUrl)
+        notifyBookshelfNeedsRefresh()
+    }
 
+    private func seedSampleChaptersContent(for bookUrl: String) {
         let sampleContent = """
         　　夜幕降临，微凉的晚风吹拂过荒野，带来了远处不知名野兽的低沉吼声。
         　　卢米安站在高耸的崖壁顶端，俯瞰着下方若隐若现的村落灯火。在这个充满神秘与超凡的世界里，每一个看似宁静的黑夜背后，都潜藏着凡人难以窥见的波诡云谲。
@@ -40,11 +53,6 @@ extension AppEnvironment {
         　　狂风渐起，天空中厚重的铅云缓缓移动，露出了那一弯猩红如血的残月。命运的齿轮，已在此刻悄然转动。
         　　“时间差不多了。”卢米安低声自语，转身踏上了通往古老遗迹的荒凉小道。
         """
-
-        getChapterContentUseCase.saveChapterCache(
-            content: sampleContent,
-            bookUrl: sampleBook.bookUrl,
-            index: 0)
 
         let chapterTwoContent = """
         　　清晨的薄雾还未散尽，科尔杜村的钟楼已经敲响了第一声沉闷的钟鸣。
@@ -58,13 +66,8 @@ extension AppEnvironment {
         　　“你比约定的时间晚了两分钟，卢米安。”对方的声音低沉而温和，却莫名给人一种置身于教堂忏悔室般的压力。
         　　卢米安拉开木椅坐下，从风衣内袋取出那张折叠整齐的羊皮纸：“因为街口多出了几个陌生的面孔，我绕了两条街才确认没有尾巴。”
         """
-        getChapterContentUseCase.saveChapterCache(
-            content: chapterTwoContent,
-            bookUrl: sampleBook.bookUrl,
-            index: 1)
-        getChapterContentUseCase.saveChapterCache(
-            content: chapterThreeContent,
-            bookUrl: sampleBook.bookUrl,
-            index: 2)
+        getChapterContentUseCase.saveChapterCache(content: sampleContent, bookUrl: bookUrl, index: 0)
+        getChapterContentUseCase.saveChapterCache(content: chapterTwoContent, bookUrl: bookUrl, index: 1)
+        getChapterContentUseCase.saveChapterCache(content: chapterThreeContent, bookUrl: bookUrl, index: 2)
     }
 }

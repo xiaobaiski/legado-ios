@@ -29,9 +29,10 @@ public final class ZipArchiveReader: Sendable {
         self.entriesMap = map
     }
 
-    /// 按路径读取归档内文件原始字节（自动忽略前导 `/` 并拦截路径穿越）
+    /// 按路径读取归档内文件原始字节（自动忽略前导 `/`、统一 `/` 分隔符并拦截路径穿越）
     public func readFile(at rawPath: String) -> Data? {
-        let normalized = rawPath.hasPrefix("/") ? String(rawPath.dropFirst()) : rawPath
+        let unified = rawPath.replacingOccurrences(of: "\\", with: "/")
+        let normalized = unified.hasPrefix("/") ? String(unified.dropFirst()) : unified
         guard Self.isSafeArchivePath(normalized) else { return nil }
         let entry = entriesMap[normalized]
             ?? entries.first(where: { $0.path.caseInsensitiveCompare(normalized) == .orderedSame })
@@ -147,9 +148,10 @@ public final class ZipArchiveReader: Sendable {
             let nameStart = cursor + 46
             guard nameStart + nameLen <= end else { break }
             let nameData = data.subdata(in: nameStart ..< (nameStart + nameLen))
-            let path = String(data: nameData, encoding: .utf8)
+            let rawPath = String(data: nameData, encoding: .utf8)
                 ?? String(data: nameData, encoding: CharsetDetector.gbkEncoding)
                 ?? ""
+            let path = rawPath.replacingOccurrences(of: "\\", with: "/")
 
             if !path.isEmpty && !path.hasSuffix("/"), isSafeArchivePath(path) {
                 result.append(Entry(

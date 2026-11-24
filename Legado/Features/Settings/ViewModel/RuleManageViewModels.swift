@@ -80,6 +80,9 @@ public final class ReplaceRuleManageViewModel: ObservableObject {
 
     public func previewResult(sample: String, rule: ReplaceRule) -> String {
         guard !sample.isEmpty, rule.isValid else { return sample }
+        if !rule.scopeContent && rule.scopeTitle {
+            return PurifyContentUseCase.shared.purifyTitle(sample, rules: [rule], enableReplace: true)
+        }
         return PurifyContentUseCase.shared.processContent(
             sample,
             rules: [rule],

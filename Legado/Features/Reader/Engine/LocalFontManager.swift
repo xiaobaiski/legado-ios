@@ -81,7 +81,7 @@ public final class LocalFontManager: @unchecked Sendable {
     private let fileManager: FileManager
     private let fontsDirectory: URL
     private let registeredLock = NSLock()
-    private var registeredFontsByPath: [String: ImportedFont] = [:]
+    private var registeredFontsByPath: [String: [ImportedFont]] = [:]
 
     public init(
         fileManager: FileManager = .default,
@@ -119,9 +119,7 @@ public final class LocalFontManager: @unchecked Sendable {
             let ext = url.pathExtension.lowercased()
             guard Self.supportedExtensions.contains(ext) else { continue }
             activePaths.insert(url.path)
-            if let font = registerFontFile(at: url) {
-                loaded.append(font)
-            }
+            loaded.append(contentsOf: registerFontFile(at: url))
         }
         pruneStaleCacheEntries(keeping: activePaths)
         return loaded.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
@@ -218,8 +216,8 @@ public final class LocalFontManager: @unchecked Sendable {
         }
     }
 
-    /// 导入并立即注册本地字体文件（TTF / OTF / TTC）
-    public func importFont(from sourceUrl: URL) throws -> ImportedFont {
+    /// 导入并立即注册本地字体文件（TTF / OTF / TTC，支持 TTC/OTC 多字重集合）
+    public func importFonts(from sourceUrl: URL) throws -> [ImportedFont] {
         let ext = sourceUrl.pathExtension.lowercased()
         guard Self.supportedExtensions.contains(ext) else {
             throw LocalFontImportError.unsupportedFormat(ext)
@@ -255,33 +253,46 @@ public final class LocalFontManager: @unchecked Sendable {
         }
         try data.write(to: destUrl, options: .atomic)
 
-        guard let descriptorInfo = extractFontMetadata(from: destUrl) else {
+        let descriptors = extractFontDescriptors(from: destUrl)
+        guard !descriptors.isEmpty else {
             try? fileManager.removeItem(at: destUrl)
             throw LocalFontImportError.invalidFontFile
         }
         try registerFontProcessScope(at: destUrl)
 
-        let imported = ImportedFont(
-            id: fileName,
-            displayName: descriptorInfo.displayName,
-            postScriptName: descriptorInfo.postScriptName,
-            fileName: fileName)
+        let importedList = descriptors.map { meta in
+            ImportedFont(
+                id: "\(fileName)#\(meta.postScriptName)",
+                displayName: meta.displayName,
+                postScriptName: meta.postScriptName,
+                fileName: fileName)
+        }
         registeredLock.lock()
-        registeredFontsByPath[destUrl.path] = imported
+        registeredFontsByPath[destUrl.path] = importedList
         registeredLock.unlock()
-        return imported
+        return importedList
+    }
+
+    /// 兼容单字体导入调用签名
+    public func importFont(from sourceUrl: URL) throws -> ImportedFont {
+        guard let first = try importFonts(from: sourceUrl).first else {
+            throw LocalFontImportError.invalidFontFile
+        }
+        return first
     }
 
     /// 删除已导入字体并取消注册（校验单层文件名防止路径穿越删库）
-    public func deleteFont(_ font: ImportedFont) throws {
-        guard let fileUrl = safeFontUrl(fileName: font.fileName) else { return }
+    @discardableResult
+    public func deleteFont(_ font: ImportedFont) throws -> Set<String> {
+        guard let fileUrl = safeFontUrl(fileName: font.fileName) else { return [] }
         registeredLock.lock()
-        registeredFontsByPath.removeValue(forKey: fileUrl.path)
+        let removedFonts = registeredFontsByPath.removeValue(forKey: fileUrl.path) ?? [font]
         registeredLock.unlock()
         if fileManager.fileExists(atPath: fileUrl.path) {
             CTFontManagerUnregisterFontsForURL(fileUrl as CFURL, .process, nil)
             try fileManager.removeItem(at: fileUrl)
         }
+        return Set(removedFonts.map(\.postScriptName))
     }
 }
 
@@ -316,7 +327,7 @@ private extension LocalFontManager {
         return candidate
     }
 
-    func registerFontFile(at url: URL) -> ImportedFont? {
+    func registerFontFile(at url: URL) -> [ImportedFont] {
         registeredLock.lock()
         if let cached = registeredFontsByPath[url.path] {
             registeredLock.unlock()
@@ -324,18 +335,21 @@ private extension LocalFontManager {
         }
         registeredLock.unlock()
 
-        guard let meta = extractFontMetadata(from: url) else { return nil }
+        let metas = extractFontDescriptors(from: url)
+        guard !metas.isEmpty else { return [] }
         CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
         let fileName = url.lastPathComponent
-        let font = ImportedFont(
-            id: fileName,
-            displayName: meta.displayName,
-            postScriptName: meta.postScriptName,
-            fileName: fileName)
+        let fonts = metas.map { meta in
+            ImportedFont(
+                id: "\(fileName)#\(meta.postScriptName)",
+                displayName: meta.displayName,
+                postScriptName: meta.postScriptName,
+                fileName: fileName)
+        }
         registeredLock.lock()
-        registeredFontsByPath[url.path] = font
+        registeredFontsByPath[url.path] = fonts
         registeredLock.unlock()
-        return font
+        return fonts
     }
 
     func pruneStaleCacheEntries(keeping activePaths: Set<String>) {
@@ -346,20 +360,27 @@ private extension LocalFontManager {
         registeredLock.unlock()
     }
 
-    func extractFontMetadata(from url: URL) -> (postScriptName: String, displayName: String)? {
-        guard let descriptors = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor],
-              let first = descriptors.first else {
-            return nil
+    func extractFontDescriptors(from url: URL) -> [(postScriptName: String, displayName: String)] {
+        guard let descriptors = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor] else {
+            return []
         }
-
-        let psName = CTFontDescriptorCopyAttribute(first, kCTFontNameAttribute) as? String
-        let displayName = (CTFontDescriptorCopyLocalizedAttribute(first, kCTFontDisplayNameAttribute, nil) as? String)
-            ?? (CTFontDescriptorCopyAttribute(first, kCTFontFamilyNameAttribute) as? String)
-            ?? url.deletingPathExtension().lastPathComponent
-
-        guard let postScriptName = psName, !postScriptName.isEmpty else {
-            return nil
+        var results: [(postScriptName: String, displayName: String)] = []
+        var seenPostScript = Set<String>()
+        for descriptor in descriptors {
+            guard let psName = CTFontDescriptorCopyAttribute(descriptor, kCTFontNameAttribute) as? String,
+                  !psName.isEmpty,
+                  !seenPostScript.contains(psName) else {
+                continue
+            }
+            seenPostScript.insert(psName)
+            let display = (CTFontDescriptorCopyLocalizedAttribute(
+                descriptor,
+                kCTFontDisplayNameAttribute,
+                nil) as? String)
+                ?? (CTFontDescriptorCopyAttribute(descriptor, kCTFontFamilyNameAttribute) as? String)
+                ?? url.deletingPathExtension().lastPathComponent
+            results.append((psName, display))
         }
-        return (postScriptName, displayName)
+        return results
     }
 }

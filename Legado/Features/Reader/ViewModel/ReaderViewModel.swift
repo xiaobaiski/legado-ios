@@ -17,9 +17,11 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
     nonisolated(unsafe) var loadTocTask: Task<Void, Never>?
     nonisolated(unsafe) var remoteSyncTask: Task<Void, Never>?
     nonisolated(unsafe) var loadBookmarksTask: Task<Void, Never>?
+    nonisolated(unsafe) var scrollSaveTask: Task<Void, Never>?
     let realtimeSyncService: WebDAVRealtimeSyncService?
     let explicitInitialChapterIndex: Int?
     var pendingRestoreOffset: Int?
+    var pendingTargetPageIndex: Int?
     var navigationGeneration = 0
 
     deinit {
@@ -29,11 +31,13 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         loadTocTask?.cancel()
         remoteSyncTask?.cancel()
         loadBookmarksTask?.cancel()
+        scrollSaveTask?.cancel()
     }
 
     public init(
         book: Book,
         initialChapterIndex: Int? = nil,
+        initialOffset: Int? = nil,
         showHUDInitially: Bool = false,
         getChapterContentUseCase: GetChapterContentUseCase,
         getBookTocUseCase: GetBookTocUseCase,
@@ -54,9 +58,15 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         self.explicitInitialChapterIndex = initialChapterIndex
 
         let startChapter = initialChapterIndex ?? book.durChapterIndex
-        let shouldRestoreOffset = (initialChapterIndex == nil || initialChapterIndex == book.durChapterIndex)
-            && book.durChapterPos > 0
-        self.pendingRestoreOffset = shouldRestoreOffset ? book.durChapterPos : nil
+        let resolvedOffset: Int?
+        if let initialOffset {
+            resolvedOffset = initialOffset > 0 ? initialOffset : nil
+        } else {
+            let shouldRestoreOffset = (initialChapterIndex == nil || initialChapterIndex == book.durChapterIndex)
+                && book.durChapterPos > 0
+            resolvedOffset = shouldRestoreOffset ? book.durChapterPos : nil
+        }
+        self.pendingRestoreOffset = resolvedOffset
 
         super.init(initialState: ReaderState(
             book: book,
@@ -71,7 +81,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
 
     override public func send(_ intent: ReaderIntent) {
         switch intent {
-        case .loadChapter, .nextPage, .prevPage, .jumpToPage, .jumpToChapterAndOffset:
+        case .loadChapter, .nextPage, .prevPage, .jumpToPage, .syncScrollOffset, .jumpToChapterAndOffset:
             handleNavigationIntent(intent)
 
         case .toggleHUD, .hideHUD, .openToc, .closeToc:
@@ -86,20 +96,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
             handleExtendedConfigIntent(intent)
 
         case let .updateScreenBounds(rect):
-            if state.screenBounds != rect, rect.width > 50 {
-                updateState { $0.screenBounds = rect }
-                if state.pages.isEmpty {
-                    if !state.chapters.isEmpty {
-                        loadChapterContent(
-                            chapterIndex: state.currentChapterIndex,
-                            targetPageIndex: 0,
-                            targetOffset: pendingRestoreOffset,
-                            persistProgress: false)
-                    }
-                } else {
-                    repaginateCurrentChapter()
-                }
-            }
+            handleUpdateScreenBounds(rect)
 
         case .toggleBookmark, .addBookmark, .deleteBookmark, .loadBookmarks:
             handleBookmarkIntent(intent)
@@ -111,31 +108,44 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         case let .loadChapter(index):
             navigationGeneration += 1
             pendingRestoreOffset = nil
+            pendingTargetPageIndex = 0
             loadChapterContent(chapterIndex: index, targetPageIndex: 0)
+            if state.isAutoPaging { restartAutoPageTimer() }
 
         case let .jumpToChapterAndOffset(chapterIndex, matchOffset):
             navigationGeneration += 1
-            pendingRestoreOffset = nil
+            pendingRestoreOffset = matchOffset
+            pendingTargetPageIndex = nil
             loadChapterContent(chapterIndex: chapterIndex, targetPageIndex: 0, targetOffset: matchOffset)
+            if state.isAutoPaging { restartAutoPageTimer() }
 
         case .nextPage:
             navigationGeneration += 1
             pendingRestoreOffset = nil
+            pendingTargetPageIndex = nil
             handleNextPage()
+            if state.isAutoPaging { restartAutoPageTimer() }
 
         case .prevPage:
             navigationGeneration += 1
             pendingRestoreOffset = nil
+            pendingTargetPageIndex = nil
             handlePrevPage()
+            if state.isAutoPaging { restartAutoPageTimer() }
 
         case let .jumpToPage(index):
             if index >= 0, index < state.pages.count {
                 navigationGeneration += 1
                 pendingRestoreOffset = nil
+                pendingTargetPageIndex = nil
                 updateState { $0.currentPageIndex = index }
                 saveReadingProgress()
                 emitHapticIfEnabled()
+                if state.isAutoPaging { restartAutoPageTimer() }
             }
+
+        case let .syncScrollOffset(offset):
+            handleSyncScrollOffset(offset)
 
         default:
             break
@@ -182,17 +192,17 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
             let newSize = min(max(state.config.fontSize + delta, 12), 36)
             var newConfig = state.config
             newConfig.fontSize = newSize
-            applyNewConfig(newConfig)
+            applyNewConfig(newConfig, triggerHaptic: true)
 
         case let .selectTheme(theme):
             var newConfig = state.config
-            newConfig.theme = theme
-            applyNewConfig(newConfig)
+            newConfig.applyTheme(theme)
+            applyNewConfig(newConfig, triggerHaptic: true)
 
         case let .selectPageTurnMode(mode):
             var newConfig = state.config
             newConfig.pageTurnMode = mode
-            applyNewConfig(newConfig)
+            applyNewConfig(newConfig, triggerHaptic: true)
 
         default:
             break
@@ -217,8 +227,14 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
         let layoutBounds = hasRealBounds ? state.screenBounds : defaultBounds
         let engine = textLayoutEngine
 
+        pendingRestoreOffset = targetOffset
+        pendingTargetPageIndex = targetOffset == nil ? targetPageIndex : nil
+
         updateState {
             $0.isLoading = true
+            if $0.currentChapterIndex != chapterIndex {
+                $0.pages = []
+            }
             $0.currentChapterIndex = chapterIndex
         }
 
@@ -248,6 +264,7 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
 
                 self.applyLoadedPages(
                     pages,
+                    forChapterIndex: chapterIndex,
                     targetOffset: targetOffset,
                     targetPageIndex: targetPageIndex,
                     hasRealBounds: hasRealBounds,
@@ -289,7 +306,6 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
             saveReadingProgress()
             emitHapticIfEnabled()
         } else if state.currentChapterIndex + 1 < state.chapters.count {
-            // 翻入下一章第一页
             loadChapterContent(chapterIndex: state.currentChapterIndex + 1, targetPageIndex: 0)
             emitHapticIfEnabled()
         } else {
@@ -309,7 +325,6 @@ public final class ReaderViewModel: BaseMVIViewModel<ReaderState, ReaderIntent, 
             saveReadingProgress()
             emitHapticIfEnabled()
         } else if state.currentChapterIndex > 0 {
-            // 翻入上一章最后一页
             loadChapterContent(chapterIndex: state.currentChapterIndex - 1, targetPageIndex: Int.max)
             emitHapticIfEnabled()
         } else {

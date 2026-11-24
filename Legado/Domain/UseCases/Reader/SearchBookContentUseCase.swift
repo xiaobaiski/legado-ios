@@ -1,6 +1,6 @@
 import Foundation
 
-/// 正文全文内容检索用例 (跨章节多段落关键词匹配与上下文提取)
+/// 正文全文内容检索用例 (跨章节多段落关键词匹配与上下文提取，坐标与排版引擎完全对齐)
 public final class SearchBookContentUseCase: Sendable {
     public init() {}
 
@@ -10,12 +10,15 @@ public final class SearchBookContentUseCase: Sendable {
         book: Book,
         chapters: [Chapter],
         getChapterContentUseCase: GetChapterContentUseCase,
+        config: ReaderConfig? = nil,
         maxMatches: Int = 200) -> AsyncStream<BookSearchMatch> {
         let cleanKeyword = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return AsyncStream { continuation in
             let task = Task.detached(priority: .userInitiated) {
-                guard !cleanKeyword.isEmpty, !chapters.isEmpty else {
+                let resolvedConfig = config ?? ReaderConfigStore.load()
+                let convertedKeyword = resolvedConfig.chineseConversion.convert(cleanKeyword)
+                guard !convertedKeyword.isEmpty, !chapters.isEmpty else {
                     continuation.finish()
                     return
                 }
@@ -27,17 +30,23 @@ public final class SearchBookContentUseCase: Sendable {
                         break
                     }
 
-                    // 优先拉取缓存正文
-                    guard let content = try? await getChapterContentUseCase.execute(
+                    guard let rawContent = try? await getChapterContentUseCase.execute(
                         chapter: chapter,
                         origin: book.origin,
-                        forceRefresh: false), !content.isEmpty else {
+                        forceRefresh: false), !rawContent.isEmpty else {
                         continue
                     }
 
+                    let built = TextLayoutEngine.shared.buildPaginatedFullText(
+                        chapterTitle: chapter.title,
+                        content: rawContent,
+                        config: resolvedConfig,
+                        bookName: book.name,
+                        bookOrigin: book.origin)
+
                     let matches = Self.extractMatches(
-                        keyword: cleanKeyword,
-                        content: content,
+                        keyword: convertedKeyword,
+                        content: built.fullText,
                         chapter: chapter)
 
                     for match in matches {
@@ -76,18 +85,20 @@ public final class SearchBookContentUseCase: Sendable {
                 break
             }
 
-            // 截取前后上下文
+            // 按 UTF-16 字形边界裁剪前后上下文，避免截断生僻字或 Emoji 代理对
             let prefixStart = max(0, found.location - 18)
             let suffixEnd = min(nsContent.length, found.location + found.length + 28)
-            let snippetRange = NSRange(location: prefixStart, length: suffixEnd - prefixStart)
-            var snippet = nsContent.substring(with: snippetRange)
+            let rawRange = NSRange(location: prefixStart, length: suffixEnd - prefixStart)
+            let safeRange = nsContent.rangeOfComposedCharacterSequences(for: rawRange)
+            var snippet = nsContent.substring(with: safeRange)
                 .replacingOccurrences(of: "\n", with: " ")
                 .replacingOccurrences(of: "\r", with: "")
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\u{3000} \t"))
 
-            if prefixStart > 0 {
+            if safeRange.location > 0 {
                 snippet = "..." + snippet
             }
-            if suffixEnd < nsContent.length {
+            if safeRange.location + safeRange.length < nsContent.length {
                 snippet += "..."
             }
 

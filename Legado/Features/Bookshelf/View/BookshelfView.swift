@@ -17,9 +17,10 @@ public struct BookshelfView: View {
     @State private var editBookName = ""
     @State private var editBookAuthor = ""
     @State private var bookPendingRemoval: Book?
+    @State private var isShowingBatchRemoveAlert = false
 
-    public init(viewModel: BookshelfViewModel) {
-        _viewModel = StateObject(wrappedValue: viewModel)
+    public init(viewModel: @autoclosure @escaping () -> BookshelfViewModel) {
+        _viewModel = StateObject(wrappedValue: viewModel())
     }
 
     private var searchTextBinding: Binding<String> {
@@ -66,7 +67,7 @@ public struct BookshelfView: View {
                 toolbarItems
             }
             .refreshable {
-                viewModel.send(.refresh)
+                await viewModel.refreshAsync()
             }
             .onAppear {
                 viewModel.send(.onAppear)
@@ -149,6 +150,14 @@ public struct BookshelfView: View {
                 if let target = bookPendingRemoval {
                     Text("确定将《\(target.name)》从书架移出吗？本地书籍的章节正文与封面缓存也会同步清理。")
                 }
+            }
+            .alert("批量移出书架", isPresented: $isShowingBatchRemoveAlert) {
+                Button("取消", role: .cancel) {}
+                Button("确认移出", role: .destructive) {
+                    viewModel.send(.batchRemoveSelected)
+                }
+            } message: {
+                Text("确定将选中的 \(viewModel.state.selectedBookUrls.count) 本书从书架移出吗？本地书籍正文与封面将同步删除。")
             }
             .sheet(isPresented: $isShowingFileImporter) {
                 DocumentPickerView(
@@ -407,7 +416,7 @@ private extension BookshelfView {
                 viewModel.send(.batchMoveSelectedToGroup(groupName: groupName))
             },
             onBatchRemove: {
-                viewModel.send(.batchRemoveSelected)
+                isShowingBatchRemoveAlert = true
             },
             onFinish: {
                 viewModel.send(.toggleBatchMode)

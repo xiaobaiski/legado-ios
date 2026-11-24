@@ -9,6 +9,7 @@ public struct SettingsState: ViewState, Equatable, Sendable {
     public var lastBackupSummary: WebDAVBackupSummary?
     public var realtimeSyncStatus: WebDAVRealtimeSyncStatus
     public var cacheSizeBytes: Int64
+    public var todayReadSeconds: TimeInterval
     public var readerConfig: ReaderConfig
     public var importedFonts: [ImportedFont]
     public var errorMessage: String?
@@ -22,6 +23,7 @@ public struct SettingsState: ViewState, Equatable, Sendable {
         lastBackupSummary: WebDAVBackupSummary? = nil,
         realtimeSyncStatus: WebDAVRealtimeSyncStatus = WebDAVRealtimeSyncStatus(),
         cacheSizeBytes: Int64 = 0,
+        todayReadSeconds: TimeInterval = 0,
         readerConfig: ReaderConfig = ReaderConfig.defaultConfig,
         importedFonts: [ImportedFont] = [],
         errorMessage: String? = nil,
@@ -33,6 +35,7 @@ public struct SettingsState: ViewState, Equatable, Sendable {
         self.lastBackupSummary = lastBackupSummary
         self.realtimeSyncStatus = realtimeSyncStatus
         self.cacheSizeBytes = cacheSizeBytes
+        self.todayReadSeconds = todayReadSeconds
         self.readerConfig = readerConfig
         self.importedFonts = importedFonts
         self.errorMessage = errorMessage

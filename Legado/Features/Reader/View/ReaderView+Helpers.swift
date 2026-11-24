@@ -77,11 +77,29 @@ extension ReaderView {
     func flushReadingSession() {
         guard let start = readingSessionStart else { return }
         readingSessionStart = nil
+        guard !viewModel.state.book.disableReadRecord else { return }
         let elapsed = Date().timeIntervalSince(start)
         ReadRecordStore.shared.recordSession(
             bookName: viewModel.state.book.name,
             bookAuthor: viewModel.state.book.author,
             durationSeconds: elapsed)
+    }
+
+    func handleScenePhaseChange(_ phase: ScenePhase) {
+        if phase == .active {
+            if readingSessionStart == nil {
+                readingSessionStart = Date()
+            }
+            viewModel.send(.refreshImportedFonts)
+            viewModel.handleAppDidBecomeActive()
+            applySystemDisplaySettings()
+            updateVolumeButtonBinding()
+        } else {
+            flushReadingSession()
+            viewModel.flushRealtimeProgressSync()
+            volumeHandler.stop()
+            restoreSystemDisplaySettings()
+        }
     }
 
     func handleHardwareKeyPress(_ press: KeyPress) -> KeyPress.Result {
@@ -105,6 +123,8 @@ extension ReaderView {
 
     func updateVolumeButtonBinding() {
         let shouldEnable = viewModel.state.config.volumeKeyPageTurn
+            && !hasModalSheetPresented
+            && scenePhase == .active
         if shouldEnable {
             volumeHandler.start(
                 onVolumeUp: { [weak viewModel] in viewModel?.send(.prevPage) },
@@ -117,16 +137,17 @@ extension ReaderView {
     func applySystemDisplaySettings() {
         scheduleScreenKeepOnTimer()
         let config = viewModel.state.config
-
         guard let screen = activeWindowScreen else { return }
-        if originalBrightness == nil {
-            originalBrightness = screen.brightness
-        }
+
         if config.followSystemBrightness {
-            if let originalBrightness {
-                screen.brightness = originalBrightness
+            if let saved = originalBrightness {
+                screen.brightness = saved
+                originalBrightness = nil
             }
         } else {
+            if originalBrightness == nil {
+                originalBrightness = screen.brightness
+            }
             screen.brightness = CGFloat(config.customBrightness)
         }
     }
@@ -157,8 +178,9 @@ extension ReaderView {
         screenKeepOnTask?.cancel()
         screenKeepOnTask = nil
         UIApplication.shared.isIdleTimerDisabled = false
-        if let originalBrightness, let screen = activeWindowScreen {
-            screen.brightness = originalBrightness
+        if let saved = originalBrightness, let screen = activeWindowScreen {
+            screen.brightness = saved
+            originalBrightness = nil
         }
     }
 

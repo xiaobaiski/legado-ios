@@ -8,6 +8,8 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
     private let saveBookToShelfUseCase: SaveBookToShelfUseCase
     private let removeBookFromShelfUseCase: RemoveBookFromShelfUseCase
     private let bookRepository: BookRepository
+    private let getBookmarksUseCase: GetBookmarksUseCase?
+    private let deleteBookmarkUseCase: DeleteBookmarkUseCase?
     nonisolated(unsafe) private var checkShelfTask: Task<Void, Never>?
     nonisolated(unsafe) private var detailLoadTask: Task<Void, Never>?
     nonisolated(unsafe) private var shelfToggleTask: Task<Void, Never>?
@@ -18,12 +20,16 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
         getBookTocUseCase: GetBookTocUseCase,
         saveBookToShelfUseCase: SaveBookToShelfUseCase,
         removeBookFromShelfUseCase: RemoveBookFromShelfUseCase,
-        bookRepository: BookRepository) {
+        bookRepository: BookRepository,
+        getBookmarksUseCase: GetBookmarksUseCase? = nil,
+        deleteBookmarkUseCase: DeleteBookmarkUseCase? = nil) {
         self.getBookDetailUseCase = getBookDetailUseCase
         self.getBookTocUseCase = getBookTocUseCase
         self.saveBookToShelfUseCase = saveBookToShelfUseCase
         self.removeBookFromShelfUseCase = removeBookFromShelfUseCase
         self.bookRepository = bookRepository
+        self.getBookmarksUseCase = getBookmarksUseCase
+        self.deleteBookmarkUseCase = deleteBookmarkUseCase
 
         super.init(initialState: BookDetailState(book: book))
 
@@ -58,7 +64,8 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
         case .toggleBookshelf:
             toggleShelf()
 
-        case .openToc, .closeToc, .toggleTocReverse, .updateTocSearch, .selectChapter:
+        case .openToc, .closeToc, .toggleTocReverse, .updateTocSearch,
+             .selectChapter, .selectBookmark, .deleteBookmark:
             handleTocIntent(intent)
         }
     }
@@ -83,8 +90,26 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
             updateState { $0.isTocPresented = false }
             emitEffect(.navigateToReader(chapterIndex: chapter.index))
 
+        case let .selectBookmark(bookmark):
+            updateState { $0.isTocPresented = false }
+            emitEffect(.navigateToBookmark(chapterIndex: bookmark.chapterIndex, offset: bookmark.chapterPos))
+
+        case let .deleteBookmark(id):
+            performDeleteBookmark(id: id)
+
         default:
             break
+        }
+    }
+
+    private func performDeleteBookmark(id: String) {
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.deleteBookmarkUseCase?.execute(id: id)
+            let refreshed = await self.fetchBookmarks(for: self.state.book)
+            self.updateState { $0.bookmarks = refreshed }
+            self.emitEffect(.showToast("已移除书签"))
+            self.emitEffect(.hapticFeedback)
         }
     }
 
@@ -97,12 +122,17 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
             do {
                 let updatedBook = try await self.getBookDetailUseCase.execute(book: self.state.book)
                 let toc = try await self.getBookTocUseCase.execute(book: updatedBook, forceRefresh: true)
+                let finalBook = (try? await self.bookRepository.getBook(by: updatedBook.bookUrl)) ?? updatedBook
+                let inShelf = (try? await self.bookRepository.getBook(by: updatedBook.bookUrl)) != nil
+                let bookmarks = await self.fetchBookmarks(for: finalBook)
                 guard !Task.isCancelled else { return }
 
                 self.updateState { state in
                     state.isLoading = false
-                    state.book = updatedBook
+                    state.book = finalBook
+                    state.isInBookshelf = inShelf
                     state.chapters = toc
+                    state.bookmarks = bookmarks
                 }
             } catch {
                 guard !Task.isCancelled else { return }
@@ -113,6 +143,11 @@ public final class BookDetailViewModel: BaseMVIViewModel<BookDetailState, BookDe
                 self.emitEffect(.showToast("刷新详情失败: \(error.localizedDescription)"))
             }
         }
+    }
+
+    private func fetchBookmarks(for book: Book) async -> [Bookmark] {
+        guard let getBookmarksUseCase else { return [] }
+        return (try? await getBookmarksUseCase.execute(bookName: book.name, bookAuthor: book.author)) ?? []
     }
 
     private func toggleShelf() {

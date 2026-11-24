@@ -25,26 +25,25 @@ extension ReaderConfig {
         theme == .custom ? HexColorCodec.isDarkColor(hex: customBackgroundHex) : theme.isDark
     }
 
-    /// 一键切换阅读器日间 / 夜间模式（自动记忆上一次日间与夜间主题配色）
+    /// 一键切换阅读器日间 / 夜间模式（自动记忆上一次日间与夜间主题配色，支持自定义主题）
     public mutating func toggleNightMode() {
+        let customDark = HexColorCodec.isDarkColor(hex: customBackgroundHex)
         if isEffectiveDark {
-            if theme != .custom {
-                lastDarkTheme = theme
-            }
-            theme = lastLightTheme.isDark ? .paper : lastLightTheme
+            lastDarkTheme = theme
+            let savedLightValid = lastLightTheme == .custom ? !customDark : !lastLightTheme.isDark
+            theme = savedLightValid ? lastLightTheme : .paper
         } else {
-            if theme != .custom {
-                lastLightTheme = theme
-            }
-            theme = lastDarkTheme.isDark ? lastDarkTheme : .dark
+            lastLightTheme = theme
+            let savedDarkValid = lastDarkTheme == .custom ? customDark : lastDarkTheme.isDark
+            theme = savedDarkValid ? lastDarkTheme : .dark
         }
     }
 
     /// 切换主题并同步更新日间/夜间记忆主题
     public mutating func applyTheme(_ newTheme: ReaderTheme) {
         theme = newTheme
-        guard newTheme != .custom else { return }
-        if newTheme.isDark {
+        let dark = (newTheme == .custom) ? HexColorCodec.isDarkColor(hex: customBackgroundHex) : newTheme.isDark
+        if dark {
             lastDarkTheme = newTheme
         } else {
             lastLightTheme = newTheme

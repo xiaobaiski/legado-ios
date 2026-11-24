@@ -11,7 +11,9 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
     let deleteBookGroupUseCase: DeleteBookGroupUseCase?
     let importLocalBookUseCase: ImportLocalBookUseCase?
     private let realtimeSyncService: WebDAVRealtimeSyncService?
+    private let bookmarkRepository: BookmarkRepository?
     private let layoutDefaults: UserDefaults?
+    var pendingImportURLs: [URL] = []
 
     nonisolated(unsafe) var loadTask: Task<Void, Never>?
     nonisolated(unsafe) var refreshTask: Task<Void, Never>?
@@ -34,7 +36,8 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         deleteBookGroupUseCase: DeleteBookGroupUseCase? = nil,
         importLocalBookUseCase: ImportLocalBookUseCase? = nil,
         layoutDefaults: UserDefaults? = nil,
-        realtimeSyncService: WebDAVRealtimeSyncService? = nil) {
+        realtimeSyncService: WebDAVRealtimeSyncService? = nil,
+        bookmarkRepository: BookmarkRepository? = nil) {
         self.getBookshelfUseCase = getBookshelfUseCase
         self.removeBookFromShelfUseCase = removeBookFromShelfUseCase
         self.saveBookToShelfUseCase = saveBookToShelfUseCase
@@ -44,6 +47,7 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
         self.importLocalBookUseCase = importLocalBookUseCase
         self.layoutDefaults = layoutDefaults
         self.realtimeSyncService = realtimeSyncService
+        self.bookmarkRepository = bookmarkRepository
         let savedSort = UserDefaults.standard.string(forKey: BookshelfSortOrder.storageKey)
             .flatMap(BookshelfSortOrder.init(rawValue:)) ?? .recent
         let savedLayout = layoutDefaults?.string(forKey: BookshelfLayoutMode.storageKey)
@@ -209,6 +213,13 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
                 self.updateState { $0.isLoading = false }
                 self.emitEffect(.showToast("获取书架失败: \(error.localizedDescription)"))
             }
+        }
+    }
+
+    public func refreshAsync() async {
+        refreshUpdates()
+        if let task = refreshTask {
+            _ = await task.value
         }
     }
 

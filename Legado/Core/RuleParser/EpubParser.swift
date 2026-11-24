@@ -94,19 +94,29 @@ public enum EpubParser {
         baseDir: String) -> [String: String] {
         var map: [String: String] = [:]
 
-        // 1. 优先解析 EPUB 3 Navigation Document
+        // 1. 优先解析 EPUB 3 Navigation Document（优先锁定 toc 导航，避免 landmarks/page-list 覆盖真实章名）
         if let navItem = manifest.values.first(where: { $0.properties.contains("nav") }),
            let navData = zip.readFile(at: navItem.path) {
             let navDir = directoryPrefix(of: navItem.path)
             let html = CharsetDetector.decode(data: navData)
-            if let doc = try? SwiftSoup.parse(html),
-               let links = try? doc.select("nav a[href]") {
-                for link in links.array() {
-                    let href = ((try? link.attr("href")) ?? "").components(separatedBy: "#").first ?? ""
-                    let text = ((try? link.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !href.isEmpty, !text.isEmpty {
-                        let resolved = joinPath(base: navDir, relative: href.removingPercentEncoding ?? href)
-                        map[resolved.lowercased()] = text
+            if let doc = try? SwiftSoup.parse(html) {
+                let tocLinks = try? doc.select(
+                    "nav[epub\\:type=toc] a[href], nav[type=toc] a[href], nav[role=doc-toc] a[href], nav#toc a[href]")
+                let fallbackLinks = (tocLinks?.isEmpty() ?? true)
+                    ? (try? doc.select("nav").first()?.select("a[href]"))
+                    : nil
+                let links = (tocLinks?.isEmpty() ?? true) ? fallbackLinks : tocLinks
+                if let links {
+                    for link in links.array() {
+                        let href = ((try? link.attr("href")) ?? "").components(separatedBy: "#").first ?? ""
+                        let text = ((try? link.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !href.isEmpty, !text.isEmpty {
+                            let resolved = joinPath(base: navDir, relative: href.removingPercentEncoding ?? href)
+                            let key = resolved.lowercased()
+                            if map[key] == nil {
+                                map[key] = text
+                            }
+                        }
                     }
                 }
             }
@@ -143,11 +153,21 @@ public enum EpubParser {
         in zip: ZipArchiveReader,
         opfDoc: Document,
         manifest: [String: ManifestItem]) -> (Data?, String) {
-        var coverItem = manifest.values.first(where: { $0.properties.contains("cover-image") })
+        var coverItem = manifest.values.first(where: {
+            $0.properties.contains("cover-image") && $0.mediaType.hasPrefix("image/")
+        })
         if coverItem == nil,
            let metaCover = try? opfDoc.select("meta[name=cover]").first(),
-           let coverId = try? metaCover.attr("content") {
-            coverItem = manifest[coverId]
+           let coverId = try? metaCover.attr("content"),
+           let candidate = manifest[coverId] {
+            if candidate.mediaType.hasPrefix("image/") {
+                coverItem = candidate
+            } else if let nestedImage = extractImageItemFromXhtml(
+                candidate.path,
+                in: zip,
+                manifest: manifest) {
+                coverItem = nestedImage
+            }
         }
         if coverItem == nil {
             coverItem = manifest.values.first(where: {
@@ -161,6 +181,38 @@ public enum EpubParser {
         }
         let ext = URL(fileURLWithPath: coverItem.path).pathExtension.lowercased()
         return (data, ext.isEmpty ? "jpg" : ext)
+    }
+
+    private static func extractImageItemFromXhtml(
+        _ htmlPath: String,
+        in zip: ZipArchiveReader,
+        manifest: [String: ManifestItem]) -> ManifestItem? {
+        guard let htmlData = zip.readFile(at: htmlPath) else { return nil }
+        let html = CharsetDetector.decode(data: htmlData)
+        guard let doc = try? SwiftSoup.parse(html),
+              let img = try? doc.select("img[src], image[href], image[xlink\\:href]").first() else {
+            return nil
+        }
+        guard let src = firstNonEmptyAttr(img, keys: ["src", "xlink:href", "href"]) else {
+            return nil
+        }
+        let decoded = src.removingPercentEncoding ?? src
+        let resolved = joinPath(base: directoryPrefix(of: htmlPath), relative: decoded).lowercased()
+        return manifest.values.first {
+            $0.mediaType.hasPrefix("image/") && $0.path.lowercased() == resolved
+        }
+    }
+
+    private static func firstNonEmptyAttr(_ element: Element, keys: [String]) -> String? {
+        for key in keys {
+            if let raw = try? element.attr(key) {
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+        }
+        return nil
     }
 
     private static func extractSpineChapters(
@@ -192,11 +244,16 @@ public enum EpubParser {
         return chapters
     }
 
+    private static let blockTags: Set<String> = [
+        "p", "div", "h1", "h2", "h3", "h4", "h5", "h6",
+        "li", "blockquote", "pre", "tr", "section", "article", "header", "footer", "dt", "dd",
+    ]
+
     private static func extractChapterText(from html: String) -> (String?, String) {
         guard let doc = try? SwiftSoup.parse(html) else {
             return (nil, html)
         }
-        _ = try? doc.select("script, style, svg").remove()
+        _ = try? doc.select("script, style, svg, head").remove()
 
         let heading = (try? doc.select("h1, h2, h3").first()?.text())?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -206,24 +263,41 @@ public enum EpubParser {
             return (titleCandidate, (try? doc.text()) ?? "")
         }
 
-        var paragraphs: [String] = []
-        if let blockElements = try? body.select("p, h1, h2, h3, h4, li, blockquote") {
-            for element in blockElements.array() {
-                let text = ((try? element.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                if !text.isEmpty {
-                    paragraphs.append(text)
-                }
-            }
-        }
+        var raw = ""
+        collectText(from: body, into: &raw)
+        let paragraphs = raw
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
 
         if paragraphs.isEmpty {
             let fallback = ((try? body.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !fallback.isEmpty {
-                paragraphs = [fallback]
-            }
+            return (titleCandidate, fallback)
         }
-
         return (titleCandidate, paragraphs.joined(separator: "\n"))
+    }
+
+    private static func collectText(from node: Node, into output: inout String) {
+        if let textNode = node as? TextNode {
+            output += textNode.text()
+            return
+        }
+        guard let element = node as? Element else { return }
+        let tag = element.tagName().lowercased()
+        if tag == "br" {
+            output += "\n"
+            return
+        }
+        let isBlock = blockTags.contains(tag)
+        if isBlock && !output.isEmpty && !output.hasSuffix("\n") {
+            output += "\n"
+        }
+        for child in element.getChildNodes() {
+            collectText(from: child, into: &output)
+        }
+        if isBlock && !output.isEmpty && !output.hasSuffix("\n") {
+            output += "\n"
+        }
     }
 
     private static func extractFirstText(in doc: Document, selectors: [String]) -> String? {

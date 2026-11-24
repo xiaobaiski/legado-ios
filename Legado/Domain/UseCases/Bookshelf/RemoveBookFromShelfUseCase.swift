@@ -1,20 +1,24 @@
 import Foundation
 
-/// 从书架移除书籍用例
+/// 从书架移除书籍用例（同步清理章节文件、本地封面与关联书签）
 public final class RemoveBookFromShelfUseCase: Sendable {
     private let bookRepository: BookRepository
     private let bookCacheRepository: BookCacheRepository?
+    private let bookmarkRepository: BookmarkRepository?
 
     public init(
         bookRepository: BookRepository,
-        bookCacheRepository: BookCacheRepository? = nil) {
+        bookCacheRepository: BookCacheRepository? = nil,
+        bookmarkRepository: BookmarkRepository? = nil) {
         self.bookRepository = bookRepository
         self.bookCacheRepository = bookCacheRepository
+        self.bookmarkRepository = bookmarkRepository
     }
 
     public func execute(bookUrl: String) async throws {
         try await bookRepository.removeBook(by: bookUrl)
         try? bookCacheRepository?.clearBookCache(bookUrl: bookUrl)
+        try? await bookmarkRepository?.deleteBookmarks(forBookUrl: bookUrl)
         removeLocalCoverIfExists(for: bookUrl)
     }
 

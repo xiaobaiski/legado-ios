@@ -13,10 +13,15 @@ extension WebDAVRealtimeSyncService {
         }
     }
 
+    /// 标记本地规则或阅读排版已更新（即便暂未开启实时同步，开启后也不被旧云端备份覆盖）
+    public func noteLocalRulesModified() {
+        localRulesUpdatedAt = Date()
+    }
+
     /// 安排防抖后的规则与排版配置实时上传（不会污染或覆盖云端 legado_backup.json 的书架进度）
     public func scheduleRulesPush(debounceSeconds: TimeInterval = 3.0) {
+        noteLocalRulesModified()
         guard let config = activeConfig(), config.syncOptions.realtimeSyncRules else { return }
-        localRulesUpdatedAt = Date()
         hasPendingRulesPush = true
 
         rulesDebounceTask?.cancel()

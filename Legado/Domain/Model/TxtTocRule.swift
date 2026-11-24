@@ -34,6 +34,18 @@ public struct TxtTocRule: Identifiable, Codable, Equatable, Sendable {
         case isEnabled
     }
 
+    private static let fallbackIdLock = NSLock()
+    private nonisolated(unsafe) static var lastFallbackId: Int64 = 0
+
+    private static func nextFallbackId() -> Int64 {
+        fallbackIdLock.lock()
+        defer { fallbackIdLock.unlock() }
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let next = max(nowMs, lastFallbackId + 1)
+        lastFallbackId = next
+        return next
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         if let intId = try? container.decode(Int64.self, forKey: .id) {
@@ -41,7 +53,7 @@ public struct TxtTocRule: Identifiable, Codable, Equatable, Sendable {
         } else if let strId = try? container.decode(String.self, forKey: .id), let parsed = Int64(strId) {
             self.id = parsed
         } else {
-            self.id = Int64(Date().timeIntervalSince1970 * 1000)
+            self.id = Self.nextFallbackId()
         }
         self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         self.rule = try container.decodeIfPresent(String.self, forKey: .rule) ?? ""

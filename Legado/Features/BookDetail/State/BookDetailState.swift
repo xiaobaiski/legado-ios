@@ -16,6 +16,8 @@ public struct BookDetailState: ViewState, Equatable, Sendable {
     public var isReverseToc: Bool
     /// 目录搜索过滤关键字
     public var tocSearchText: String
+    /// 本书关联书签列表
+    public var bookmarks: [Bookmark]
     /// 错误提示
     public var errorMessage: String?
 
@@ -27,6 +29,7 @@ public struct BookDetailState: ViewState, Equatable, Sendable {
         isTocPresented: Bool = false,
         isReverseToc: Bool = false,
         tocSearchText: String = "",
+        bookmarks: [Bookmark] = [],
         errorMessage: String? = nil) {
         self.book = book
         self.isLoading = isLoading
@@ -35,6 +38,7 @@ public struct BookDetailState: ViewState, Equatable, Sendable {
         self.isTocPresented = isTocPresented
         self.isReverseToc = isReverseToc
         self.tocSearchText = tocSearchText
+        self.bookmarks = bookmarks
         self.errorMessage = errorMessage
     }
 }

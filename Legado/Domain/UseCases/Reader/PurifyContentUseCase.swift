@@ -26,7 +26,9 @@ public final class PurifyContentUseCase: @unchecked Sendable {
             id: "builtin-promo-url",
             name: "过滤广告推广网址",
             group: "内置净化",
-            pattern: "((https?://)?([a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,}(/[a-zA-Z0-9#?&._-]*)?)",
+            pattern: "((?:https?://|www\\.)[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(?:/[a-zA-Z0-9#?&._=%-]*)?|" +
+                "\\b[a-zA-Z0-9-]+\\.(?:com|cn|net|org|cc|me|io|vip|xyz|top|la|info|tv|tw|hk|uk)" +
+                "(?:/[a-zA-Z0-9#?&._=%-]*)?\\b)",
             replacement: "",
             scopeTitle: false,
             scopeContent: true,
@@ -222,12 +224,11 @@ public final class PurifyContentUseCase: @unchecked Sendable {
                 guard let regex = cachedRegex(pattern: rule.pattern, caseSensitive: rule.isCaseSensitive) else {
                     continue
                 }
-                let nsRange = NSRange(location: 0, length: (result as NSString).length)
-                result = regex.stringByReplacingMatches(
+                result = replaceRegexWithTimeout(
                     in: result,
-                    options: [],
-                    range: nsRange,
-                    withTemplate: rule.replacement)
+                    regex: regex,
+                    replacement: rule.replacement,
+                    timeoutMs: rule.timeoutMillisecond)
             } else {
                 let options: NSString.CompareOptions = rule.isCaseSensitive ? [] : [.caseInsensitive]
                 result = result.replacingOccurrences(
@@ -237,6 +238,47 @@ public final class PurifyContentUseCase: @unchecked Sendable {
             }
         }
         return result
+    }
+
+    private func replaceRegexWithTimeout(
+        in text: String,
+        regex: NSRegularExpression,
+        replacement: String,
+        timeoutMs: Int64) -> String {
+        let nsText = text as NSString
+        let fullRange = NSRange(location: 0, length: nsText.length)
+        let deadline = timeoutMs > 0
+            ? Date().addingTimeInterval(Double(timeoutMs) / 1000.0)
+            : nil
+        let output = NSMutableString()
+        var lastLocation = 0
+        var timedOut = false
+
+        regex.enumerateMatches(in: text, options: [.reportProgress], range: fullRange) { match, _, stop in
+            if let deadline, Date() > deadline {
+                timedOut = true
+                stop.pointee = true
+                return
+            }
+            guard let match else { return }
+            let range = match.range
+            if range.location >= lastLocation {
+                let prefixRange = NSRange(location: lastLocation, length: range.location - lastLocation)
+                output.append(nsText.substring(with: prefixRange))
+                output.append(regex.replacementString(for: match, in: text, offset: 0, template: replacement))
+                lastLocation = range.location + range.length
+            }
+        }
+        if timedOut {
+            return text
+        }
+        if lastLocation == 0 {
+            return text
+        }
+        if lastLocation < nsText.length {
+            output.append(nsText.substring(from: lastLocation))
+        }
+        return output as String
     }
 
     private func rulesAlreadySorted(_ rules: [ReplaceRule]) -> Bool {

@@ -65,12 +65,16 @@ public final class ImportLocalBookUseCase: Sendable {
 
     private func importEpub(data: Data, fallbackTitle: String) async throws -> Book {
         let parsed = try EpubParser.parse(data: data, fallbackTitle: fallbackTitle)
-        let bookUrl = "local://\(UUID().uuidString)"
+        let bookUrl = await resolveTargetBookUrl(
+            name: parsed.title,
+            author: parsed.author,
+            chapterCount: parsed.chapters.count)
         let coverUrl = saveCoverImageIfPresent(
             data: parsed.coverData,
             ext: parsed.coverExtension,
             bookUrl: bookUrl)
 
+        let existing = try? await bookRepository.getBook(by: bookUrl)
         let book = Book(
             bookUrl: bookUrl,
             tocUrl: bookUrl,
@@ -78,14 +82,16 @@ public final class ImportLocalBookUseCase: Sendable {
             originName: "本地 EPUB",
             name: parsed.title,
             author: parsed.author,
-            coverUrl: coverUrl,
+            coverUrl: coverUrl ?? existing?.coverUrl,
             intro: parsed.intro,
             latestChapterTitle: parsed.chapters.last?.title,
-            durChapterTitle: parsed.chapters.first?.title,
-            durChapterIndex: 0,
-            durChapterTime: 0,
+            durChapterTitle: existing?.durChapterTitle ?? parsed.chapters.first?.title,
+            durChapterIndex: min(existing?.durChapterIndex ?? 0, max(parsed.chapters.count - 1, 0)),
+            durChapterPos: existing?.durChapterPos ?? 0,
+            durChapterTime: existing?.durChapterTime ?? 0,
             wordCount: formatWordCount(parsed.totalWordCount),
-            totalChapterNum: parsed.chapters.count)
+            totalChapterNum: parsed.chapters.count,
+            groupName: existing?.groupName)
 
         try await persistImportedBook(book: book, parsedChapters: parsed.chapters)
         return book
@@ -102,23 +108,46 @@ public final class ImportLocalBookUseCase: Sendable {
             throw LocalBookImportError.emptyContent
         }
 
-        let bookUrl = "local://\(UUID().uuidString)"
+        let bookUrl = await resolveTargetBookUrl(
+            name: title,
+            author: "本地导入",
+            chapterCount: parsedChapters.count)
+        let existing = try? await bookRepository.getBook(by: bookUrl)
         let book = Book(
             bookUrl: bookUrl,
             tocUrl: bookUrl,
             origin: "local",
             originName: "本地书籍",
             name: title,
-            author: "本地导入",
+            author: existing?.author ?? "本地导入",
+            coverUrl: existing?.coverUrl,
             latestChapterTitle: parsedChapters.last?.title,
-            durChapterTitle: parsedChapters.first?.title,
-            durChapterIndex: 0,
-            durChapterTime: 0,
+            durChapterTitle: existing?.durChapterTitle ?? parsedChapters.first?.title,
+            durChapterIndex: min(existing?.durChapterIndex ?? 0, max(parsedChapters.count - 1, 0)),
+            durChapterPos: existing?.durChapterPos ?? 0,
+            durChapterTime: existing?.durChapterTime ?? 0,
             wordCount: formatWordCount(content.count),
-            totalChapterNum: parsedChapters.count)
+            totalChapterNum: parsedChapters.count,
+            groupName: existing?.groupName)
 
         try await persistImportedBook(book: book, parsedChapters: parsedChapters)
         return book
+    }
+
+    private func resolveTargetBookUrl(name: String, author: String, chapterCount: Int) async -> String {
+        guard let shelf = try? await bookRepository.getBookshelf() else {
+            return "local://\(UUID().uuidString)"
+        }
+        let targetName = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if let matched = shelf.first(where: {
+            $0.isLocalFile &&
+                $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == targetName &&
+                WebDAVSyncHelper.authorsMatch($0.author, author) &&
+                ($0.totalChapterNum == 0 || abs($0.totalChapterNum - chapterCount) <= 2)
+        }) {
+            return matched.bookUrl
+        }
+        return "local://\(UUID().uuidString)"
     }
 
     private func persistImportedBook(book: Book, parsedChapters: [ParsedTxtChapter]) async throws {

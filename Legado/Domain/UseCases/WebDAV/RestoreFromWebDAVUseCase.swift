@@ -5,6 +5,7 @@ public final class RestoreFromWebDAVUseCase: @unchecked Sendable {
     private let bookRepository: BookRepository
     private let bookmarkRepository: BookmarkRepository?
     private let bookCacheRepository: BookCacheRepository?
+    private let bookGroupRepository: BookGroupRepository?
     private let webDAVClient: WebDAVClient
     private let replaceRuleStore: ReplaceRuleStore
     private let txtTocRuleStore: TxtTocRuleStore
@@ -15,6 +16,7 @@ public final class RestoreFromWebDAVUseCase: @unchecked Sendable {
         bookRepository: BookRepository,
         bookmarkRepository: BookmarkRepository? = nil,
         bookCacheRepository: BookCacheRepository? = nil,
+        bookGroupRepository: BookGroupRepository? = nil,
         webDAVClient: WebDAVClient = .shared,
         replaceRuleStore: ReplaceRuleStore = .shared,
         txtTocRuleStore: TxtTocRuleStore = .shared,
@@ -23,6 +25,7 @@ public final class RestoreFromWebDAVUseCase: @unchecked Sendable {
         self.bookRepository = bookRepository
         self.bookmarkRepository = bookmarkRepository
         self.bookCacheRepository = bookCacheRepository
+        self.bookGroupRepository = bookGroupRepository
         self.webDAVClient = webDAVClient
         self.replaceRuleStore = replaceRuleStore
         self.txtTocRuleStore = txtTocRuleStore
@@ -302,6 +305,8 @@ private extension RestoreFromWebDAVUseCase {
             localBooks: localBooks,
             skippedUrls: syncResult.skippedUrls)
 
+        try await restoreBookGroups(bundle.bookGroups, books: localBooks)
+
         return ProgressRestoreResult(
             books: syncResult.syncedUrls.count,
             bookmarks: bookmarkCount,
@@ -401,6 +406,40 @@ private extension RestoreFromWebDAVUseCase {
             restored += 1
         }
         return restored
+    }
+
+    func restoreBookGroups(_ remoteGroups: [BookGroup]?, books: [Book]) async throws {
+        guard let bookGroupRepository else { return }
+        let existing = try await bookGroupRepository.getGroups()
+        var existingNames = Set(existing.map(\.name))
+        var existingIds = Set(existing.map(\.id))
+        var nextOrder = (existing.map(\.order).max() ?? -1) + 1
+        let reservedNames: Set<String> = ["全部", "在读", "未读", "完结"]
+
+        for group in remoteGroups ?? [] {
+            let trimmed = group.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty,
+                  !reservedNames.contains(trimmed),
+                  !existingNames.contains(trimmed) else { continue }
+            let groupId = existingIds.contains(group.id) ? UUID().uuidString : group.id
+            try await bookGroupRepository.saveGroup(BookGroup(id: groupId, name: trimmed, order: nextOrder))
+            existingNames.insert(trimmed)
+            existingIds.insert(groupId)
+            nextOrder += 1
+        }
+
+        for book in books {
+            guard let rawName = book.groupName else { continue }
+            let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty,
+                  !reservedNames.contains(trimmed),
+                  !existingNames.contains(trimmed) else { continue }
+            let group = BookGroup(name: trimmed, order: nextOrder)
+            try await bookGroupRepository.saveGroup(group)
+            existingNames.insert(trimmed)
+            existingIds.insert(group.id)
+            nextOrder += 1
+        }
     }
 
     func restoreRulesAndConfig(bundle: WebDAVBackupBundle) -> Int {

@@ -72,4 +72,43 @@ public actor BookmarkRepositoryImpl: BookmarkRepository {
         }
         try modelContext.save()
     }
+
+    public func getBookmarks(bookUrl: String) throws -> [Bookmark] {
+        let predicate = #Predicate<BookmarkEntity> { entity in
+            entity.bookUrl == bookUrl
+        }
+        let descriptor = FetchDescriptor<BookmarkEntity>(
+            predicate: predicate,
+            sortBy: [
+                SortDescriptor(\.chapterIndex, order: .forward),
+                SortDescriptor(\.chapterPos, order: .forward),
+                SortDescriptor(\.time, order: .reverse),
+            ])
+        return try modelContext.fetch(descriptor).map { $0.toDomain() }
+    }
+
+    public func deleteBookmarks(forBookUrl bookUrl: String) throws {
+        let predicate = #Predicate<BookmarkEntity> { entity in
+            entity.bookUrl == bookUrl
+        }
+        let descriptor = FetchDescriptor<BookmarkEntity>(predicate: predicate)
+        for entity in try modelContext.fetch(descriptor) {
+            modelContext.delete(entity)
+        }
+        try modelContext.save()
+    }
+
+    public func updateBookMetadata(bookUrl: String, bookName: String, bookAuthor: String) throws {
+        let predicate = #Predicate<BookmarkEntity> { entity in
+            entity.bookUrl == bookUrl
+        }
+        let descriptor = FetchDescriptor<BookmarkEntity>(predicate: predicate)
+        let entities = try modelContext.fetch(descriptor)
+        guard !entities.isEmpty else { return }
+        for entity in entities {
+            entity.bookName = bookName
+            entity.bookAuthor = bookAuthor
+        }
+        try modelContext.save()
+    }
 }

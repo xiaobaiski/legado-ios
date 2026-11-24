@@ -61,6 +61,15 @@ public struct BookTocSheet: View {
         return list
     }
 
+    private var displayedBookmarks: [Bookmark] {
+        guard !searchText.isEmpty else { return bookmarks }
+        return bookmarks.filter {
+            $0.chapterName.localizedCaseInsensitiveContains(searchText) ||
+                $0.bookText.localizedCaseInsensitiveContains(searchText) ||
+                $0.content.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
     public var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -82,7 +91,7 @@ public struct BookTocSheet: View {
                     get: { searchText },
                     set: { onSearchChange($0) }),
                 placement: .navigationBarDrawer(displayMode: .automatic),
-                prompt: "搜索章节名...")
+                prompt: selectedTab == .toc ? "搜索章节名..." : "搜索书签与笔记...")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") {
@@ -173,9 +182,11 @@ public struct BookTocSheet: View {
                 "暂无书签",
                 systemImage: "bookmark",
                 description: Text("阅读时轻触右上角书签按钮或长按正文添加批注书签"))
+        } else if displayedBookmarks.isEmpty {
+            ContentUnavailableView.search(text: searchText)
         } else {
             List {
-                ForEach(bookmarks) { bookmark in
+                ForEach(displayedBookmarks) { bookmark in
                     bookmarkRow(bookmark)
                         .listRowBackground(Color.clear)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
@@ -275,6 +286,7 @@ private final class TocTableViewController: UITableViewController {
     private var onSelectChapter: (Chapter) -> Void
     private var lastCommandId: UUID?
     private var didInitialScroll = false
+    private var hasUserScrolled = false
     private var lastChapterSignature = ""
 
     init(
@@ -308,13 +320,19 @@ private final class TocTableViewController: UITableViewController {
         guard !didInitialScroll, tableView.bounds.height > 40, !chapters.isEmpty else { return }
         didInitialScroll = true
         scrollToTarget(.currentChapter, animated: false)
-        // Sheet 弹出与 searchable 栏就位后二次居中校正，确保绝对停在当前阅读章节
+        // Sheet 弹出与 searchable 栏就位后二次居中校正，若用户未介入滑动则确保停在当前阅读章节
         DispatchQueue.main.async { [weak self] in
-            self?.scrollToTarget(.currentChapter, animated: false)
+            guard let self, !self.hasUserScrolled else { return }
+            self.scrollToTarget(.currentChapter, animated: false)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-            self?.scrollToTarget(.currentChapter, animated: false)
+            guard let self, !self.hasUserScrolled else { return }
+            self.scrollToTarget(.currentChapter, animated: false)
         }
+    }
+
+    override func scrollViewWillBeginDragging(_: UIScrollView) {
+        hasUserScrolled = true
     }
 
     func applyUpdate(
@@ -339,14 +357,20 @@ private final class TocTableViewController: UITableViewController {
 
         if let command = scrollCommand, command.id != lastCommandId {
             lastCommandId = command.id
+            hasUserScrolled = true
             scrollToTarget(command.target, animated: command.animated)
         }
     }
 
     private func makeSignature(chapters: [Chapter], currentIndex: Int) -> String {
-        let firstIdx = chapters.first?.index ?? -1
-        let lastIdx = chapters.last?.index ?? -1
-        return "\(chapters.count)_\(firstIdx)_\(lastIdx)_\(currentIndex)"
+        var hasher = Hasher()
+        hasher.combine(chapters.count)
+        hasher.combine(currentIndex)
+        for chapter in chapters {
+            hasher.combine(chapter.index)
+            hasher.combine(chapter.title)
+        }
+        return "\(hasher.finalize())"
     }
 
     private func scrollToTarget(_ target: TocScrollCommand.Target, animated: Bool) {
@@ -357,11 +381,10 @@ private final class TocTableViewController: UITableViewController {
         let position: UITableView.ScrollPosition
         switch target {
         case .currentChapter:
-            if let matchedRow = chapters.firstIndex(where: { $0.index == currentChapterIndex }) {
-                targetRow = matchedRow
-            } else {
-                targetRow = min(max(currentChapterIndex, 0), total - 1)
+            guard let matchedRow = chapters.firstIndex(where: { $0.index == currentChapterIndex }) else {
+                return
             }
+            targetRow = matchedRow
             position = .middle
 
         case .top:

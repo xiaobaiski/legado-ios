@@ -217,6 +217,7 @@ private struct ReplaceRuleEditorSheet: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     Toggle("使用正则表达式", isOn: $draft.isRegex)
+                    Toggle("区分大小写", isOn: $draft.isCaseSensitive)
                     Toggle("作用于正文", isOn: $draft.scopeContent)
                     Toggle("作用于章节标题", isOn: $draft.scopeTitle)
                 }

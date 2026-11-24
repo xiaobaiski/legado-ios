@@ -30,8 +30,7 @@ public final class TxtTocRuleStore: @unchecked Sendable {
         let loaded: [TxtTocRule]
         if FileManager.default.fileExists(atPath: storageUrl.path),
            let data = try? Data(contentsOf: storageUrl),
-           let rules = try? JSONDecoder().decode([TxtTocRule].self, from: data),
-           !rules.isEmpty {
+           let rules = try? JSONDecoder().decode([TxtTocRule].self, from: data) {
             loaded = rules.sorted { $0.serialNumber < $1.serialNumber }
         } else {
             loaded = TxtTocRule.defaultRules
@@ -49,7 +48,7 @@ public final class TxtTocRuleStore: @unchecked Sendable {
         defer { lock.unlock() }
 
         let sorted = rules.sorted { $0.serialNumber < $1.serialNumber }
-        cachedRules = sorted.isEmpty ? nil : sorted
+        cachedRules = sorted
 
         let parent = storageUrl.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
@@ -117,7 +116,9 @@ public final class TxtTocRuleStore: @unchecked Sendable {
         var existing = loadRules()
         var count = 0
         for item in validIncoming {
-            if let idx = existing.firstIndex(where: { $0.id == item.id || $0.name == item.name }) {
+            if let idx = existing.firstIndex(where: {
+                $0.id == item.id || (!item.name.isEmpty && $0.name == item.name && $0.rule == item.rule)
+            }) {
                 existing[idx] = item
             } else {
                 existing.append(item)

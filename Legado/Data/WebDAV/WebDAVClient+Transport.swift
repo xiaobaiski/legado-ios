@@ -3,7 +3,7 @@ import Foundation
 // MARK: - WebDAV 请求执行、子目录传输、重定向保活与错误诊断扩展
 
 extension WebDAVClient {
-    /// 检查并逐级创建远程目录与可选子目录
+    /// 检查并逐级创建远程目录与可选子目录（中间父级目录如 403/405 允许继续向下探测）
     public func createDirectoryIfNeeded(subdirectories: [String], config: WebDAVConfig) async throws {
         guard config.isValid else { throw WebDAVError.invalidConfig }
         let cleanSubdirs = subdirectories.filter { !$0.isEmpty }
@@ -22,8 +22,17 @@ extension WebDAVClient {
             if code == 401 {
                 throw WebDAVError.unauthorized
             }
-            if code == 403 {
-                throw WebDAVError.forbidden
+            if code == 403 && count == segments.count {
+                // 部分服务器对已存在目录发 MKCOL 也返回 403，探测不可用时再报错
+                let probe = makeRequest(
+                    url: url,
+                    method: "PROPFIND",
+                    config: config,
+                    headers: ["Depth": "0"])
+                if let (_, probeResp) = try? await performRequest(probe, config: config),
+                   !(200 ... 207).contains(probeResp.statusCode) {
+                    throw WebDAVError.forbidden
+                }
             }
         }
     }
@@ -172,7 +181,7 @@ extension WebDAVClient {
                 request.setValue("Basic \(base64)", forHTTPHeaderField: "Authorization")
             }
         }
-        request.setValue("Legado-iOS/1.3.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("Legado-iOS/1.4.1", forHTTPHeaderField: "User-Agent")
     }
 
     static func mapNetworkError(_ error: Error, url: URL?) -> WebDAVError {

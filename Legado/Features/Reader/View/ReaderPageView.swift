@@ -75,6 +75,9 @@ public struct ReaderPageView: View {
                     Spacer().frame(height: topHeight)
                 }
 
+                let extraTitleTop = (page.titlePrefixLength > 0 && config.titleStyle.alignment != .hidden)
+                    ? config.titleStyle.topSpacing
+                    : 0
                 CoreTextPageCanvas(
                     content: page.contentText,
                     titlePrefixLength: page.titlePrefixLength,
@@ -82,7 +85,8 @@ public struct ReaderPageView: View {
                     .frame(maxWidth: maxContentWidth ?? .infinity, maxHeight: .infinity)
                     .padding(.leading, leadingPadding)
                     .padding(.trailing, trailingPadding)
-                    .padding(.vertical, halfCanvasPad)
+                    .padding(.top, halfCanvasPad + extraTitleTop)
+                    .padding(.bottom, halfCanvasPad)
 
                 if config.showFooter {
                     VStack(spacing: 3) {
@@ -348,7 +352,9 @@ private final class CoreTextDrawView: UIView {
         }
 
         if cachedFrame == nil || cachedFrameSize != bounds.size {
-            let path = CGPath(rect: bounds, transform: nil)
+            // 底部向下预留 24pt 余量，避免高分屏亚像素舍入导致 CTFrame 吞掉最后一行正文
+            let drawRect = CGRect(x: 0, y: -24, width: bounds.width, height: bounds.height + 24)
+            let path = CGPath(rect: drawRect, transform: nil)
             cachedFrame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
             cachedFrameSize = bounds.size
         }

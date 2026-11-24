@@ -2,12 +2,14 @@ import SwiftUI
 
 /// 书籍详情页面视图 (纯声明式渲染 View = f(State))
 public struct BookDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var environment: AppEnvironment
     @StateObject var viewModel: BookDetailViewModel
     @State private var toastMessage: String?
     @State private var hapticTrigger = false
     @State private var readerDestination: ReaderDestination?
+    @State private var isShowingRemoveConfirm = false
 
     public init(viewModel: BookDetailViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -72,9 +74,12 @@ public struct BookDetailView: View {
                     durChapterIndex: viewModel.state.book.durChapterIndex,
                     isReverse: viewModel.state.isReverseToc,
                     searchText: viewModel.state.tocSearchText,
+                    bookmarks: viewModel.state.bookmarks,
                     onToggleReverse: { viewModel.send(.toggleTocReverse) },
                     onSearchChange: { viewModel.send(.updateTocSearch($0)) },
-                    onSelectChapter: { viewModel.send(.selectChapter($0)) })
+                    onSelectChapter: { viewModel.send(.selectChapter($0)) },
+                    onSelectBookmark: { viewModel.send(.selectBookmark($0)) },
+                    onDeleteBookmark: { viewModel.send(.deleteBookmark(id: $0.id)) })
         }
         .sensoryFeedback(.impact(weight: .light), trigger: hapticTrigger)
         .onReceive(viewModel.effectPublisher) { effect in
@@ -95,6 +100,12 @@ public struct BookDetailView: View {
 
             case let .navigateToReader(chapterIndex):
                 readerDestination = ReaderDestination(book: viewModel.state.book, chapterIndex: chapterIndex)
+
+            case let .navigateToBookmark(chapterIndex, offset):
+                readerDestination = ReaderDestination(
+                    book: viewModel.state.book,
+                    chapterIndex: chapterIndex,
+                    initialOffset: offset)
             }
         }
         .fullScreenCover(
@@ -103,8 +114,22 @@ public struct BookDetailView: View {
             content: { dest in
                 ReaderView(viewModel: environment.makeReaderViewModel(
                     book: dest.book,
-                    initialChapterIndex: dest.chapterIndex))
+                    initialChapterIndex: dest.chapterIndex,
+                    initialOffset: dest.initialOffset))
             })
+        .alert("移出书架", isPresented: $isShowingRemoveConfirm) {
+            Button("取消", role: .cancel) {}
+            Button("确认移出", role: .destructive) {
+                let isLocal = viewModel.state.book.isLocalFile
+                viewModel.send(.toggleBookshelf)
+                environment.notifyBookshelfNeedsRefresh()
+                if isLocal {
+                    dismiss()
+                }
+            }
+        } message: {
+            Text("确定将《\(viewModel.state.book.name)》从书架移出吗？本地书籍的章节正文与封面也会同步删除。")
+        }
         .overlay(alignment: .bottom) {
             if let toastMessage {
                 Text(toastMessage)
@@ -210,14 +235,16 @@ public struct BookDetailView: View {
     // MARK: - 操作按钮栏
 
     private var actionButtons: some View {
-        HStack(spacing: 12) {
+        let book = viewModel.state.book
+        let hasStarted = book.durChapterIndex > 0 || book.durChapterPos > 0 || book.durChapterTime > 0
+        return HStack(spacing: 12) {
             // 开始阅读按钮
             Button {
-                readerDestination = ReaderDestination(book: viewModel.state.book)
+                readerDestination = ReaderDestination(book: book)
             } label: {
                 HStack {
                     Image(systemName: "book.fill")
-                    Text(viewModel.state.book.durChapterIndex > 0 ? "继续阅读" : "开始阅读")
+                    Text(hasStarted ? "继续阅读" : "开始阅读")
                 }
                 .font(.headline)
                 .frame(maxWidth: .infinity)
@@ -227,7 +254,11 @@ public struct BookDetailView: View {
 
             // 加入/移出书架按钮
             Button {
-                viewModel.send(.toggleBookshelf)
+                if viewModel.state.isInBookshelf {
+                    isShowingRemoveConfirm = true
+                } else {
+                    viewModel.send(.toggleBookshelf)
+                }
             } label: {
                 HStack {
                     Image(

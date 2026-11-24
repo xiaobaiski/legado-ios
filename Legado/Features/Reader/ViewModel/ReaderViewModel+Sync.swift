@@ -4,6 +4,34 @@ import UIKit
 // MARK: - 阅读进度加载、WebDAV 实时同步、分页计算与配置持久扩展
 
 extension ReaderViewModel {
+    var currentScrollTargetOffset: Int {
+        pendingRestoreOffset ?? state.currentPage?.textRange.location ?? state.book.durChapterPos
+    }
+
+    func handleUpdateScreenBounds(_ rect: CGRect) {
+        guard state.screenBounds != rect, rect.width > 50 else { return }
+        updateState { $0.screenBounds = rect }
+        if state.isLoading {
+            if !state.chapters.isEmpty {
+                loadChapterContent(
+                    chapterIndex: state.currentChapterIndex,
+                    targetPageIndex: pendingTargetPageIndex ?? 0,
+                    targetOffset: pendingRestoreOffset,
+                    persistProgress: pendingRestoreOffset == nil && (pendingTargetPageIndex ?? 0) > 0)
+            }
+        } else if state.pages.isEmpty {
+            if !state.chapters.isEmpty {
+                loadChapterContent(
+                    chapterIndex: state.currentChapterIndex,
+                    targetPageIndex: pendingTargetPageIndex ?? 0,
+                    targetOffset: pendingRestoreOffset,
+                    persistProgress: false)
+            }
+        } else {
+            repaginateCurrentChapter()
+        }
+    }
+
     func loadTocAndStartReading() {
         loadTocTask?.cancel()
         loadTocTask = Task { [weak self] in
@@ -65,7 +93,7 @@ extension ReaderViewModel {
                 chapterIndex: clampedChapter,
                 targetPageIndex: 0,
                 targetOffset: self.pendingRestoreOffset,
-                persistProgress: false)
+                persistProgress: self.explicitInitialChapterIndex != nil)
 
             if self.explicitInitialChapterIndex == nil {
                 self.startRealtimeProgressPull(for: book)
@@ -108,6 +136,14 @@ extension ReaderViewModel {
     }
 
     func repaginateCurrentChapter() {
+        if state.isLoading {
+            loadChapterContent(
+                chapterIndex: state.currentChapterIndex,
+                targetPageIndex: pendingTargetPageIndex ?? 0,
+                targetOffset: pendingRestoreOffset,
+                persistProgress: pendingRestoreOffset == nil && (pendingTargetPageIndex ?? 0) > 0)
+            return
+        }
         guard let chapter = state.currentChapter else { return }
         repaginateTask?.cancel()
         let currentOffset = pendingRestoreOffset ?? state.currentPage?.textRange.location ?? 0
@@ -147,6 +183,11 @@ extension ReaderViewModel {
             }
             if self.state.screenBounds.width > 50 {
                 self.pendingRestoreOffset = nil
+                self.pendingTargetPageIndex = nil
+            }
+            let newOffset = self.state.currentPage?.textRange.location ?? 0
+            if newOffset != self.state.book.durChapterPos {
+                self.saveReadingProgress()
             }
         }
     }
@@ -166,6 +207,7 @@ extension ReaderViewModel {
 
     func applyLoadedPages(
         _ pages: [ReaderPage],
+        forChapterIndex chapterIndex: Int,
         targetOffset: Int?,
         targetPageIndex: Int,
         hasRealBounds: Bool,
@@ -179,10 +221,11 @@ extension ReaderViewModel {
             state.pages = pages
             state.currentPageIndex = safePageIndex
         }
-        if hasRealBounds {
+        if hasRealBounds && state.currentChapterIndex == chapterIndex {
             pendingRestoreOffset = nil
+            pendingTargetPageIndex = nil
         }
-        if persistProgress {
+        if persistProgress || (hasRealBounds && state.book.durChapterTime == 0) {
             saveReadingProgress()
         }
     }
@@ -218,10 +261,37 @@ extension ReaderViewModel {
         return 0
     }
 
-    func applyNewConfig(_ newConfig: ReaderConfig, triggerHaptic: Bool = true) {
+    func handleSyncScrollOffset(_ offset: Int) {
+        guard !state.pages.isEmpty, let chapter = state.currentChapter else { return }
+        navigationGeneration += 1
+        let clampedOffset = max(offset, 0)
+        let pageIdx = Self.pageIndex(forOffset: clampedOffset, in: state.pages)
+        var updated = state.book
+        updated.durChapterIndex = state.currentChapterIndex
+        updated.durChapterPos = clampedOffset
+        updated.durChapterTitle = chapter.title
+        updated.durChapterTime = Int64(Date().timeIntervalSince1970 * 1000)
+
+        updateState {
+            $0.currentPageIndex = pageIdx
+            $0.book = updated
+        }
+        realtimeSyncService?.scheduleProgressPush(book: updated)
+
+        scrollSaveTask?.cancel()
+        let repository = bookRepository
+        scrollSaveTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            guard !Task.isCancelled, let latestBook = self?.state.book else { return }
+            try? await repository.saveBook(latestBook)
+        }
+    }
+
+    func applyNewConfig(_ newConfig: ReaderConfig, triggerHaptic: Bool = false) {
         let oldConfig = state.config
         updateState { $0.config = newConfig }
         ReaderConfigStore.save(newConfig)
+        realtimeSyncService?.noteLocalRulesModified()
         realtimeSyncService?.scheduleRulesPush()
         if newConfig.requiresRepagination(comparedTo: oldConfig) {
             repaginateCurrentChapter()
@@ -232,6 +302,15 @@ extension ReaderViewModel {
     }
 
     func flushRealtimeProgressSync() {
+        scrollSaveTask?.cancel()
+        scrollSaveTask = nil
+        if !state.pages.isEmpty, state.currentChapter != nil {
+            let repository = bookRepository
+            let latestBook = state.book
+            Task {
+                try? await repository.saveBook(latestBook)
+            }
+        }
         realtimeSyncService?.flushPendingProgressPush()
         realtimeSyncService?.flushPendingRulesPush()
     }
@@ -244,6 +323,8 @@ extension ReaderViewModel {
 
     func saveReadingProgress() {
         guard !state.pages.isEmpty, let chapter = state.currentChapter else { return }
+        scrollSaveTask?.cancel()
+        scrollSaveTask = nil
         var updated = state.book
         updated.durChapterIndex = state.currentChapterIndex
         updated.durChapterPos = state.currentPage?.textRange.location ?? 0

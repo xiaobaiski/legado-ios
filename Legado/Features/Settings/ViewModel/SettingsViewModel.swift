@@ -11,6 +11,11 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
     private let realtimeSyncService: WebDAVRealtimeSyncService?
     private let onBookshelfUpdated: (@MainActor () -> Void)?
     private var cancellables = Set<AnyCancellable>()
+    nonisolated(unsafe) private var saveConfigTask: Task<Void, Never>?
+
+    deinit {
+        saveConfigTask?.cancel()
+    }
 
     public init(
         webDAVClient: WebDAVClient = .shared,
@@ -30,11 +35,13 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
         let savedConfig = WebDAVConfigStore.loadForEditing()
         let initialCacheSize = manageBookCacheUseCase?.calculateTotalCacheSize() ?? 0
         let initialSyncStatus = realtimeSyncService?.status ?? WebDAVRealtimeSyncStatus()
+        let initialTodaySeconds = ReadRecordStore.shared.todayReadSeconds()
 
         super.init(initialState: SettingsState(
             webDAVConfig: savedConfig,
             realtimeSyncStatus: initialSyncStatus,
             cacheSizeBytes: initialCacheSize,
+            todayReadSeconds: initialTodaySeconds,
             readerConfig: ReaderConfigStore.load(),
             importedFonts: LocalFontManager.shared.listImportedFonts()))
 
@@ -90,23 +97,27 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             mutateWebDAVConfig { $0.remoteDirectory = val }
 
         case let .updateWebDAVAllowInsecureCert(allowed):
-            mutateWebDAVConfig { $0.allowInsecureCertificate = allowed }
+            mutateWebDAVConfig(immediateSave: true) { $0.allowInsecureCertificate = allowed }
 
         case let .updateWebDAVSyncOptions(options):
-            mutateWebDAVConfig { $0.syncOptions = options }
+            mutateWebDAVConfig(immediateSave: true) { $0.syncOptions = options }
 
         default:
             break
         }
     }
 
-    private func mutateWebDAVConfig(_ mutate: (inout WebDAVConfig) -> Void) {
+    private func mutateWebDAVConfig(immediateSave: Bool = false, _ mutate: (inout WebDAVConfig) -> Void) {
         updateState {
             mutate(&$0.webDAVConfig)
             $0.errorMessage = nil
             $0.successMessage = nil
         }
-        saveCurrentConfig()
+        if immediateSave {
+            flushPendingConfigSave()
+        } else {
+            scheduleConfigSave()
+        }
     }
 
     private func handleSyncIntent(_ intent: SettingsIntent) {
@@ -155,6 +166,7 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
             updateState {
                 $0.readerConfig = ReaderConfigStore.load()
                 $0.importedFonts = LocalFontManager.shared.listImportedFonts()
+                $0.todayReadSeconds = ReadRecordStore.shared.todayReadSeconds()
             }
 
         case let .updateReaderConfig(config):
@@ -204,8 +216,8 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
                 var lastError: Error?
                 for url in urls {
                     do {
-                        let font = try LocalFontManager.shared.importFont(from: url)
-                        imported.append(font)
+                        let fonts = try LocalFontManager.shared.importFonts(from: url)
+                        imported.append(contentsOf: fonts)
                     } catch {
                         lastError = error
                     }
@@ -225,7 +237,7 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
                 self.realtimeSyncService?.scheduleRulesPush()
                 let msg = result.0.count == 1
                     ? "已导入并应用字体「\(first.displayName)」"
-                    : "成功导入 \(result.0.count) 款本地字体"
+                    : "成功导入 \(result.0.count) 款字体样式并应用「\(first.displayName)」"
                 self.emitEffect(.showToast(msg))
                 self.emitEffect(.hapticFeedback)
             } else if let lastError = result.2 {
@@ -236,10 +248,10 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
 
     private func handleDeleteLocalFont(_ font: ImportedFont) {
         do {
-            try LocalFontManager.shared.deleteFont(font)
+            let removedNames = try LocalFontManager.shared.deleteFont(font)
             let updatedFonts = LocalFontManager.shared.listImportedFonts()
             updateState { $0.importedFonts = updatedFonts }
-            if state.readerConfig.customFontName == font.postScriptName {
+            if let currentName = state.readerConfig.customFontName, removedNames.contains(currentName) {
                 var updated = state.readerConfig
                 updated.customFontName = nil
                 updated.customFontDisplayName = nil
@@ -360,6 +372,7 @@ private extension SettingsViewModel {
         setBusy: @escaping (inout SettingsState, Bool) -> Void,
         failurePrefix: String,
         operation: @escaping @MainActor (WebDAVConfig) async throws -> Void) {
+        flushPendingConfigSave()
         guard state.webDAVConfig.isValid else {
             let msg = "请输入有效的 WebDAV 服务器地址"
             updateState {
@@ -393,6 +406,21 @@ private extension SettingsViewModel {
                 self.emitEffect(.showToast("\(failurePrefix): \(error.localizedDescription)"))
             }
         }
+    }
+
+    func scheduleConfigSave() {
+        saveConfigTask?.cancel()
+        saveConfigTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.saveCurrentConfig()
+        }
+    }
+
+    func flushPendingConfigSave() {
+        saveConfigTask?.cancel()
+        saveConfigTask = nil
+        saveCurrentConfig()
     }
 
     func saveCurrentConfig() {

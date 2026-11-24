@@ -11,6 +11,8 @@ public enum ReaderIntent: ViewIntent, Equatable, Sendable {
     case prevPage
     /// 跳转到当前章节特定页码
     case jumpToPage(Int)
+    /// 同步连续滚动模式下的当前阅读字符偏移
+    case syncScrollOffset(Int)
     /// 切换 HUD 唤出/隐藏
     case toggleHUD
     /// 隐藏 HUD

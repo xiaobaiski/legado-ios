@@ -16,11 +16,16 @@ public enum BookDetailIntent: ViewIntent, Equatable, Sendable {
     case updateTocSearch(String)
     /// 点击某个目录章节直接阅读
     case selectChapter(Chapter)
+    /// 点击某个书签跳转阅读
+    case selectBookmark(Bookmark)
+    /// 删除指定书签
+    case deleteBookmark(id: String)
 }
 
 /// 书籍详情一次性副作用
 public enum BookDetailEffect: ViewEffect, Equatable, Sendable {
     case showToast(String)
     case navigateToReader(chapterIndex: Int)
+    case navigateToBookmark(chapterIndex: Int, offset: Int)
     case hapticFeedback
 }

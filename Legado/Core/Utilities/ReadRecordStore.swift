@@ -48,8 +48,18 @@ public final class ReadRecordStore: @unchecked Sendable {
                 wordsRead: max(wordsRead, 0)))
         }
 
-        let dayKey = Self.dayKey(for: date)
-        payload.dailySeconds[dayKey, default: 0] += durationSeconds
+        let startDate = date.addingTimeInterval(-durationSeconds)
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: date)
+        if startDate < todayStart {
+            let afterMidnight = max(0, date.timeIntervalSince(todayStart))
+            let beforeMidnight = max(0, durationSeconds - afterMidnight)
+            let prevDayDate = todayStart.addingTimeInterval(-1)
+            payload.dailySeconds[Self.dayKey(for: prevDayDate), default: 0] += beforeMidnight
+            payload.dailySeconds[Self.dayKey(for: date), default: 0] += afterMidnight
+        } else {
+            payload.dailySeconds[Self.dayKey(for: date), default: 0] += durationSeconds
+        }
         savePayloadUnlocked(payload)
     }
 

@@ -7,14 +7,22 @@ extension ReaderViewModel {
         switch intent {
         case let .updateConfig(newConfig):
             let prevMode = state.config.autoPageMode
-            applyNewConfig(newConfig)
+            let oldConfig = state.config
+            let isDiscreteToggle = oldConfig.theme != newConfig.theme
+                || oldConfig.pageTurnMode != newConfig.pageTurnMode
+                || oldConfig.fontWeight != newConfig.fontWeight
+                || oldConfig.paragraphIndent != newConfig.paragraphIndent
+                || oldConfig.isTextJustified != newConfig.isTextJustified
+                || oldConfig.followSystemBrightness != newConfig.followSystemBrightness
+                || oldConfig.isHapticEnabled != newConfig.isHapticEnabled
+            applyNewConfig(newConfig, triggerHaptic: isDiscreteToggle)
             if state.isAutoPaging && prevMode != newConfig.autoPageMode {
                 restartAutoPageTimer()
             }
 
         case .resetConfig:
             let defaults = ReaderConfigStore.reset()
-            applyNewConfig(defaults)
+            applyNewConfig(defaults, triggerHaptic: true)
             emitEffect(.showToast("已恢复默认阅读排版"))
 
         case .openMoreSettings:
@@ -54,7 +62,7 @@ extension ReaderViewModel {
             var updated = state.config
             updated.customFontName = font.postScriptName
             updated.customFontDisplayName = font.displayName
-            applyNewConfig(updated)
+            applyNewConfig(updated, triggerHaptic: true)
 
         case let .deleteImportedFont(font):
             handleDeleteImportedFont(font)
@@ -79,8 +87,8 @@ extension ReaderViewModel {
                 var lastError: Error?
                 for url in urls {
                     do {
-                        let font = try LocalFontManager.shared.importFont(from: url)
-                        imported.append(font)
+                        let fonts = try LocalFontManager.shared.importFonts(from: url)
+                        imported.append(contentsOf: fonts)
                     } catch {
                         lastError = error
                     }
@@ -96,7 +104,7 @@ extension ReaderViewModel {
                 var updated = self.state.config
                 updated.customFontName = first.postScriptName
                 updated.customFontDisplayName = first.displayName
-                self.applyNewConfig(updated)
+                self.applyNewConfig(updated, triggerHaptic: true)
                 let msg = result.0.count == 1
                     ? "已导入并应用字体「\(first.displayName)」"
                     : "成功导入 \(result.0.count) 款本地字体"
@@ -109,14 +117,14 @@ extension ReaderViewModel {
 
     func handleDeleteImportedFont(_ font: ImportedFont) {
         do {
-            try LocalFontManager.shared.deleteFont(font)
+            let removedNames = try LocalFontManager.shared.deleteFont(font)
             let updatedFonts = LocalFontManager.shared.listImportedFonts()
             updateState { $0.importedFonts = updatedFonts }
-            if state.config.customFontName == font.postScriptName {
+            if let active = state.config.customFontName, removedNames.contains(active) {
                 var updated = state.config
                 updated.customFontName = nil
                 updated.customFontDisplayName = nil
-                applyNewConfig(updated)
+                applyNewConfig(updated, triggerHaptic: true)
             }
             emitEffect(.showToast("已删除字体「\(font.displayName)」"))
             emitHapticIfEnabled()
@@ -163,8 +171,12 @@ extension ReaderViewModel {
                 if self.state.isHUDVisible || self.state.isMoreSettingsVisible || self.state.isTocSheetVisible {
                     continue
                 }
+                let step = self.state.config.isDualPageActive(for: self.state.screenBounds) ? 2 : 1
+                let aligned = step == 2
+                    ? (self.state.currentPageIndex - self.state.currentPageIndex % 2)
+                    : self.state.currentPageIndex
                 let isLastPageOfBook = self.state.currentChapterIndex + 1 >= self.state.chapters.count &&
-                    self.state.currentPageIndex + 1 >= self.state.pages.count
+                    aligned + step >= self.state.pages.count
                 if isLastPageOfBook {
                     self.stopAutoPageTimer()
                     self.emitEffect(.showToast("已自动阅读至全书末尾"))
@@ -188,6 +200,7 @@ extension ReaderViewModel {
     }
 
     func notifyRulesChanged() {
+        realtimeSyncService?.noteLocalRulesModified()
         realtimeSyncService?.scheduleRulesPush()
         repaginateCurrentChapter()
     }

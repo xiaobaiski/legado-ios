@@ -30,8 +30,21 @@ public final class ReplaceRuleStore: @unchecked Sendable {
         let loaded: [ReplaceRule]
         if FileManager.default.fileExists(atPath: storageUrl.path),
            let data = try? Data(contentsOf: storageUrl),
-           let rules = try? JSONDecoder().decode([ReplaceRule].self, from: data) {
+           var rules = try? JSONDecoder().decode([ReplaceRule].self, from: data) {
+            let legacyPromoPattern = "((https?://)?([a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,}(/[a-zA-Z0-9#?&._-]*)?)"
+            var migrated = false
+            if let idx = rules.firstIndex(where: {
+                $0.id == "builtin-promo-url" && $0.pattern == legacyPromoPattern
+            }), let updatedDefault = PurifyContentUseCase.defaultRules.first(where: {
+                $0.id == "builtin-promo-url"
+            }) {
+                rules[idx].pattern = updatedDefault.pattern
+                migrated = true
+            }
             loaded = rules.sorted { $0.order < $1.order }
+            if migrated {
+                persistUnlocked(loaded)
+            }
         } else {
             loaded = PurifyContentUseCase.defaultRules
         }
@@ -45,12 +58,15 @@ public final class ReplaceRuleStore: @unchecked Sendable {
 
         let sorted = rules.sorted { $0.order < $1.order }
         cachedRules = sorted
+        persistUnlocked(sorted)
+    }
 
+    private func persistUnlocked(_ rules: [ReplaceRule]) {
         let parent = storageUrl.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let data = try? encoder.encode(sorted) {
+        if let data = try? encoder.encode(rules) {
             try? data.write(to: storageUrl, options: .atomic)
         }
     }

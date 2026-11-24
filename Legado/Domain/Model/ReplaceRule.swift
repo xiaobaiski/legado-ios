@@ -163,7 +163,7 @@ public struct ReplaceRule: Identifiable, Codable, Equatable, Sendable {
 
     /// 校验规则合法性（与 Legado Android ReplaceRule.isValid() 对齐）
     public var isValid: Bool {
-        guard !pattern.isEmpty else { return false }
+        guard !pattern.isEmpty, scopeContent || scopeTitle else { return false }
         if isRegex {
             if pattern.hasSuffix("|") && !pattern.hasSuffix("\\|") {
                 return false

@@ -205,7 +205,7 @@ public enum TxtTocParser {
         return merged
     }
 
-    /// 保底分卷：按每 4000 字符切分为连续小节
+    /// 保底分卷：优先在段落换行处切分，避免截断句子（每节约 3500~4200 字）
     private static func fallbackChunkSplit(text: String) -> [ParsedTxtChapter] {
         let chunkSize = 4000
         var chapters: [ParsedTxtChapter] = []
@@ -213,8 +213,15 @@ public enum TxtTocParser {
         var partIndex = 1
 
         while currentIndex < text.endIndex {
-            let nextIndex = text.index(currentIndex, offsetBy: chunkSize, limitedBy: text.endIndex) ?? text.endIndex
-            let chunk = String(text[currentIndex ..< nextIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let hardLimit = text.index(currentIndex, offsetBy: chunkSize, limitedBy: text.endIndex) ?? text.endIndex
+            var splitIndex = hardLimit
+            if hardLimit < text.endIndex,
+               let minSearch = text.index(currentIndex, offsetBy: 2800, limitedBy: hardLimit),
+               let newlineRange = text.range(of: "\n", options: .backwards, range: minSearch ..< hardLimit) {
+                splitIndex = newlineRange.upperBound
+            }
+
+            let chunk = String(text[currentIndex ..< splitIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
             if !chunk.isEmpty {
                 chapters.append(ParsedTxtChapter(
                     title: "第 \(partIndex) 节",
@@ -222,7 +229,7 @@ public enum TxtTocParser {
                     index: partIndex - 1))
                 partIndex += 1
             }
-            currentIndex = nextIndex
+            currentIndex = splitIndex
         }
 
         if chapters.isEmpty {

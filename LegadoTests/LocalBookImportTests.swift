@@ -218,6 +218,83 @@ struct LocalBookImportTests {
         #expect(ch1Content?.contains("星光洒满舷窗") == true)
     }
 
+    @Test("EPUB parser preserves div text, br line breaks, single blockquote text, and nav epub:type=toc")
+    func epubParserPreservesDivBrSingleBlockquoteAndTocNav() async throws {
+        let containerXml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+          <rootfiles>
+            <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+          </rootfiles>
+        </container>
+        """
+        let contentOpf = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <dc:title>结构解析测试</dc:title>
+            <dc:creator>测试作者</dc:creator>
+          </metadata>
+          <manifest>
+            <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+            <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+          </manifest>
+          <spine>
+            <itemref idref="ch1"/>
+          </spine>
+        </package>
+        """
+        let navHtml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+          <body>
+            <nav epub:type="landmarks">
+              <ol><li><a href="ch1.xhtml">封面导览</a></li></ol>
+            </nav>
+            <nav epub:type="toc">
+              <ol><li><a href="ch1.xhtml">第一章 真实目录</a></li></ol>
+            </nav>
+          </body>
+        </html>
+        """
+        let ch1Html = """
+        <html><body>
+          <div>第一行<br/>第二行</div>
+          <blockquote><p>引用段落唯一文本</p></blockquote>
+        </body></html>
+        """
+
+        let epubData = Self.makeStoredZip(entries: [
+            ("META-INF/container.xml", Data(containerXml.utf8)),
+            ("OEBPS/content.opf", Data(contentOpf.utf8)),
+            ("OEBPS/nav.xhtml", Data(navHtml.utf8)),
+            ("OEBPS/ch1.xhtml", Data(ch1Html.utf8)),
+        ])
+
+        let tempEpub = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test_div_nav_\(UUID().uuidString).epub")
+        try epubData.write(to: tempEpub)
+        defer { try? FileManager.default.removeItem(at: tempEpub) }
+
+        let provider = ModelContainerProvider(inMemory: true)
+        let bookRepo = BookRepositoryImpl(modelContainer: provider.container)
+        let tempCacheDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TestEpubDivCache_\(UUID().uuidString)", isDirectory: true)
+        let cacheRepo = BookCacheRepositoryImpl(baseDirectory: tempCacheDir)
+        defer { try? FileManager.default.removeItem(at: tempCacheDir) }
+
+        let useCase = ImportLocalBookUseCase(bookRepository: bookRepo, bookCacheRepository: cacheRepo)
+        let book = try await useCase.execute(fileUrl: tempEpub)
+        let chapters = try await bookRepo.getChapters(for: book.bookUrl)
+        let content = cacheRepo.getCachedChapterContent(bookUrl: book.bookUrl, index: 0) ?? ""
+
+        #expect(chapters.count == 1)
+        #expect(chapters[0].title == "第一章 真实目录")
+        #expect(content.contains("第一行\n第二行"))
+        #expect(content.contains("引用段落唯一文本"))
+        #expect(content.components(separatedBy: "引用段落唯一文本").count - 1 == 1)
+    }
+
     private static func makeStoredZip(entries: [(String, Data)]) -> Data {
         var output = Data()
         var centralDir = Data()

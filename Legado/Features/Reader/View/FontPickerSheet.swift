@@ -5,6 +5,7 @@ public struct FontPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
     @State private var systemFonts: [SystemFontOption] = []
+    @State private var isDocumentPickerPresented = false
 
     let selectedPostScriptName: String?
     let importedFonts: [ImportedFont]
@@ -12,6 +13,7 @@ public struct FontPickerSheet: View {
     let onSelectFont: (_ postScriptName: String, _ displayName: String) -> Void
     let onDeleteImportedFont: (ImportedFont) -> Void
     let onOpenFontImporter: () -> Void
+    let onImportFontURLs: (([URL]) -> Void)?
 
     public init(
         selectedPostScriptName: String?,
@@ -19,13 +21,23 @@ public struct FontPickerSheet: View {
         onSelectSystemDefault: @escaping () -> Void,
         onSelectFont: @escaping (_ postScriptName: String, _ displayName: String) -> Void,
         onDeleteImportedFont: @escaping (ImportedFont) -> Void,
-        onOpenFontImporter: @escaping () -> Void) {
+        onOpenFontImporter: @escaping () -> Void = {},
+        onImportFontURLs: (([URL]) -> Void)? = nil) {
         self.selectedPostScriptName = selectedPostScriptName
         self.importedFonts = importedFonts
         self.onSelectSystemDefault = onSelectSystemDefault
         self.onSelectFont = onSelectFont
         self.onDeleteImportedFont = onDeleteImportedFont
         self.onOpenFontImporter = onOpenFontImporter
+        self.onImportFontURLs = onImportFontURLs
+    }
+
+    private var filteredImportedFonts: [ImportedFont] {
+        guard !searchText.isEmpty else { return importedFonts }
+        return importedFonts.filter {
+            $0.displayName.localizedCaseInsensitiveContains(searchText) ||
+                $0.postScriptName.localizedCaseInsensitiveContains(searchText)
+        }
     }
 
     private var filteredSystemFonts: [SystemFontOption] {
@@ -45,11 +57,11 @@ public struct FontPickerSheet: View {
             }
             .navigationTitle("选择阅读字体")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $searchText, prompt: "搜索设备已安装字体...")
+            .searchable(text: $searchText, prompt: "搜索设备已安装或导入字体...")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        onOpenFontImporter()
+                        triggerFontImporter()
                     } label: {
                         Label("导入字体", systemImage: "plus")
                     }
@@ -66,8 +78,31 @@ public struct FontPickerSheet: View {
                     systemFonts = LocalFontManager.shared.listAvailableSystemFonts()
                 }
             }
+            .sheet(isPresented: $isDocumentPickerPresented) {
+                DocumentPickerView(
+                    allowedContentTypes: LocalFontManager.allowedContentTypes,
+                    allowsMultipleSelection: true,
+                    onPick: { urls in
+                        isDocumentPickerPresented = false
+                        if !urls.isEmpty {
+                            onImportFontURLs?(urls)
+                        }
+                    },
+                    onCancel: {
+                        isDocumentPickerPresented = false
+                    })
+                    .ignoresSafeArea()
+            }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private func triggerFontImporter() {
+        if onImportFontURLs != nil {
+            isDocumentPickerPresented = true
+        } else {
+            onOpenFontImporter()
+        }
     }
 
     private var defaultSection: some View {
@@ -103,7 +138,7 @@ public struct FontPickerSheet: View {
                 Label("导入本地字体文件 (TTF / OTF / TTC)", systemImage: "doc.badge.plus")
             }
 
-            ForEach(importedFonts) { font in
+            ForEach(filteredImportedFonts) { font in
                 let isSelected = selectedPostScriptName == font.postScriptName
                 HStack {
                     Button {

@@ -228,7 +228,7 @@ private extension ReaderHUDView {
     }
 
     var bottomControlBar: some View {
-        let isPageMode = config.progressBarBehavior == .page && totalPages > 1
+        let isPageMode = config.progressBarBehavior == .page
         let itemTotal = isPageMode ? totalPages : totalChapters
         let currentItem = isPageMode ? currentPageIndex : currentChapterIndex
         let maxIndex = max(itemTotal - 1, 1)

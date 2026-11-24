@@ -1668,6 +1668,79 @@ struct PurifyAndWebDAVSyncTests {
         _ = env.makeBookSearchContentViewModel(book: sampleBook, chapters: chapters)
         _ = env.makeSettingsViewModel()
     }
+
+    @Test("Builtin promo URL rule strips real promo domains without corrupting English sentences")
+    func builtinPromoUrlRulePreservesEnglishWords() {
+        let input = "Mr.Smith walked to St.Millom yesterday. "
+            + "请访问 www.biquge123.com 或 test-site.vip/read 获取最新更新"
+        let output = PurifyContentUseCase.shared.processContent(
+            input,
+            rules: PurifyContentUseCase.defaultRules,
+            enableReplace: true,
+            removeSameTitle: false,
+            reSegment: false)
+        #expect(output.contains("Mr.Smith"))
+        #expect(output.contains("St.Millom"))
+        #expect(!output.contains("www.biquge123.com"))
+        #expect(!output.contains("test-site.vip/read"))
+    }
+
+    @Test("WebDAVSyncHelper mergeProgressItem blocks stale remote archive from rewinding newer local progress")
+    func mergeProgressItemBlocksStaleRemoteArchive() {
+        let newerLocal = Book(
+            bookUrl: "local://test/novel.txt",
+            name: "测试小说",
+            author: "作者",
+            durChapterIndex: 5,
+            durChapterPos: 180,
+            durChapterTime: 20_000)
+        let staleRemote = WebDAVBookProgress(
+            bookUrl: "local://other/novel.txt",
+            name: "测试小说",
+            author: "作者",
+            durChapterIndex: 2,
+            durChapterPos: 0,
+            durChapterTitle: "第二章",
+            durChapterTime: 10_000)
+
+        #expect(WebDAVSyncHelper.mergeProgressItem(staleRemote, into: newerLocal, preferRemote: true) == nil)
+
+        let unreadLocal = Book(
+            bookUrl: "local://test/novel.txt",
+            name: "测试小说",
+            author: "作者",
+            durChapterIndex: 0,
+            durChapterPos: 0,
+            durChapterTime: 20_000)
+        let restored = WebDAVSyncHelper.mergeProgressItem(staleRemote, into: unreadLocal, preferRemote: true)
+        #expect(restored?.durChapterIndex == 2)
+        #expect(restored?.durChapterTitle == "第二章")
+    }
+
+    @Test("TxtTocRuleStore imports multiple rules without numeric id without overwriting")
+    func txtTocRuleStoreImportsRulesWithoutId() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TestTxtTocRules_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storageUrl = tempDir.appendingPathComponent("txt_toc_rules.json")
+        let store = TxtTocRuleStore(storageUrl: storageUrl)
+        store.saveRules([])
+        #expect(store.loadRules().isEmpty)
+
+        let json = """
+        [
+          {"name": "卷规则", "rule": "^第[一二三]卷.*"},
+          {"name": "节规则", "rule": "^第[0-9]+节.*"}
+        ]
+        """
+        let count = try store.importLegadoJSON(Data(json.utf8))
+        let loaded = store.loadRules()
+        #expect(count == 2)
+        #expect(loaded.count == 2)
+        #expect(Set(loaded.map(\.id)).count == 2)
+    }
 }
 
 private final class MockWebDAVSecretStore: WebDAVSecretStore, @unchecked Sendable {

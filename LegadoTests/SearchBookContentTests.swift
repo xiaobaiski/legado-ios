@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 @testable import Legado
 import Testing
@@ -152,5 +153,54 @@ struct SearchBookContentTests {
 
         #expect(readerViewModel.state.currentChapterIndex == 1)
         #expect(readerViewModel.state.currentPageIndex >= 0)
+    }
+
+    @Test("SearchBookContentUseCase aligns matchOffset with TextLayoutEngine and ChineseConversionMode")
+    func searchAlignsMatchOffsetWithPaginationAndChineseConversion() async {
+        let getChapterContentUseCase = GetChapterContentUseCase()
+        let book = Book(
+            bookUrl: "local://test/book_tc_search",
+            origin: "local",
+            originName: "本地导入",
+            name: "繁简搜索校对",
+            author: "测试者")
+        let chapter = Chapter(
+            url: "local://test/book_tc_search/0",
+            title: "第一章 秘境",
+            bookUrl: book.bookUrl,
+            index: 0)
+
+        let rawContent = "这是一段用于校对繁简转换与分页偏移坐标的测试文本，后半段包含关键目标词汇石碑铭文。"
+        getChapterContentUseCase.saveChapterCache(content: rawContent, bookUrl: book.bookUrl, index: 0)
+
+        let config = ReaderConfig(
+            chineseConversion: .toTraditional,
+            enableReplaceRule: false)
+
+        var matches: [BookSearchMatch] = []
+        for await match in SearchBookContentUseCase().search(
+            keyword: "石碑銘文",
+            book: book,
+            chapters: [chapter],
+            getChapterContentUseCase: getChapterContentUseCase,
+            config: config) {
+            matches.append(match)
+        }
+
+        #expect(matches.count == 1)
+        guard let hit = matches.first else { return }
+
+        let pages = TextLayoutEngine.shared.paginate(
+            chapterTitle: chapter.title,
+            content: rawContent,
+            chapterIndex: 0,
+            bounds: CGRect(x: 0, y: 0, width: 390, height: 844),
+            config: config,
+            bookName: book.name,
+            bookOrigin: book.origin)
+
+        let hitPage = pages.first { NSLocationInRange(hit.matchOffset, $0.textRange) }
+        #expect(hitPage != nil)
+        #expect(hitPage?.contentText.contains("石碑銘文") == true)
     }
 }

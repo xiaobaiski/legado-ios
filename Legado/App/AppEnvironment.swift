@@ -38,6 +38,7 @@ public final class AppEnvironment: ObservableObject {
     public let bookshelfRefreshSubject = PassthroughSubject<Void, Never>()
     public let rulesRefreshSubject = PassthroughSubject<Void, Never>()
     private var pendingExternalImportURLs: [URL] = []
+    private static let sampleSeededDefaultsKey = "legado_did_seed_sample_bookshelf_v1"
 
     public init(inMemory: Bool = false) {
         let provider = ModelContainerProvider(inMemory: inMemory)
@@ -57,7 +58,8 @@ public final class AppEnvironment: ObservableObject {
         self.getBookshelfUseCase = GetBookshelfUseCase(bookRepository: bookRepo)
         self.removeBookFromShelfUseCase = RemoveBookFromShelfUseCase(
             bookRepository: bookRepo,
-            bookCacheRepository: cacheRepo)
+            bookCacheRepository: cacheRepo,
+            bookmarkRepository: bookmarkRepo)
         self.getBookDetailUseCase = GetBookDetailUseCase(bookRepository: bookRepo)
         self.getBookTocUseCase = GetBookTocUseCase(bookRepository: bookRepo)
         self.getChapterContentUseCase = GetChapterContentUseCase(cacheRepository: cacheRepo)
@@ -67,11 +69,13 @@ public final class AppEnvironment: ObservableObject {
         self.backupToWebDAVUseCase = BackupToWebDAVUseCase(
             bookRepository: bookRepo,
             bookmarkRepository: bookmarkRepo,
-            bookCacheRepository: cacheRepo)
+            bookCacheRepository: cacheRepo,
+            bookGroupRepository: groupRepo)
         self.restoreFromWebDAVUseCase = RestoreFromWebDAVUseCase(
             bookRepository: bookRepo,
             bookmarkRepository: bookmarkRepo,
-            bookCacheRepository: cacheRepo)
+            bookCacheRepository: cacheRepo,
+            bookGroupRepository: groupRepo)
         self.webDAVRealtimeSyncService = WebDAVRealtimeSyncService(
             bookRepository: bookRepo,
             backupUseCase: self.backupToWebDAVUseCase,
@@ -99,8 +103,12 @@ public final class AppEnvironment: ObservableObject {
         }
         if !inMemory {
             LocalFontManager.shared.registerAllStoredFonts()
-            primeSampleChapterCache()
-            seedInitialDataIfNeeded()
+            let launchArgs = ProcessInfo.processInfo.arguments
+            let isUIDemo = launchArgs.contains("--open-reader-demo") || launchArgs.contains("--open-reader-hud")
+            if !UserDefaults.standard.bool(forKey: Self.sampleSeededDefaultsKey) || isUIDemo {
+                primeSampleChapterCache()
+                seedInitialDataIfNeeded()
+            }
         }
     }
 
@@ -135,7 +143,9 @@ public final class AppEnvironment: ObservableObject {
             getBookTocUseCase: getBookTocUseCase,
             saveBookToShelfUseCase: saveBookToShelfUseCase,
             removeBookFromShelfUseCase: removeBookFromShelfUseCase,
-            bookRepository: bookRepository)
+            bookRepository: bookRepository,
+            getBookmarksUseCase: getBookmarksUseCase,
+            deleteBookmarkUseCase: deleteBookmarkUseCase)
     }
 
     /// 创建书架 ViewModel
@@ -149,17 +159,20 @@ public final class AppEnvironment: ObservableObject {
             deleteBookGroupUseCase: deleteBookGroupUseCase,
             importLocalBookUseCase: importLocalBookUseCase,
             layoutDefaults: .standard,
-            realtimeSyncService: webDAVRealtimeSyncService)
+            realtimeSyncService: webDAVRealtimeSyncService,
+            bookmarkRepository: bookmarkRepository)
     }
 
     /// 创建阅读器 ViewModel
     public func makeReaderViewModel(
         book: Book,
         initialChapterIndex: Int? = nil,
+        initialOffset: Int? = nil,
         showHUDInitially: Bool = false) -> ReaderViewModel {
         ReaderViewModel(
             book: book,
             initialChapterIndex: initialChapterIndex,
+            initialOffset: initialOffset,
             showHUDInitially: showHUDInitially,
             getChapterContentUseCase: getChapterContentUseCase,
             getBookTocUseCase: getBookTocUseCase,
@@ -219,10 +232,35 @@ public final class AppEnvironment: ObservableObject {
             searchUseCase: searchBookContentUseCase)
     }
 
-    /// 暂存外部“用 Legado 打开”的文件链接并通知书架导入
+    /// 暂存外部“用 Legado 打开”的文件链接并立即复制至安全临时区（防安全作用域过期与 Inbox 残留）
     public func enqueueExternalImport(_ url: URL) {
-        pendingExternalImportURLs.append(url)
+        let staged = stageExternalImportURL(url)
+        pendingExternalImportURLs.append(staged)
         externalFileImportSubject.send(())
+    }
+
+    private func stageExternalImportURL(_ sourceUrl: URL) -> URL {
+        let fileManager = FileManager.default
+        let stagingDir = fileManager.temporaryDirectory
+            .appendingPathComponent("LegadoImportStaging/\(UUID().uuidString)", isDirectory: true)
+        let targetUrl = stagingDir.appendingPathComponent(sourceUrl.lastPathComponent)
+
+        let accessing = sourceUrl.startAccessingSecurityScopedResource()
+        defer {
+            if accessing {
+                sourceUrl.stopAccessingSecurityScopedResource()
+            }
+        }
+        do {
+            try fileManager.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+            try fileManager.copyItem(at: sourceUrl, to: targetUrl)
+            if sourceUrl.path.contains("/Documents/Inbox/") {
+                try? fileManager.removeItem(at: sourceUrl)
+            }
+            return targetUrl
+        } catch {
+            return sourceUrl
+        }
     }
 
     /// 取出待导入的外部文件链接

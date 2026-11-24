@@ -139,7 +139,10 @@ public struct WebDAVSettingsView: View {
     }
 
     private var actionsAndStatusSection: some View {
-        Section {
+        let isBusy = viewModel.state.isTestingConnection
+            || viewModel.state.isBackingUp
+            || viewModel.state.isRestoring
+        return Section {
             Button {
                 viewModel.send(.testWebDAVConnection)
             } label: {
@@ -154,7 +157,7 @@ public struct WebDAVSettingsView: View {
                 }
                 .font(.subheadline.weight(.medium))
             }
-            .disabled(viewModel.state.isTestingConnection)
+            .disabled(isBusy)
 
             actionButtonsRow
             statusMessagesView
@@ -166,6 +169,9 @@ public struct WebDAVSettingsView: View {
     }
 
     private var actionButtonsRow: some View {
+        let isBusy = viewModel.state.isTestingConnection
+            || viewModel.state.isBackingUp
+            || viewModel.state.isRestoring
         let noSelection = !viewModel.state.webDAVConfig.syncOptions.hasAnySelection
         return HStack(spacing: 12) {
             Button {
@@ -185,7 +191,7 @@ public struct WebDAVSettingsView: View {
             }
             .buttonStyle(.borderedProminent)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .disabled(viewModel.state.isBackingUp || viewModel.state.isRestoring || noSelection)
+            .disabled(isBusy || noSelection)
 
             Button {
                 viewModel.send(.restoreFromWebDAV)
@@ -204,7 +210,7 @@ public struct WebDAVSettingsView: View {
             }
             .buttonStyle(.bordered)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .disabled(viewModel.state.isRestoring || viewModel.state.isBackingUp || noSelection)
+            .disabled(isBusy || noSelection)
         }
         .padding(.vertical, 4)
     }

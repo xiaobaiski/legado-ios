@@ -5,6 +5,7 @@ public final class BackupToWebDAVUseCase: @unchecked Sendable {
     private let bookRepository: BookRepository
     private let bookmarkRepository: BookmarkRepository?
     private let bookCacheRepository: BookCacheRepository?
+    private let bookGroupRepository: BookGroupRepository?
     private let webDAVClient: WebDAVClient
     private let replaceRuleStore: ReplaceRuleStore
     private let txtTocRuleStore: TxtTocRuleStore
@@ -15,6 +16,7 @@ public final class BackupToWebDAVUseCase: @unchecked Sendable {
         bookRepository: BookRepository,
         bookmarkRepository: BookmarkRepository? = nil,
         bookCacheRepository: BookCacheRepository? = nil,
+        bookGroupRepository: BookGroupRepository? = nil,
         webDAVClient: WebDAVClient = .shared,
         replaceRuleStore: ReplaceRuleStore = .shared,
         txtTocRuleStore: TxtTocRuleStore = .shared,
@@ -23,6 +25,7 @@ public final class BackupToWebDAVUseCase: @unchecked Sendable {
         self.bookRepository = bookRepository
         self.bookmarkRepository = bookmarkRepository
         self.bookCacheRepository = bookCacheRepository
+        self.bookGroupRepository = bookGroupRepository
         self.webDAVClient = webDAVClient
         self.replaceRuleStore = replaceRuleStore
         self.txtTocRuleStore = txtTocRuleStore
@@ -37,8 +40,9 @@ public final class BackupToWebDAVUseCase: @unchecked Sendable {
         let txtTocRules = txtTocRuleStore.loadRules()
         let readRecords = readRecordStore.allRecordsSorted()
         let bookmarks = try await loadBookmarks()
+        let groups = (try? await bookGroupRepository?.getGroups()) ?? []
         let configJson = readerConfigExporter()
-        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.0"
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.1"
 
         return WebDAVBackupBundle(
             version: 2,
@@ -49,7 +53,8 @@ public final class BackupToWebDAVUseCase: @unchecked Sendable {
             txtTocRules: txtTocRules,
             readRecords: readRecords,
             readerConfigJson: configJson,
-            bookmarks: bookmarks)
+            bookmarks: bookmarks,
+            bookGroups: groups.isEmpty ? nil : groups)
     }
 
     /// 导出为 JSON 数据
@@ -187,6 +192,12 @@ private extension BackupToWebDAVUseCase {
         let bookmarks = options.syncProgress
             ? try await loadBookmarks()
             : remoteBundle?.bookmarks
+        let localGroups = options.syncProgress
+            ? ((try? await bookGroupRepository?.getGroups()) ?? [])
+            : []
+        let bookGroups: [BookGroup]? = options.syncProgress
+            ? (localGroups.isEmpty ? nil : localGroups)
+            : remoteBundle?.bookGroups
 
         let replaceRules = options.syncRules
             ? replaceRuleStore.loadRules()
@@ -201,7 +212,7 @@ private extension BackupToWebDAVUseCase {
         let bookFiles = options.syncBookFiles
             ? mergeBookFileEntries(uploaded: uploadedEntries, existing: remoteBundle?.bookFiles)
             : remoteBundle?.bookFiles
-        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.0"
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.1"
 
         return WebDAVBackupBundle(
             version: 2,
@@ -213,7 +224,8 @@ private extension BackupToWebDAVUseCase {
             readRecords: readRecords,
             readerConfigJson: configJson,
             bookmarks: bookmarks,
-            bookFiles: bookFiles)
+            bookFiles: bookFiles,
+            bookGroups: bookGroups)
     }
 
     func mergeBookFileEntries(
@@ -233,11 +245,15 @@ private extension BackupToWebDAVUseCase {
         books: [Book],
         config: WebDAVConfig) async throws -> (entries: [WebDAVBookFileEntry], uploadedBytes: Int) {
         guard let cacheRepo = bookCacheRepository else { return ([], 0) }
+        let localBooks = books.filter { WebDAVSyncHelper.isLocalImportedBook($0) }
+        guard !localBooks.isEmpty else { return ([], 0) }
+
+        try await webDAVClient.createDirectoryIfNeeded(subdirectories: ["books"], config: config)
 
         var entries: [WebDAVBookFileEntry] = []
         var totalBytes = 0
 
-        for book in books where WebDAVSyncHelper.isLocalImportedBook(book) {
+        for book in localBooks {
             let chapters = try await bookRepository.getChapters(for: book.bookUrl)
             let archivedContents = collectArchivedChapters(
                 bookUrl: book.bookUrl,
@@ -263,7 +279,8 @@ private extension BackupToWebDAVUseCase {
                 subdirectories: ["books"],
                 filename: fileName,
                 contentType: "application/octet-stream",
-                config: config)
+                config: config,
+                ensureDirectory: false)
 
             totalBytes += compressed.count
             entries.append(WebDAVBookFileEntry(

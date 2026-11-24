@@ -10,8 +10,8 @@ public struct SettingsView: View {
     @State var isShowingFontPicker = false
     @State var isShowingFontChooser = false
 
-    public init(viewModel: SettingsViewModel) {
-        _viewModel = StateObject(wrappedValue: viewModel)
+    public init(viewModel: @autoclosure @escaping () -> SettingsViewModel) {
+        _viewModel = StateObject(wrappedValue: viewModel())
     }
 
     public var body: some View {
@@ -90,13 +90,12 @@ public struct SettingsView: View {
                     onDeleteImportedFont: { font in
                         viewModel.send(.deleteLocalFont(font))
                     },
-                    onOpenFontImporter: {
-                        isShowingFontChooser = false
-                        Task { @MainActor in
-                            try? await Task.sleep(nanoseconds: 250_000_000)
-                            isShowingFontPicker = true
-                        }
+                    onImportFontURLs: { urls in
+                        viewModel.send(.importLocalFonts(urls))
                     })
+                    .onAppear {
+                        viewModel.send(.refreshReaderConfig)
+                    }
             }
             .sheet(isPresented: $isShowingFontPicker) {
                 DocumentPickerView(

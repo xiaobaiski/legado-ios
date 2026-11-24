@@ -82,22 +82,40 @@ enum WebDAVSyncHelper {
         return "\(hex).legadobook"
     }
 
-    /// 读取本地封面文件（仅限 `file://` 本地封面）
+    /// 读取本地封面文件（仅限 `file://` 或沙盒封面文件，支持容器 UUID 变更后按文件名回落）
     static func loadLocalCoverData(from coverUrl: String?) -> (data: Data, ext: String)? {
         guard let raw = coverUrl?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty,
-              let url = URL(string: raw),
-              url.isFileURL,
-              let data = try? Data(contentsOf: url),
+              !raw.isEmpty else {
+            return nil
+        }
+        let candidateUrl: URL? = raw.hasPrefix("/")
+            ? URL(fileURLWithPath: raw)
+            : URL(string: raw).flatMap { $0.isFileURL ? $0 : nil }
+        guard let url = candidateUrl else { return nil }
+
+        let resolvedUrl: URL?
+        if FileManager.default.fileExists(atPath: url.path) {
+            resolvedUrl = url
+        } else if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let fallback = docs
+                .appendingPathComponent("BookCovers", isDirectory: true)
+                .appendingPathComponent(url.lastPathComponent)
+            resolvedUrl = FileManager.default.fileExists(atPath: fallback.path) ? fallback : nil
+        } else {
+            resolvedUrl = nil
+        }
+
+        guard let existingUrl = resolvedUrl,
+              let data = try? Data(contentsOf: existingUrl),
               !data.isEmpty,
               data.count <= maxCoverArchiveBytes else {
             return nil
         }
-        let ext = url.pathExtension.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ext = existingUrl.pathExtension.trimmingCharacters(in: .whitespacesAndNewlines)
         return (data, ext.isEmpty ? "jpg" : ext.lowercased())
     }
 
-    /// 将归档内的封面写入本机 Documents/BookCovers 目录并更新路径（严格校验图片扩展名防路径穿越）
+    /// 将归档内的封面写入本机 Documents/BookCovers 目录并更新路径（与导入封面命名一致，删书时同步清理）
     static func saveRestoredCoverData(_ data: Data, fileExtension: String?, seed: String) -> String? {
         guard !data.isEmpty,
               data.count <= maxCoverArchiveBytes,
@@ -107,10 +125,9 @@ enum WebDAVSyncHelper {
         let coversDir = docDir.appendingPathComponent("BookCovers", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: coversDir, withIntermediateDirectories: true)
-            let digest = SHA256.hash(data: Data(seed.utf8))
-            let hex = digest.prefix(12).map { String(format: "%02x", $0) }.joined()
+            let key = BookCacheRepositoryImpl.deterministicKey(for: seed)
             let ext = sanitizeImageExtension(fileExtension)
-            let fileUrl = coversDir.appendingPathComponent("\(hex).\(ext)")
+            let fileUrl = coversDir.appendingPathComponent("\(key).\(ext)")
             try data.write(to: fileUrl, options: .atomic)
             return fileUrl.absoluteString
         } catch {
@@ -149,13 +166,18 @@ enum WebDAVSyncHelper {
         let remoteHasProgress = remote.durChapterIndex > 0
             || remote.durChapterPos > 0
             || remote.durChapterTime > 0
-        let shouldAdopt = (preferRemote && remoteHasProgress)
+        let preferRemoteBlocked = !localUnread
+            && remote.durChapterTime > 0
+            && local.durChapterTime > remote.durChapterTime
+        let shouldAdopt = (preferRemote && remoteHasProgress && !preferRemoteBlocked)
             || remote.durChapterTime > local.durChapterTime
             || (remote.durChapterTime == local.durChapterTime && remoteHasProgress && localUnread)
             || (localUnread && (remote.durChapterIndex > 0 || remote.durChapterPos > 0))
         guard shouldAdopt else { return nil }
 
-        let targetTime = max(remote.durChapterTime, local.durChapterTime)
+        let targetTime: Int64 = (!localUnread && remote.durChapterTime > 0)
+            ? remote.durChapterTime
+            : max(remote.durChapterTime, local.durChapterTime)
         let titleChanged = (remote.durChapterTitle?.isEmpty == false)
             && local.durChapterTitle != remote.durChapterTitle
         let changed = local.durChapterIndex != remote.durChapterIndex

@@ -13,8 +13,8 @@ public struct ReaderView: View {
     @State var isTocReversed = false
     @State var tocSearchText = ""
     @State var originalBrightness: CGFloat?
-    @State var isFontPickerPresented = false
     @State var isFontChooserPresented = false
+    @State var pendingFontChooserAfterSettings = false
     @State var isTextActionPresented = false
     @State var readingSessionStart: Date?
     @State var screenKeepOnTask: Task<Void, Never>?
@@ -28,6 +28,14 @@ public struct ReaderView: View {
         viewModel.state.config.isEffectiveDark ? .dark : .light
     }
 
+    var hasModalSheetPresented: Bool {
+        viewModel.state.isMoreSettingsVisible
+            || viewModel.state.isTocSheetVisible
+            || isFontChooserPresented
+            || isTextActionPresented
+            || isSearchContentPresented
+    }
+
     public var body: some View {
         GeometryReader { safeGeo in
             ZStack {
@@ -35,7 +43,7 @@ public struct ReaderView: View {
                 GeometryReader { fullGeo in
                     ZStack {
                         viewModel.state.config.effectiveBackgroundColor
-                        contentLayer(width: fullGeo.size.width)
+                        contentLayer(width: fullGeo.size.width, safeArea: safeGeo.safeAreaInsets)
 
                         if viewModel.state.config.eyeProtectionWarmth > 0 {
                             Color(red: 1.0, green: 0.62, blue: 0.12)
@@ -75,15 +83,7 @@ public struct ReaderView: View {
                 restoreSystemDisplaySettings()
             }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active {
-                    if readingSessionStart == nil {
-                        readingSessionStart = Date()
-                    }
-                    viewModel.handleAppDidBecomeActive()
-                } else {
-                    flushReadingSession()
-                    viewModel.flushRealtimeProgressSync()
-                }
+                handleScenePhaseChange(phase)
             }
             .onReceive(environment.rulesRefreshSubject) { _ in
                 viewModel.reloadExternalReaderConfig()
@@ -91,8 +91,19 @@ public struct ReaderView: View {
             .onChange(of: viewModel.state.currentPageIndex) { _, _ in
                 scheduleScreenKeepOnTimer()
             }
-            .onChange(of: viewModel.state.config) { _, _ in
+            .onChange(of: viewModel.state.config.followSystemBrightness) { _, _ in
                 applySystemDisplaySettings()
+            }
+            .onChange(of: viewModel.state.config.customBrightness) { _, _ in
+                applySystemDisplaySettings()
+            }
+            .onChange(of: viewModel.state.config.keepScreenOnDuration) { _, _ in
+                scheduleScreenKeepOnTimer()
+            }
+            .onChange(of: viewModel.state.config.volumeKeyPageTurn) { _, _ in
+                updateVolumeButtonBinding()
+            }
+            .onChange(of: hasModalSheetPresented) { _, _ in
                 updateVolumeButtonBinding()
             }
         }
@@ -102,101 +113,34 @@ public struct ReaderView: View {
         .focusable()
         .focusEffectDisabled()
         .onKeyPress(keys: [.leftArrow, .upArrow, .rightArrow, .downArrow, .space, .escape]) { press in
-            handleHardwareKeyPress(press)
+            guard !hasModalSheetPresented else { return .ignored }
+            return handleHardwareKeyPress(press)
         }
         .sensoryFeedback(.impact(weight: .light), trigger: hapticTrigger)
-        .sheet(isPresented: Binding(
-            get: { viewModel.state.isMoreSettingsVisible },
-            set: { if !$0 { viewModel.send(.closeMoreSettings) } })) {
-                ReaderSettingsSheet(
-                    config: viewModel.state.config,
-                    importedFonts: viewModel.state.importedFonts,
-                    isAutoPaging: viewModel.state.isAutoPaging,
-                    onUpdateConfig: { viewModel.send(.updateConfig($0)) },
-                    onSelectCustomFont: { viewModel.send(.selectCustomFont($0)) },
-                    onDeleteCustomFont: { viewModel.send(.deleteImportedFont($0)) },
-                    onOpenFontImporter: {
-                        viewModel.send(.closeMoreSettings)
-                        Task { @MainActor in
-                            try? await Task.sleep(nanoseconds: 250_000_000)
-                            isFontChooserPresented = true
-                        }
-                    },
-                    onToggleAutoPage: { viewModel.send(.toggleAutoPage) },
-                    onSetAutoPageInterval: { viewModel.send(.setAutoPageInterval($0)) },
-                    onRulesChanged: { viewModel.notifyRulesChanged() },
-                    onResetConfig: { viewModel.send(.resetConfig) })
+        .sheet(
+            isPresented: Binding(
+                get: { viewModel.state.isMoreSettingsVisible },
+                set: { if !$0 { viewModel.send(.closeMoreSettings) } }),
+            onDismiss: {
+                if pendingFontChooserAfterSettings {
+                    pendingFontChooserAfterSettings = false
+                    viewModel.send(.refreshImportedFonts)
+                    isFontChooserPresented = true
+                }
+            }) {
+                moreSettingsSheetView
         }
         .sheet(isPresented: $isFontChooserPresented) {
-            FontPickerSheet(
-                selectedPostScriptName: viewModel.state.config.customFontName,
-                importedFonts: viewModel.state.importedFonts,
-                onSelectSystemDefault: {
-                    var updated = viewModel.state.config
-                    updated.customFontName = nil
-                    updated.customFontDisplayName = nil
-                    updated.fontFamily = .system
-                    viewModel.send(.updateConfig(updated))
-                },
-                onSelectFont: { psName, displayName in
-                    var updated = viewModel.state.config
-                    updated.customFontName = psName
-                    updated.customFontDisplayName = displayName
-                    viewModel.send(.updateConfig(updated))
-                },
-                onDeleteImportedFont: { viewModel.send(.deleteImportedFont($0)) },
-                onOpenFontImporter: {
-                    isFontChooserPresented = false
-                    Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 250_000_000)
-                        isFontPickerPresented = true
-                    }
-                })
-                .preferredColorScheme(readerColorScheme)
-        }
-        .sheet(isPresented: $isFontPickerPresented) {
-            DocumentPickerView(
-                allowedContentTypes: LocalFontManager.allowedContentTypes,
-                allowsMultipleSelection: true,
-                onPick: { urls in
-                    isFontPickerPresented = false
-                    if !urls.isEmpty {
-                        viewModel.send(.importFonts(urls))
-                    }
-                },
-                onCancel: { isFontPickerPresented = false })
-                .ignoresSafeArea()
+            fontChooserSheetView
+                .onAppear {
+                    viewModel.send(.refreshImportedFonts)
+                }
         }
         .sheet(isPresented: $isTextActionPresented) {
-            PageTextActionSheet(
-                pageText: viewModel.state.currentPage?.contentText ?? viewModel.state.currentChapterText,
-                chapterTitle: viewModel.state.currentChapter?.title ?? "",
-                bookName: viewModel.state.book.name,
-                onAddBookmarkWithNote: { excerpt, note in
-                    viewModel.send(.addBookmark(
-                        chapterIndex: viewModel.state.currentChapterIndex,
-                        chapterPos: viewModel.state.currentPage?.textRange.location ?? 0,
-                        chapterTitle: viewModel.state.currentChapter?.title ?? "",
-                        bookText: excerpt,
-                        note: note))
-                },
-                onQuickPurifyRuleSaved: {
-                    viewModel.notifyRulesChanged()
-                })
-                .preferredColorScheme(readerColorScheme)
+            textActionSheetView
         }
         .sheet(isPresented: $isSearchContentPresented) {
-            BookSearchContentSheet(
-                viewModel: environment.makeBookSearchContentViewModel(
-                    book: viewModel.state.book,
-                    chapters: viewModel.state.chapters),
-                onSelectMatch: { chapterIndex, matchOffset in
-                    isSearchContentPresented = false
-                    viewModel.send(.jumpToChapterAndOffset(
-                        chapterIndex: chapterIndex,
-                        matchOffset: matchOffset))
-                })
-                .preferredColorScheme(readerColorScheme)
+            searchContentSheetView
         }
         .sheet(isPresented: tocPresentationBinding) {
             tocSheetView

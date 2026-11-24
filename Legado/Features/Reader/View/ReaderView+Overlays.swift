@@ -87,7 +87,10 @@ extension ReaderView {
             },
             onUpdateConfig: { viewModel.send(.updateConfig($0)) },
             onSelectCustomFont: { viewModel.send(.selectCustomFont($0)) },
-            onOpenFontImporter: { isFontChooserPresented = true },
+            onOpenFontImporter: {
+                viewModel.send(.refreshImportedFonts)
+                isFontChooserPresented = true
+            },
             onToggleNightMode: {
                 var updated = viewModel.state.config
                 updated.toggleNightMode()
@@ -103,5 +106,94 @@ extension ReaderView {
             onOpenSearch: { openSearchContentSheet() },
             isBookmarked: viewModel.state.isCurrentPageBookmarked,
             onToggleBookmark: { viewModel.send(.toggleBookmark) })
+    }
+
+    var moreSettingsSheetView: some View {
+        ReaderSettingsSheet(
+            config: viewModel.state.config,
+            importedFonts: viewModel.state.importedFonts,
+            isAutoPaging: viewModel.state.isAutoPaging,
+            onUpdateConfig: { viewModel.send(.updateConfig($0)) },
+            onSelectCustomFont: { viewModel.send(.selectCustomFont($0)) },
+            onDeleteCustomFont: { viewModel.send(.deleteImportedFont($0)) },
+            onOpenFontImporter: {
+                pendingFontChooserAfterSettings = true
+                viewModel.send(.closeMoreSettings)
+            },
+            onToggleAutoPage: { viewModel.send(.toggleAutoPage) },
+            onSetAutoPageInterval: { viewModel.send(.setAutoPageInterval($0)) },
+            onRulesChanged: { viewModel.notifyRulesChanged() },
+            onResetConfig: { viewModel.send(.resetConfig) })
+            .onAppear {
+                viewModel.send(.refreshImportedFonts)
+            }
+    }
+
+    var fontChooserSheetView: some View {
+        FontPickerSheet(
+            selectedPostScriptName: viewModel.state.config.customFontName,
+            importedFonts: viewModel.state.importedFonts,
+            onSelectSystemDefault: {
+                var updated = viewModel.state.config
+                updated.customFontName = nil
+                updated.customFontDisplayName = nil
+                updated.fontFamily = .system
+                viewModel.send(.updateConfig(updated))
+            },
+            onSelectFont: { psName, displayName in
+                var updated = viewModel.state.config
+                updated.customFontName = psName
+                updated.customFontDisplayName = displayName
+                viewModel.send(.updateConfig(updated))
+            },
+            onDeleteImportedFont: { viewModel.send(.deleteImportedFont($0)) },
+            onImportFontURLs: { urls in
+                viewModel.send(.importFonts(urls))
+            })
+            .preferredColorScheme(readerColorScheme)
+    }
+
+    var textActionSheetView: some View {
+        PageTextActionSheet(
+            pageText: viewModel.state.currentPage?.contentText ?? viewModel.state.currentChapterText,
+            chapterTitle: viewModel.state.currentChapter?.title ?? "",
+            bookName: viewModel.state.book.name,
+            onAddBookmarkWithNote: { excerpt, note in
+                let pageText = viewModel.state.currentPage?.contentText ?? ""
+                let baseOffset = viewModel.state.currentPage?.textRange.location ?? 0
+                let relativeRange = (pageText as NSString).range(of: excerpt)
+                let matchPos = relativeRange.location != NSNotFound
+                    ? baseOffset + relativeRange.location
+                    : baseOffset
+                viewModel.send(.addBookmark(
+                    chapterIndex: viewModel.state.currentChapterIndex,
+                    chapterPos: matchPos,
+                    chapterTitle: viewModel.state.currentChapter?.title ?? "",
+                    bookText: excerpt,
+                    note: note))
+            },
+            onQuickPurifyRuleSaved: {
+                if !viewModel.state.config.enableReplaceRule {
+                    var updated = viewModel.state.config
+                    updated.enableReplaceRule = true
+                    viewModel.send(.updateConfig(updated))
+                }
+                viewModel.notifyRulesChanged()
+            })
+            .preferredColorScheme(readerColorScheme)
+    }
+
+    var searchContentSheetView: some View {
+        BookSearchContentSheet(
+            viewModel: environment.makeBookSearchContentViewModel(
+                book: viewModel.state.book,
+                chapters: viewModel.state.chapters),
+            onSelectMatch: { chapterIndex, matchOffset in
+                isSearchContentPresented = false
+                viewModel.send(.jumpToChapterAndOffset(
+                    chapterIndex: chapterIndex,
+                    matchOffset: matchOffset))
+            })
+            .preferredColorScheme(readerColorScheme)
     }
 }
