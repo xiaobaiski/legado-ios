@@ -11,7 +11,7 @@ public final class BookshelfViewModel: BaseMVIViewModel<BookshelfState, Bookshel
     let deleteBookGroupUseCase: DeleteBookGroupUseCase?
     let importLocalBookUseCase: ImportLocalBookUseCase?
     private let realtimeSyncService: WebDAVRealtimeSyncService?
-    private let bookmarkRepository: BookmarkRepository?
+    let bookmarkRepository: BookmarkRepository?
     private let layoutDefaults: UserDefaults?
     var pendingImportURLs: [URL] = []
 

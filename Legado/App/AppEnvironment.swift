@@ -38,7 +38,7 @@ public final class AppEnvironment: ObservableObject {
     public let bookshelfRefreshSubject = PassthroughSubject<Void, Never>()
     public let rulesRefreshSubject = PassthroughSubject<Void, Never>()
     private var pendingExternalImportURLs: [URL] = []
-    private static let sampleSeededDefaultsKey = "legado_did_seed_sample_bookshelf_v1"
+    static let sampleSeededDefaultsKey = "legado_did_seed_sample_bookshelf_v1"
 
     public init(inMemory: Bool = false) {
         let provider = ModelContainerProvider(inMemory: inMemory)
