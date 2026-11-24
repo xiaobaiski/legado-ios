@@ -110,13 +110,21 @@ public enum EpubParser {
         }
         let navDir = directoryPrefix(of: navItem.path)
         let html = CharsetDetector.decode(data: navData)
-        guard let doc = try? SwiftSoup.parse(html) else { return }
-        let tocLinks = try? doc.select(
-            "nav[epub\\:type=toc] a[href], nav[type=toc] a[href], nav[role=doc-toc] a[href], nav#toc a[href]")
-        let fallbackLinks = (tocLinks?.isEmpty() ?? true)
-            ? (try? doc.select("nav").first()?.select("a[href]"))
-            : nil
-        guard let links = (tocLinks?.isEmpty() ?? true) ? fallbackLinks : tocLinks else { return }
+        guard let doc = try? SwiftSoup.parse(html),
+              let navs = try? doc.select("nav") else {
+            return
+        }
+        let preferredNav = navs.array().first { nav in
+            let epubType = (try? nav.attr("epub:type")) ?? ""
+            let typeAttr = (try? nav.attr("type")) ?? ""
+            let roleAttr = (try? nav.attr("role")) ?? ""
+            let idAttr = (try? nav.attr("id")) ?? ""
+            return epubType.localizedCaseInsensitiveContains("toc")
+                || typeAttr.localizedCaseInsensitiveContains("toc")
+                || roleAttr.localizedCaseInsensitiveContains("doc-toc")
+                || idAttr.caseInsensitiveCompare("toc") == .orderedSame
+        } ?? navs.array().first
+        guard let links = try? preferredNav?.select("a[href]") else { return }
         for link in links.array() {
             let href = ((try? link.attr("href")) ?? "").components(separatedBy: "#").first ?? ""
             let text = ((try? link.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)

@@ -47,6 +47,7 @@ public final class SearchBookContentUseCase: Sendable {
                     let matches = Self.extractMatches(
                         keyword: convertedKeyword,
                         content: built.fullText,
+                        startLocation: built.titlePrefixLength,
                         chapter: chapter)
 
                     for match in matches {
@@ -70,10 +71,12 @@ public final class SearchBookContentUseCase: Sendable {
     private static func extractMatches(
         keyword: String,
         content: String,
+        startLocation: Int = 0,
         chapter: Chapter) -> [BookSearchMatch] {
         var results: [BookSearchMatch] = []
         let nsContent = content as NSString
-        var searchRange = NSRange(location: 0, length: nsContent.length)
+        let safeStart = min(max(0, startLocation), nsContent.length)
+        var searchRange = NSRange(location: safeStart, length: nsContent.length - safeStart)
 
         while searchRange.location < nsContent.length {
             let found = nsContent.range(
@@ -86,7 +89,7 @@ public final class SearchBookContentUseCase: Sendable {
             }
 
             // 按 UTF-16 字形边界裁剪前后上下文，避免截断生僻字或 Emoji 代理对
-            let prefixStart = max(0, found.location - 18)
+            let prefixStart = max(safeStart, found.location - 18)
             let suffixEnd = min(nsContent.length, found.location + found.length + 28)
             let rawRange = NSRange(location: prefixStart, length: suffixEnd - prefixStart)
             let safeRange = nsContent.rangeOfComposedCharacterSequences(for: rawRange)
@@ -95,7 +98,7 @@ public final class SearchBookContentUseCase: Sendable {
                 .replacingOccurrences(of: "\r", with: "")
                 .trimmingCharacters(in: CharacterSet(charactersIn: "\u{3000} \t"))
 
-            if safeRange.location > 0 {
+            if safeRange.location > safeStart {
                 snippet = "..." + snippet
             }
             if safeRange.location + safeRange.length < nsContent.length {
