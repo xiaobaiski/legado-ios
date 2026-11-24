@@ -205,12 +205,12 @@ public struct AutoScrollReaderView: UIViewRepresentable {
         private func checkPullChapterEdge(_ scrollView: UIScrollView) {
             let now = Date()
             guard now.timeIntervalSince(lastChapterEdgeTriggerAt) > 0.8 else { return }
-            let y = scrollView.contentOffset.y
+            let offsetY = scrollView.contentOffset.y
             let maxY = max(scrollView.contentSize.height - scrollView.bounds.height, 0)
-            if y < -64 {
+            if offsetY < -64 {
                 lastChapterEdgeTriggerAt = now
                 parent.onPullPrevChapter()
-            } else if maxY > 0 && (y - maxY) > 64 {
+            } else if maxY > 0 && (offsetY - maxY) > 64 {
                 lastChapterEdgeTriggerAt = now
                 parent.onReachedBottom()
             }

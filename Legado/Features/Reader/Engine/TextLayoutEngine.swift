@@ -2,6 +2,19 @@ import CoreText
 import Foundation
 import UIKit
 
+/// 与排版及全文检索共用的标准化章节全文载体
+public struct PaginatedFullText: Sendable {
+    public let fullText: String
+    public let titlePrefixLength: Int
+    public let displayTitle: String
+
+    public init(fullText: String, titlePrefixLength: Int, displayTitle: String) {
+        self.fullText = fullText
+        self.titlePrefixLength = titlePrefixLength
+        self.displayTitle = displayTitle
+    }
+}
+
 /// 基于 CoreText 的高性能非阻塞分页排版引擎（支持正文章节大标题排版、精确定位与 pixel-perfect 绘制）
 public final class TextLayoutEngine: Sendable {
     public static let shared = TextLayoutEngine()
@@ -58,7 +71,7 @@ public final class TextLayoutEngine: Sendable {
         content: String,
         config: ReaderConfig,
         bookName: String? = nil,
-        bookOrigin: String? = nil) -> (fullText: String, titlePrefixLength: Int, displayTitle: String) {
+        bookOrigin: String? = nil) -> PaginatedFullText {
         let displayTitle = PurifyContentUseCase.shared.purifyTitle(
             chapterTitle,
             bookName: bookName,
@@ -75,7 +88,10 @@ public final class TextLayoutEngine: Sendable {
         let includeBodyTitle = config.titleStyle.alignment != .hidden && !convertedTitle.isEmpty
         let fullText = includeBodyTitle ? "\(convertedTitle)\n\(normalized)" : normalized
         let titlePrefixLength = includeBodyTitle ? ((convertedTitle + "\n") as NSString).length : 0
-        return (fullText, titlePrefixLength, displayTitle)
+        return PaginatedFullText(
+            fullText: fullText,
+            titlePrefixLength: titlePrefixLength,
+            displayTitle: displayTitle)
     }
 
     /// 将整章文本依据屏幕可视区域和排版配置精确切割为多个 ReaderPage（首部按 `titleStyle` 渲染章节大标题）

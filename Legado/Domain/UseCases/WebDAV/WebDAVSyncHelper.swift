@@ -163,28 +163,22 @@ enum WebDAVSyncHelper {
         into local: Book,
         preferRemote: Bool = false) -> Book? {
         let localUnread = local.durChapterIndex == 0 && local.durChapterPos == 0
-        let remoteHasProgress = remote.durChapterIndex > 0
-            || remote.durChapterPos > 0
-            || remote.durChapterTime > 0
-        let preferRemoteBlocked = !localUnread
-            && remote.durChapterTime > 0
-            && local.durChapterTime > remote.durChapterTime
-        let shouldAdopt = (preferRemote && remoteHasProgress && !preferRemoteBlocked)
-            || remote.durChapterTime > local.durChapterTime
-            || (remote.durChapterTime == local.durChapterTime && remoteHasProgress && localUnread)
-            || (localUnread && (remote.durChapterIndex > 0 || remote.durChapterPos > 0))
-        guard shouldAdopt else { return nil }
+        guard shouldAdoptRemoteProgress(
+            remote,
+            local: local,
+            preferRemote: preferRemote,
+            localUnread: localUnread) else {
+            return nil
+        }
 
         let targetTime: Int64 = (!localUnread && remote.durChapterTime > 0)
             ? remote.durChapterTime
             : max(remote.durChapterTime, local.durChapterTime)
         let titleChanged = (remote.durChapterTitle?.isEmpty == false)
             && local.durChapterTitle != remote.durChapterTitle
-        let changed = local.durChapterIndex != remote.durChapterIndex
+        let positionChanged = local.durChapterIndex != remote.durChapterIndex
             || local.durChapterPos != remote.durChapterPos
-            || titleChanged
-            || targetTime > local.durChapterTime
-        guard changed else { return nil }
+        guard positionChanged || titleChanged || targetTime > local.durChapterTime else { return nil }
 
         var updated = local
         updated.durChapterIndex = remote.durChapterIndex
@@ -195,6 +189,22 @@ enum WebDAVSyncHelper {
         updated.durChapterTime = targetTime
         updated.syncTime = Int64(Date().timeIntervalSince1970 * 1000)
         return updated
+    }
+
+    private static func shouldAdoptRemoteProgress(
+        _ remote: WebDAVBookProgress,
+        local: Book,
+        preferRemote: Bool,
+        localUnread: Bool) -> Bool {
+        let remoteStarted = remote.durChapterIndex > 0 || remote.durChapterPos > 0
+        let remoteHasProgress = remoteStarted || remote.durChapterTime > 0
+        let preferRemoteBlocked = !localUnread
+            && remote.durChapterTime > 0
+            && local.durChapterTime > remote.durChapterTime
+        if preferRemote && remoteHasProgress && !preferRemoteBlocked { return true }
+        if remote.durChapterTime > local.durChapterTime { return true }
+        if remote.durChapterTime == local.durChapterTime && remoteHasProgress && localUnread { return true }
+        return localUnread && remoteStarted
     }
 
     /// 用于轻量进度汇总文件去重合并的规范化键

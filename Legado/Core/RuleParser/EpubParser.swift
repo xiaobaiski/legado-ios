@@ -93,60 +93,69 @@ public enum EpubParser {
         manifest: [String: ManifestItem],
         baseDir: String) -> [String: String] {
         var map: [String: String] = [:]
-
-        // 1. 优先解析 EPUB 3 Navigation Document（优先锁定 toc 导航，避免 landmarks/page-list 覆盖真实章名）
-        if let navItem = manifest.values.first(where: { $0.properties.contains("nav") }),
-           let navData = zip.readFile(at: navItem.path) {
-            let navDir = directoryPrefix(of: navItem.path)
-            let html = CharsetDetector.decode(data: navData)
-            if let doc = try? SwiftSoup.parse(html) {
-                let tocLinks = try? doc.select(
-                    "nav[epub\\:type=toc] a[href], nav[type=toc] a[href], nav[role=doc-toc] a[href], nav#toc a[href]")
-                let fallbackLinks = (tocLinks?.isEmpty() ?? true)
-                    ? (try? doc.select("nav").first()?.select("a[href]"))
-                    : nil
-                let links = (tocLinks?.isEmpty() ?? true) ? fallbackLinks : tocLinks
-                if let links {
-                    for link in links.array() {
-                        let href = ((try? link.attr("href")) ?? "").components(separatedBy: "#").first ?? ""
-                        let text = ((try? link.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !href.isEmpty, !text.isEmpty {
-                            let resolved = joinPath(base: navDir, relative: href.removingPercentEncoding ?? href)
-                            let key = resolved.lowercased()
-                            if map[key] == nil {
-                                map[key] = text
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 2. 补充解析 EPUB 2 NCX 目录
-        if let ncxItem = manifest.values.first(where: {
-            $0.mediaType.contains("ncx") || $0.path.lowercased().hasSuffix(".ncx")
-        }), let ncxData = zip.readFile(at: ncxItem.path) {
-            let ncxDir = directoryPrefix(of: ncxItem.path)
-            let xml = CharsetDetector.decode(data: ncxData)
-            if let doc = try? SwiftSoup.parse(xml, "", Parser.xmlParser()),
-               let navPoints = try? doc.select("navPoint") {
-                for point in navPoints.array() {
-                    let title = ((try? point.select("navLabel text").first()?.text()) ?? "")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    let src = ((try? point.select("content").first()?.attr("src")) ?? "")
-                        .components(separatedBy: "#").first ?? ""
-                    if !title.isEmpty, !src.isEmpty {
-                        let resolved = joinPath(base: ncxDir, relative: src.removingPercentEncoding ?? src)
-                        if map[resolved.lowercased()] == nil {
-                            map[resolved.lowercased()] = title
-                        }
-                    }
-                }
-            }
-        }
-
+        parseNavTocTitles(in: zip, manifest: manifest, into: &map)
+        parseNcxTocTitles(in: zip, manifest: manifest, into: &map)
         _ = baseDir
         return map
+    }
+
+    /// 优先解析 EPUB 3 Navigation Document（优先锁定 toc 导航，避免 landmarks/page-list 覆盖真实章名）
+    private static func parseNavTocTitles(
+        in zip: ZipArchiveReader,
+        manifest: [String: ManifestItem],
+        into map: inout [String: String]) {
+        guard let navItem = manifest.values.first(where: { $0.properties.contains("nav") }),
+              let navData = zip.readFile(at: navItem.path) else {
+            return
+        }
+        let navDir = directoryPrefix(of: navItem.path)
+        let html = CharsetDetector.decode(data: navData)
+        guard let doc = try? SwiftSoup.parse(html) else { return }
+        let tocLinks = try? doc.select(
+            "nav[epub\\:type=toc] a[href], nav[type=toc] a[href], nav[role=doc-toc] a[href], nav#toc a[href]")
+        let fallbackLinks = (tocLinks?.isEmpty() ?? true)
+            ? (try? doc.select("nav").first()?.select("a[href]"))
+            : nil
+        guard let links = (tocLinks?.isEmpty() ?? true) ? fallbackLinks : tocLinks else { return }
+        for link in links.array() {
+            let href = ((try? link.attr("href")) ?? "").components(separatedBy: "#").first ?? ""
+            let text = ((try? link.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !href.isEmpty, !text.isEmpty else { continue }
+            let resolved = joinPath(base: navDir, relative: href.removingPercentEncoding ?? href)
+            let key = resolved.lowercased()
+            if map[key] == nil {
+                map[key] = text
+            }
+        }
+    }
+
+    /// 补充解析 EPUB 2 NCX 目录
+    private static func parseNcxTocTitles(
+        in zip: ZipArchiveReader,
+        manifest: [String: ManifestItem],
+        into map: inout [String: String]) {
+        guard let ncxItem = manifest.values.first(where: {
+            $0.mediaType.contains("ncx") || $0.path.lowercased().hasSuffix(".ncx")
+        }), let ncxData = zip.readFile(at: ncxItem.path) else {
+            return
+        }
+        let ncxDir = directoryPrefix(of: ncxItem.path)
+        let xml = CharsetDetector.decode(data: ncxData)
+        guard let doc = try? SwiftSoup.parse(xml, "", Parser.xmlParser()),
+              let navPoints = try? doc.select("navPoint") else {
+            return
+        }
+        for point in navPoints.array() {
+            let title = ((try? point.select("navLabel text").first()?.text()) ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let src = ((try? point.select("content").first()?.attr("src")) ?? "")
+                .components(separatedBy: "#").first ?? ""
+            guard !title.isEmpty, !src.isEmpty else { continue }
+            let resolved = joinPath(base: ncxDir, relative: src.removingPercentEncoding ?? src)
+            if map[resolved.lowercased()] == nil {
+                map[resolved.lowercased()] = title
+            }
+        }
     }
 
     private static func extractCover(

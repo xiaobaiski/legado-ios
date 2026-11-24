@@ -211,7 +211,7 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
     private func handleImportLocalFonts(urls: [URL]) {
         guard !urls.isEmpty else { return }
         Task { [weak self] in
-            let result = await Task.detached(priority: .userInitiated) {
+            let outcome = await Task.detached(priority: .userInitiated) {
                 var imported: [ImportedFont] = []
                 var lastError: Error?
                 for url in urls {
@@ -223,25 +223,28 @@ public final class SettingsViewModel: BaseMVIViewModel<SettingsState, SettingsIn
                     }
                 }
                 let allFonts = LocalFontManager.shared.listImportedFonts()
-                return (imported, allFonts, lastError)
+                return SettingsFontImportOutcome(
+                    imported: imported,
+                    allFonts: allFonts,
+                    errorMessage: lastError?.localizedDescription)
             }.value
 
             guard let self else { return }
-            self.updateState { $0.importedFonts = result.1 }
-            if let first = result.0.first {
+            self.updateState { $0.importedFonts = outcome.allFonts }
+            if let first = outcome.imported.first {
                 var updated = self.state.readerConfig
                 updated.customFontName = first.postScriptName
                 updated.customFontDisplayName = first.displayName
                 self.updateState { $0.readerConfig = updated }
                 ReaderConfigStore.save(updated)
                 self.realtimeSyncService?.scheduleRulesPush()
-                let msg = result.0.count == 1
+                let msg = outcome.imported.count == 1
                     ? "已导入并应用字体「\(first.displayName)」"
-                    : "成功导入 \(result.0.count) 款字体样式并应用「\(first.displayName)」"
+                    : "成功导入 \(outcome.imported.count) 款字体样式并应用「\(first.displayName)」"
                 self.emitEffect(.showToast(msg))
                 self.emitEffect(.hapticFeedback)
-            } else if let lastError = result.2 {
-                self.emitEffect(.showToast("字体导入失败: \(lastError.localizedDescription)"))
+            } else if let errorMessage = outcome.errorMessage {
+                self.emitEffect(.showToast("字体导入失败: \(errorMessage)"))
             }
         }
     }
@@ -430,4 +433,10 @@ private extension SettingsViewModel {
     static func loadSavedWebDAVConfig() -> WebDAVConfig {
         WebDAVConfigStore.loadForEditing()
     }
+}
+
+private struct SettingsFontImportOutcome: Sendable {
+    let imported: [ImportedFont]
+    let allFonts: [ImportedFont]
+    let errorMessage: String?
 }

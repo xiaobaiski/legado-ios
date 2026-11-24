@@ -78,31 +78,30 @@ extension ReaderConfig {
 
     /// 判断变更是否影响排版分页（用于决定是否需要重新执行 CoreText 分页）
     public func requiresRepagination(comparedTo other: ReaderConfig) -> Bool {
-        fontSize != other.fontSize ||
-            lineSpacing != other.lineSpacing ||
-            paragraphSpacing != other.paragraphSpacing ||
-            letterSpacing != other.letterSpacing ||
-            paragraphIndent != other.paragraphIndent ||
-            isTextJustified != other.isTextJustified ||
-            isBoldFont != other.isBoldFont ||
-            fontWeight != other.fontWeight ||
-            fontFamily != other.fontFamily ||
-            customFontName != other.customFontName ||
-            leftMargin != other.leftMargin ||
-            rightMargin != other.rightMargin ||
-            topMargin != other.topMargin ||
-            bottomMargin != other.bottomMargin ||
-            showHeader != other.showHeader ||
-            showFooter != other.showFooter ||
-            showHeaderDivider != other.showHeaderDivider ||
-            showFooterDivider != other.showFooterDivider ||
-            titleStyle != other.titleStyle ||
-            tipConfig.tipFontSize != other.tipConfig.tipFontSize ||
-            chineseConversion != other.chineseConversion ||
-            enableIPadDualPage != other.enableIPadDualPage ||
-            enableReplaceRule != other.enableReplaceRule ||
-            removeSameTitle != other.removeSameTitle ||
-            reSegment != other.reSegment ||
-            (pageTurnMode == .scroll) != (other.pageTurnMode == .scroll)
+        typographyChanged(comparedTo: other) || layoutChanged(comparedTo: other)
+    }
+
+    private func typographyChanged(comparedTo other: ReaderConfig) -> Bool {
+        let metricsDiffer = fontSize != other.fontSize || lineSpacing != other.lineSpacing
+            || paragraphSpacing != other.paragraphSpacing || letterSpacing != other.letterSpacing
+            || paragraphIndent != other.paragraphIndent || isTextJustified != other.isTextJustified
+        let typefaceDiffer = isBoldFont != other.isBoldFont || fontWeight != other.fontWeight
+            || fontFamily != other.fontFamily || customFontName != other.customFontName
+        return metricsDiffer || typefaceDiffer
+    }
+
+    private func layoutChanged(comparedTo other: ReaderConfig) -> Bool {
+        let marginsDiffer = leftMargin != other.leftMargin || rightMargin != other.rightMargin
+            || topMargin != other.topMargin || bottomMargin != other.bottomMargin
+        let chromeDiffer = showHeader != other.showHeader || showFooter != other.showFooter
+            || showHeaderDivider != other.showHeaderDivider || showFooterDivider != other.showFooterDivider
+            || titleStyle != other.titleStyle || tipConfig.tipFontSize != other.tipConfig.tipFontSize
+        let contentModeDiffer = chineseConversion != other.chineseConversion
+            || enableIPadDualPage != other.enableIPadDualPage
+            || enableReplaceRule != other.enableReplaceRule
+            || removeSameTitle != other.removeSameTitle
+            || reSegment != other.reSegment
+            || (pageTurnMode == .scroll) != (other.pageTurnMode == .scroll)
+        return marginsDiffer || chromeDiffer || contentModeDiffer
     }
 }
